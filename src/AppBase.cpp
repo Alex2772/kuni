@@ -76,7 +76,7 @@ AppBase::AppBase(): mWakeupTimer(_new<ATimer>(2h)) {
 
             if (botAnswer.choices.empty() || botAnswer.choices.at(0).message.tool_calls.empty()) {
                 if (botAnswer.usage.total_tokens >= config::DAIRY_TOKEN_COUNT_TRIGGER) {
-                    self.dairyDumpMessages();
+                    co_await self.dairyDumpMessages();
                 }
                 continue;
             }
@@ -103,29 +103,27 @@ void AppBase::passEventToAI(AString notification) {
     mNotificationsSignal.supplyValue();
 }
 
-void AppBase::dairyDumpMessages() {
-    getThread()->enqueue([this, self = shared_from_this()] {
-        AUI_DEFER { mCachedDairy.reset(); };
-        if (mTemporaryContext.empty()) {
-            return;
-        }
-        mTemporaryContext << OpenAIChat::Message{
-            .role = OpenAIChat::Message::Role::USER,
-            .content = config::DAIRY_PROMPT,
-        };
+AFuture<> AppBase::dairyDumpMessages() {
+    AUI_DEFER { mCachedDairy.reset(); };
+    if (mTemporaryContext.empty()) {
+        co_return;
+    }
+    mTemporaryContext << OpenAIChat::Message{
+        .role = OpenAIChat::Message::Role::USER,
+        .content = config::DAIRY_PROMPT,
+    };
 
-        OpenAIChat chat {
-            .systemPrompt = config::SYSTEM_PROMPT,
-            // .tools = mTools.asJson, // no tools should be involved.
-        };
-        naxyi:
-        OpenAIChat::Response botAnswer = *chat.chat(mTemporaryContext);
-        if (botAnswer.choices.at(0).message.content.empty()) {
-            goto naxyi;
-        }
-        dairySave(botAnswer.choices.at(0).message.content);
-        mTemporaryContext.clear();
-    });
+    OpenAIChat chat {
+        .systemPrompt = config::SYSTEM_PROMPT,
+        // .tools = mTools.asJson, // no tools should be involved.
+    };
+    naxyi:
+    OpenAIChat::Response botAnswer = co_await chat.chat(mTemporaryContext);
+    if (botAnswer.choices.at(0).message.content.empty()) {
+        goto naxyi;
+    }
+    dairySave(botAnswer.choices.at(0).message.content);
+    mTemporaryContext.clear();
 }
 
 void AppBase::actProactively() {

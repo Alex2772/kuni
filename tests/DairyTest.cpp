@@ -10,19 +10,19 @@ namespace {
     class AppMock: public AppBase {
     public:
         AppMock() {
-            ON_CALL(*this, dairyEntryIsRelatedToCurrentContext(testing::_)).WillByDefault([this](const AString& s) {
-                auto b = AppBase::dairyEntryIsRelatedToCurrentContext(s);
+            ON_CALL(*this, dairyEntryIsRelatedToCurrentContext(testing::_)).WillByDefault([this](const AString& s) -> AFuture<bool> {
+                auto b = co_await AppBase::dairyEntryIsRelatedToCurrentContext(s);
                 if (!b) {
                     throw AException("We expect AI to remember the dairy page");
                 }
-                return b;
+                co_return b;
             });
         }
 
         MOCK_METHOD(void, dairySave, (const AString& message), (override));
         MOCK_METHOD(AVector<AString>, dairyRead, (), (const override));
         MOCK_METHOD(AFuture<>, telegramPostMessage, (int64_t id, AString text), (override));
-        MOCK_METHOD(bool, dairyEntryIsRelatedToCurrentContext, (const AString& dairyEntry), (override));
+        MOCK_METHOD(AFuture<bool>, dairyEntryIsRelatedToCurrentContext, (const AString& dairyEntry), (override));
     };
 }
 
@@ -82,7 +82,8 @@ You received a message from Alex2772 (chat_id=1):
 Today I was playing several games of Dota 2. Both times I was playing Arc Warden and both times we lost
 :( my teammates weren't bad though.
 )");
-        app->dairyDumpMessages();
+        AThread::processMessages();
+        *app->dairyDumpMessages();
         AThread::processMessages();
     }
 

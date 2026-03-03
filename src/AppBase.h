@@ -11,7 +11,7 @@ public:
 
     void passEventToAI(AString notification);
 
-    void dairyDumpMessages();
+    AFuture<> dairyDumpMessages();
 
     void actProactively();
 

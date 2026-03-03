@@ -136,8 +136,10 @@ AUI_ENTRY {
     gEventLoop.loop();
 
     ALogger::info(LOG_TAG) << "Bot is shutting down. Please give some time to dump remaining context";
-    app->dairyDumpMessages();
-    AThread::processMessages();
+    auto d = app->dairyDumpMessages();
+    while (!d.hasResult()) {
+        AThread::processMessages();
+    }
 
     return 0;
 }
