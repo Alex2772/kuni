@@ -41,6 +41,11 @@ public:
 
     std::function<void(Object)> onEvent = [](Object o) { StubHandler{}(o); };
 
+    template<typename T>
+    static td::td_api::object_ptr<T> toPtr(T&& t) {
+        return td::td_api::make_object<T>(std::forward<T>(t));
+    }
+
 private:
     AFuture<> mWaitForConnection;
     _<ATimer> mTgUpdateTimer;

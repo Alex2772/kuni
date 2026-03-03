@@ -36,7 +36,7 @@ TEST(Dairy, Basic) {
     });
     EXPECT_CALL(*app, dairySave(testing::_));
 
-    app->passEventToAI(R"(
+    app->passNotificationToAI(R"(
 Today you read an article. Contents below.
 
 The source character set of C source programs is contained within the 7-bit ASCII character set but is a superset of the
@@ -76,7 +76,7 @@ TEST(Dairy, Remember) {
             dairy << message;
         });
 
-        app->passEventToAI(R"(
+        app->passNotificationToAI(R"(
 You received a message from Alex2772 (chat_id=1):
 
 Today I was playing several games of Dota 2. Both times I was playing Arc Warden and both times we lost
@@ -96,7 +96,7 @@ Today I was playing several games of Dota 2. Both times I was playing Arc Warden
             return testing::Return(dairy);
         }());
         testing::InSequence s;
-        app->passEventToAI(R"(
+        app->passNotificationToAI(R"(
 You received a message from Alex2772 (chat_id=1):
 
 Today I won a match in Dota 2

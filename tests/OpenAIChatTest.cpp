@@ -1,6 +1,8 @@
 #include "OpenAIChat.h"
 #include <gmock/gmock.h>
 
+#include "AUI/Thread/AAsyncHolder.h"
+#include "AUI/Thread/AEventLoop.h"
 #include "OpenAITools.h"
 
 static constexpr auto SYSTEM_PROMPT = R"(
@@ -73,36 +75,49 @@ TEST(OpenAIChat, Basic) {
 }
 
 TEST(OpenAIChat, ToolUsage) {
-    OpenAITools tools;
-    tools.addTool({
-        .name = "get_time",
-        .description = "Retrieves the current time.",
-        .parameters = {
-            .properties = {
-                {"timezone", { .type = "string", .description = "The timezone to use for the time." }},
-            },
-        },
-    }, [](const AJson& json) -> AFuture<AString> {
-        co_return "12:00 AM";
-    });
-    OpenAIChat session{
-        .systemPrompt = SYSTEM_PROMPT,
-        .tools = tools.asJson,
-    };
 
-    AVector<OpenAIChat::Message> messages = {
-        {
-            .role = OpenAIChat::Message::Role::USER,
-            .content = "Answer SHORTLY. What time is it?"
-        }
-    };
-    auto response = *session.chat(messages);
-    ASSERT_FALSE(response.choices.empty());
-    ASSERT_FALSE(response.choices[0].message.tool_calls.empty());
-    messages << response.choices[0].message;
-    messages << *tools.handleToolCalls(response.choices[0].message.tool_calls);
+    AEventLoop loop;
+    IEventLoop::Handle h(&loop);
+    AAsyncHolder async;
+    async << []() -> AFuture<> {
+        OpenAITools tools = {
+            {
+                .name = "get_time",
+                .description = "Retrieves the current time.",
+                .parameters = {
+                    .properties = {
+                        {"timezone", { .type = "string", .description = "The timezone to use for the time." }},
+                    },
+                },
+                .handler = [](OpenAITools::Ctx json) -> AFuture<AString> {
+                    co_return "12:00 AM";
+                },
+            }
+        };
 
-    response = *session.chat(messages);
-    ASSERT_FALSE(response.choices.empty());
-    ASSERT_TRUE(response.choices[0].message.content.contains("12:00"));
+        OpenAIChat session{
+            .systemPrompt = SYSTEM_PROMPT,
+            .tools = tools.asJson(),
+        };
+
+        AVector<OpenAIChat::Message> messages = {
+            {
+                .role = OpenAIChat::Message::Role::USER,
+                .content = "Answer SHORTLY. What time is it?"
+            }
+        };
+        auto response = co_await session.chat(messages);
+        EXPECT_FALSE(response.choices.empty());
+        EXPECT_FALSE(response.choices[0].message.tool_calls.empty());
+        messages << response.choices[0].message;
+        messages << co_await tools.handleToolCalls(response.choices[0].message.tool_calls);
+
+        response = co_await session.chat(messages);
+        EXPECT_FALSE(response.choices.empty());
+        EXPECT_TRUE(response.choices[0].message.content.contains("12:00"));
+    }();
+
+    while (async.size() > 0) {
+        loop.iteration();
+    }
 }

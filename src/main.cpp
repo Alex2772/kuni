@@ -1,3 +1,6 @@
+#include <range/v3/view/reverse.hpp>
+
+
 #include "AUI/Common/AByteBuffer.h"
 #include "AUI/IO/AFileInputStream.h"
 #include "AUI/Platform/Entry.h"
@@ -103,15 +106,43 @@ namespace {
             }
             auto chat = co_await mTelegram->sendQueryWithResult(
                 td::td_api::make_object<td::td_api::getChat>(u.message_->chat_id_));
-            if (userId == u.message_->chat_id_) {
-                passEventToAI("You received a direct message from {} (chat_id = {}):\n\n{}"_format(
-                    chat->title_, chat->id_, to_string(u.message_->content_)));
-                co_return;
-            }
-            auto user = co_await mTelegram->sendQueryWithResult(td::td_api::make_object<td::td_api::getUser>(userId));
-            passEventToAI("{} {} (user_id = {}) sent a message in {} (chat_id = {}):\n\n{}"_format(
-                user->first_name_, user->last_name_, userId, chat->title_, chat->id_, to_string(u.message_->content_)));
+            auto notification = co_await [&]() -> AFuture<AString> {
+                if (userId == u.message_->chat_id_) {
+                    co_return "You received a direct message from {} (chat_id = {}):\n\n{}"_format(
+                        chat->title_, chat->id_, to_string(u.message_->content_));
+                }
+                auto user =
+                    co_await mTelegram->sendQueryWithResult(td::td_api::make_object<td::td_api::getUser>(userId));
+                co_return "{} {} (user_id = {}) sent a message in {} (chat_id = {}):\n\n{}"_format(
+                    user->first_name_, user->last_name_, userId, chat->title_, chat->id_,
+                    to_string(u.message_->content_));
+            }();
+
+            passNotificationToAI(
+                std::move(notification),
+                {
+                    {
+                        .name = "open",
+                        .description = "Opens notification. Use this if you'd like to reply.",
+                        .handler = [this, chatId = chat->id_](OpenAITools::Ctx ctx) {
+                            return llmuiOpenTelegramChat(chatId);
+                        },
+                    },
+
+                });
+
             co_return;
+        }
+
+        AFuture<AString> llmuiOpenTelegramChat(int64_t chatId) {
+            auto chat = co_await mTelegram->sendQueryWithResult(TelegramClient::toPtr(td::td_api::getChat(chatId)));
+            AString result = "You opened the chat \"{}\". You see last messages:\n"_format(chat->title_);
+
+            auto messages = co_await mTelegram->sendQueryWithResult(TelegramClient::toPtr(
+                td::td_api::getChatHistory(chatId, 0, 0, glm::min(chat->unread_count_ + 10, 100), false)));
+            for (const auto& msg: messages->messages_ | ranges::view::reverse) {
+                msg->sender_tag_;
+            }
         }
     };
 } // namespace
@@ -129,7 +160,7 @@ AUI_ENTRY {
     AAsyncHolder async;
     async << [](_<App> app) -> AFuture<> {
         co_await app->telegram()->waitForConnection();
-        app->actProactively(); // for tests
+        // app->actProactively(); // for tests
     }(app);
 
     IEventLoop::Handle h(&gEventLoop);

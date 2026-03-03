@@ -4,6 +4,9 @@
 
 #include "OpenAITools.h"
 
+#include <range/v3/range/conversion.hpp>
+#include <range/v3/view/transform.hpp>
+
 AJSON_FIELDS(OpenAITools::Tool::Parameters::Property, AJSON_FIELDS_ENTRY(type) AJSON_FIELDS_ENTRY(description))
 
 AJSON_FIELDS(OpenAITools::Tool::Parameters,
@@ -13,11 +16,12 @@ AJSON_FIELDS(OpenAITools::Tool::Parameters,
 AJSON_FIELDS(OpenAITools::Tool, AJSON_FIELDS_ENTRY(type) AJSON_FIELDS_ENTRY(name) AJSON_FIELDS_ENTRY(description)
                                         AJSON_FIELDS_ENTRY(parameters) AJSON_FIELDS_ENTRY(strict))
 
-void OpenAITools::addTool(const Tool& tool, Handler handler) {
-    asJson.asArray().push_back(AJson::Object{
-            {"function", aui::to_json(tool)},
-    });
-    handlers[tool.name] = std::move(handler);
+
+OpenAITools::OpenAITools(std::initializer_list<Tool> tools) {
+    for (const auto& tool : tools) {
+        AUI_ASSERT(tool.handler != nullptr);
+        mHandlers[tool.name] = tool;
+    }
 }
 
 AFuture<AVector<OpenAIChat::Message>> OpenAITools::handleToolCalls(const AVector<OpenAIChat::Message::ToolCall>& toolCalls) {
@@ -27,8 +31,8 @@ AFuture<AVector<OpenAIChat::Message>> OpenAITools::handleToolCalls(const AVector
             .role = OpenAIChat::Message::Role::TOOL,
             .content = co_await [&]() -> AFuture<AString> {
                 try {
-                    if (auto c = handlers.contains(toolCall.function.name)) {
-                        co_return co_await c->second(AJson::fromString(toolCall.function.arguments));
+                    if (auto c = mHandlers.contains(toolCall.function.name)) {
+                        co_return co_await c->second.handler({*this, AJson::fromString(toolCall.function.arguments)});
                     }
                     co_return "error: no such tool: " + toolCall.function.name;
                 } catch (const AException& e) {
@@ -40,4 +44,12 @@ AFuture<AVector<OpenAIChat::Message>> OpenAITools::handleToolCalls(const AVector
     }
     co_return result;
 
+}
+
+AJson OpenAITools::asJson() const {
+    return ranges::view::transform(mHandlers, [](const auto& tool) {
+        return AJson::Object{
+            {"function", aui::to_json(tool.second) },
+        };
+    }) | ranges::to<AJson::Array>();
 }

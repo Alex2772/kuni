@@ -6,9 +6,11 @@
 
 
 struct OpenAITools {
-    AJson asJson = AJson::Array{};
-    using Handler = std::function<AFuture<AString>(const AJson&)>;
-    AMap<AString, Handler> handlers;
+    struct Ctx {
+        OpenAITools& tools;
+        AJson args;
+    };
+    using Handler = std::function<AFuture<AString>(Ctx ctx)>;
 
     struct Tool {
         AString type = "function";
@@ -25,7 +27,17 @@ struct OpenAITools {
             bool additionalProperties = false;
         } parameters;
         bool strict = true;
+        Handler handler;
     };
-    void addTool(const Tool& tool, Handler handler);
+
+    OpenAITools(std::initializer_list<Tool> tools);
+
     AFuture<AVector<OpenAIChat::Message>> handleToolCalls(const AVector<OpenAIChat::Message::ToolCall>& toolCalls);
+
+    AJson asJson() const;
+
+    [[nodiscard]] AMap<AString, Tool> handlers() const { return mHandlers; }
+
+private:
+    AMap<AString, Tool> mHandlers;
 };

@@ -9,7 +9,17 @@ class AppBase: public AObject {
 public:
     AppBase();
 
-    void passEventToAI(AString notification);
+
+
+    /**
+     * @brief Passes an event to the AI to process
+     * @param notification notification text message in natural language (i.e., "you received a message from "...": ...; an
+     * @param actions immediate actions (tools) related to the notification (i.e., open related chat)
+     * alarm triggerred, etc...)
+     * @details
+     * Think of it as your phone's notifications: you receive a notification, read it and (maybe) react to it.
+     */
+    void passNotificationToAI(AString notification, OpenAITools actions = {});
 
     AFuture<> dairyDumpMessages();
 
@@ -36,10 +46,14 @@ protected:
     virtual AFuture<bool> dairyEntryIsRelatedToCurrentContext(const AString& dairyEntry);
 
 private:
-    std::queue<AString> mNotifications;
+    struct Notification {
+        AString message;
+        OpenAITools actions;
+    };
+    std::queue<Notification> mNotifications;
     AFuture<> mNotificationsSignal;
     _<ATimer> mWakeupTimer;
-    OpenAITools mTools;
+    // OpenAITools mTools;
     aui::lazy<AVector<AString>> mCachedDairy = [this]{ return dairyRead(); };
 
     AVector<OpenAIChat::Message> mTemporaryContext {};

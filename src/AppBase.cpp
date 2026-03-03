@@ -19,23 +19,23 @@ using namespace std::chrono_literals;
 static constexpr auto LOG_TAG = "App";
 
 AppBase::AppBase(): mWakeupTimer(_new<ATimer>(2h)) {
-    mTools.addTool({
-        .name = "send_telegram_message",
-        .description = "Sends a message to a Telegram user.",
-        .parameters = {
-            .properties = {
-                {"chat_id", { .type = "integer", .description = "The ID of the Telegram chat" }},
-                {"message", { .type = "string", .description = "Contents of the message" }},
-            },
-            .required = {"chat_id", "message"},
-        },
-    }, [this](const AJson& args) -> AFuture<AString> {
-        const auto& object = args.asObjectOpt().valueOrException("object expected");
-        auto chatId = object["chat_id"].asLongIntOpt().valueOrException("`chat_id` integer expected");
-        auto message = object["message"].asStringOpt().valueOrException("`message` string expected");
-        co_await telegramPostMessage(chatId, message);
-        co_return "Message sent successfully.";
-    });
+    // mTools.addTool({
+    //     .name = "send_telegram_message",
+    //     .description = "Sends a message to a Telegram user.",
+    //     .parameters = {
+    //         .properties = {
+    //             {"chat_id", { .type = "integer", .description = "The ID of the Telegram chat" }},
+    //             {"message", { .type = "string", .description = "Contents of the message" }},
+    //         },
+    //         .required = {"chat_id", "message"},
+    //     },
+    // }, [this](const AJson& args) -> AFuture<AString> {
+    //     const auto& object = args.asObjectOpt().valueOrException("object expected");
+    //     auto chatId = object["chat_id"].asLongIntOpt().valueOrException("`chat_id` integer expected");
+    //     auto message = object["message"].asStringOpt().valueOrException("`message` string expected");
+    //     co_await telegramPostMessage(chatId, message);
+    //     co_return "Message sent successfully.";
+    // });
 
     connect(mWakeupTimer->fired, me::actProactively);
     mWakeupTimer->start();
@@ -48,11 +48,12 @@ AppBase::AppBase(): mWakeupTimer(_new<ATimer>(2h)) {
             }
             AUI_ASSERT(AThread::current() == self.getThread());
             self.mNotificationsSignal = AFuture<>(); // reset
+            auto notification = std::move(self.mNotifications.front());
+            self.mNotifications.pop();
             self.mTemporaryContext << OpenAIChat::Message{
                 .role = OpenAIChat::Message::Role::USER,
-                .content = std::move(self.mNotifications.back()),
+                .content = std::move(notification.message),
             };
-            self.mNotifications.pop();
 
             for (auto it = self.mCachedDairy->begin(); it != self.mCachedDairy->end();) {
                 if (!co_await self.dairyEntryIsRelatedToCurrentContext(*it)) {
@@ -63,12 +64,12 @@ AppBase::AppBase(): mWakeupTimer(_new<ATimer>(2h)) {
                 it = self.mCachedDairy->erase(it);
             }
 
+            naxyi:
             OpenAIChat llm {
                 .systemPrompt = config::SYSTEM_PROMPT,
-                .tools = self.mTools.asJson,
+                .tools = notification.actions.asJson(),
             };
 
-            naxyi:
             OpenAIChat::Response botAnswer = co_await llm.chat(self.mTemporaryContext);
             AUI_ASSERT(AThread::current() == self.getThread());
 
@@ -81,25 +82,19 @@ AppBase::AppBase(): mWakeupTimer(_new<ATimer>(2h)) {
                 continue;
             }
 
-            self.mTemporaryContext << co_await self.mTools.handleToolCalls(botAnswer.choices.at(0).message.tool_calls);
+            self.mTemporaryContext << co_await notification.actions.handleToolCalls(botAnswer.choices.at(0).message.tool_calls);
             AUI_ASSERT(AThread::current() == self.getThread());
-            self.mTemporaryContext.last().content += "\nWhat's your next action? Use a `tool` to act. The following tools available: " + AStringVector(self.mTools.handlers.keyVector()).join(", ");
+            if (!notification.actions.handlers().empty()) {
+                self.mTemporaryContext.last().content += "\nWhat's your next action? Use a `tool` to act. The following tools available: " + AStringVector(notification.actions.handlers().keyVector()).join(", ");
+            }
             goto naxyi;
         }
         co_return;
     }(*this);
 }
 
-
-/**
- * @brief Passes an event to the AI to process
- * @param notification notification text message in natural language (i.e., "you received a message from "...": ...; an
- * alarm triggerred, etc...)
- * @details
- * Think of it as your phone's notifications: you receive a notification, read it and (maybe) react to it.
- */
-void AppBase::passEventToAI(AString notification) {
-    mNotifications.push(std::move(notification));
+void AppBase::passNotificationToAI(AString notification, OpenAITools actions) {
+    mNotifications.push({ std::move(notification), std::move(actions) });
     mNotificationsSignal.supplyValue();
 }
 
@@ -140,7 +135,7 @@ void AppBase::actProactively() {
     " - maybe do some reflection?\n"
     " - maybe write to a person and initiate a dialogue with #send_telegram_message?\n"
     "Act proactively!";
-    passEventToAI(std::move(prompt));
+    passNotificationToAI(std::move(prompt));
 }
 
 AFuture<bool> AppBase::dairyEntryIsRelatedToCurrentContext(const AString& dairyEntry) {
