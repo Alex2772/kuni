@@ -1,4 +1,5 @@
 #pragma once
+#include "AUI/Image/AImage.h"
 #include "AUI/Json/AJson.h"
 #include "AUI/Thread/AFuture.h"
 #include "AUI/Util/APreprocessor.h"
@@ -18,6 +19,8 @@ struct OpenAIChat {
             TOOL,
           } role;
         AString content;
+        using Attachment = std::variant<_<AImage>>;
+        AVector<Attachment> attachments;
         AString tool_call_id;
         AString reasoning;
         struct ToolCall {

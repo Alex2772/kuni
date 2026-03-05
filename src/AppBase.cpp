@@ -48,6 +48,9 @@ AppBase::AppBase(): mWakeupTimer(_new<ATimer>(2h)) {
             }
             AUI_ASSERT(AThread::current() == self.getThread());
             self.mNotificationsSignal = AFuture<>(); // reset
+            if (self.mNotifications.empty()) {
+                continue;
+            }
             auto notification = std::move(self.mNotifications.front());
             self.mNotifications.pop();
             self.mTemporaryContext << OpenAIChat::Message{
@@ -55,17 +58,33 @@ AppBase::AppBase(): mWakeupTimer(_new<ATimer>(2h)) {
                 .content = {},
             };
 
-            for (auto it = self.mCachedDairy->begin(); it != self.mCachedDairy->end();) {
-                if (!co_await self.dairyEntryIsRelatedToCurrentContext(*it)) {
+            for (auto it = self.mCachedDiary->begin(); it != self.mCachedDiary->end();) {
+                if (!co_await self.diaryEntryIsRelatedToCurrentContext(*it)) {
                     ++it;
                     continue;
                 }
-                self.mTemporaryContext.last().content += "<your_dairy_page additional_context just_for_reasoning no_plagiarism no_copy>\n" + *it + "\n</your_dairy_page>\n";
-                it = self.mCachedDairy->erase(it);
+                self.mTemporaryContext.last().content += "<your_diary_page additional_context just_for_reasoning no_plagiarism no_copy>\n" + *it + "\n</your_diary_page>\n";
+                it = self.mCachedDiary->erase(it);
             }
             self.mTemporaryContext.last().content += notification.message;
 
+            bool pauseFlag = false;
             naxyi:
+            self.updateTools(notification.actions);
+            auto escape = [&](OpenAITools::Ctx ctx) -> AFuture<AString> {
+                pauseFlag = true;
+                co_return "Success";
+            };
+            notification.actions.insert({
+                .name = "pause",
+                .description = "Pauses the conversation",
+                .handler = escape,
+            });
+            notification.actions.insert({
+                .name = "wait",
+                .description = "Wait until further notifications",
+                .handler = escape,
+            });
             OpenAIChat llm {
                 .systemPrompt = config::SYSTEM_PROMPT,
                 .tools = notification.actions.asJson(),
@@ -77,8 +96,8 @@ AppBase::AppBase(): mWakeupTimer(_new<ATimer>(2h)) {
             self.mTemporaryContext << botAnswer.choices.at(0).message;
 
             if (botAnswer.choices.empty() || botAnswer.choices.at(0).message.tool_calls.empty()) {
-                if (botAnswer.usage.total_tokens >= config::DAIRY_TOKEN_COUNT_TRIGGER) {
-                    co_await self.dairyDumpMessages();
+                if (botAnswer.usage.total_tokens >= config::DIARY_TOKEN_COUNT_TRIGGER) {
+                    co_await self.diaryDumpMessages();
                 }
                 continue;
             }
@@ -86,6 +105,10 @@ AppBase::AppBase(): mWakeupTimer(_new<ATimer>(2h)) {
             self.mTemporaryContext << co_await notification.actions.handleToolCalls(botAnswer.choices.at(0).message.tool_calls);
             ALOG_DEBUG(LOG_TAG) << "Tool call response: " << self.mTemporaryContext.last().content;
             AUI_ASSERT(AThread::current() == self.getThread());
+
+            if (pauseFlag) {
+                continue;
+            }
             if (!notification.actions.handlers().empty()) {
                 self.mTemporaryContext.last().content += "\nWhat's your next action? Use a `tool` to act. The following tools available: " + AStringVector(notification.actions.handlers().keyVector()).join(", ");
             }
@@ -100,14 +123,14 @@ void AppBase::passNotificationToAI(AString notification, OpenAITools actions) {
     mNotificationsSignal.supplyValue();
 }
 
-AFuture<> AppBase::dairyDumpMessages() {
-    AUI_DEFER { mCachedDairy.reset(); };
+AFuture<> AppBase::diaryDumpMessages() {
+    AUI_DEFER { mCachedDiary.reset(); };
     if (mTemporaryContext.empty()) {
         co_return;
     }
     mTemporaryContext << OpenAIChat::Message{
         .role = OpenAIChat::Message::Role::USER,
-        .content = config::DAIRY_PROMPT,
+        .content = config::DIARY_PROMPT,
     };
 
     OpenAIChat chat {
@@ -119,20 +142,20 @@ AFuture<> AppBase::dairyDumpMessages() {
     if (botAnswer.choices.at(0).message.content.empty()) {
         goto naxyi;
     }
-    dairySave(botAnswer.choices.at(0).message.content);
+    diarySave(botAnswer.choices.at(0).message.content);
     mTemporaryContext.clear();
 }
 
 void AppBase::actProactively() {
     static std::default_random_engine re(std::time(nullptr));
-    AString prompt = "<your_dairy_page just_for_reasoning no_plagiarism no_copy>\n";
-    if (!mCachedDairy->empty()) {
-        auto entry = mCachedDairy->begin() + re() % mCachedDairy->size();
+    AString prompt = "<your_diary_page just_for_reasoning no_plagiarism no_copy>\n";
+    if (!mCachedDiary->empty()) {
+        auto entry = mCachedDiary->begin() + re() % mCachedDiary->size();
         prompt += *entry;
-        mCachedDairy->erase(entry);
+        mCachedDiary->erase(entry);
     }
     prompt += R"(
-</your_dairy_page>
+</your_diary_page>
 
 It's time to reflect on your thoughts!
   - maybe make some reasoning?\n"
@@ -143,14 +166,14 @@ Act proactively!
     passNotificationToAI(std::move(prompt));
 }
 
-AFuture<bool> AppBase::dairyEntryIsRelatedToCurrentContext(const AString& dairyEntry) {
-    if (dairyEntry.empty()) {
+AFuture<bool> AppBase::diaryEntryIsRelatedToCurrentContext(const AString& diaryEntry) {
+    if (diaryEntry.empty()) {
         co_return false;
     }
-    if (dairyEntry.contains("<important_note")) {
+    if (diaryEntry.contains("<important_note")) {
         co_return true;
     }
-    AString basePrompt = config::DAIRY_IS_RELATED_PROMPT;
+    AString basePrompt = config::DIARY_IS_RELATED_PROMPT;
     basePrompt += "\n<context>\n";
     AUI_ASSERT(!mTemporaryContext.empty());
     for (const auto& message: mTemporaryContext) {
@@ -160,6 +183,19 @@ AFuture<bool> AppBase::dairyEntryIsRelatedToCurrentContext(const AString& dairyE
     OpenAIChat chat {
         .systemPrompt = std::move(basePrompt),
     };
-    auto decision = (co_await chat.chat(dairyEntry)).choices.at(0).message.content.lowercase();
+    auto decision = (co_await chat.chat(diaryEntry)).choices.at(0).message.content.lowercase();
     co_return decision.contains("yes") || decision.contains("y") || decision.contains("true") || decision.contains("1") || decision.contains("maybe");
+}
+
+void AppBase::removeNotifications(const AString& substring) {
+    std::queue<Notification> remaining;
+    while (!mNotifications.empty()) {
+        auto n = std::move(mNotifications.front());
+        mNotifications.pop();
+        if (n.message.contains(substring)) {
+            continue; // drop it
+        }
+        remaining.push(std::move(n));
+    }
+    mNotifications = std::move(remaining);
 }

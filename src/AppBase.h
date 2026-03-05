@@ -21,7 +21,7 @@ public:
      */
     void passNotificationToAI(AString notification, OpenAITools actions = {});
 
-    AFuture<> dairyDumpMessages();
+    AFuture<> diaryDumpMessages();
 
     void actProactively();
 
@@ -33,17 +33,30 @@ protected:
     }
 
     /**
-     * @brief Returns dairy entries that was saved previously by dairySave.
+     * @brief Returns diary entries that was saved previously by diarySave.
      */
-    virtual AVector<AString> dairyRead() const {
+    virtual AVector<AString> diaryRead() const {
         return {};
     }
 
-    virtual void dairySave(const AString& message) {
-        ALogger::warn("AppBase") << "dairySave stub (" << message << ")";
+    virtual void diarySave(const AString& message) {
+        ALogger::warn("AppBase") << "diarySave stub (" << message << ")";
     }
 
-    virtual AFuture<bool> dairyEntryIsRelatedToCurrentContext(const AString& dairyEntry);
+    virtual AFuture<bool> diaryEntryIsRelatedToCurrentContext(const AString& diaryEntry);
+
+    /**
+     * @brief Adds always available actions
+     */
+    virtual void updateTools(OpenAITools& actions) {}
+
+    /**
+     * @brief Removes notifications by the given substring.
+     * @param substring to search in notification texts. Must be unique enough to avoid false positives.
+     * @details
+     * Can be used to remove obsolete notifications from AI's queue.
+     */
+    void removeNotifications(const AString& substring);
 
 private:
     struct Notification {
@@ -54,7 +67,7 @@ private:
     AFuture<> mNotificationsSignal;
     _<ATimer> mWakeupTimer;
     // OpenAITools mTools;
-    aui::lazy<AVector<AString>> mCachedDairy = [this]{ return dairyRead(); };
+    aui::lazy<AVector<AString>> mCachedDiary = [this]{ return diaryRead(); };
 
     AVector<OpenAIChat::Message> mTemporaryContext {};
 

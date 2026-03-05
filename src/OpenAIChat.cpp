@@ -14,6 +14,7 @@
 
 #include "AUI/Curl/ACurl.h"
 #include "AUI/IO/AFileOutputStream.h"
+#include "AUI/Image/jpg/JpgImageLoader.h"
 #include "AUI/Json/Conversion.h"
 #include "AUI/Logging/ALogger.h"
 #include "AUI/Reflect/AEnumerate.h"
@@ -73,6 +74,48 @@ AFuture<OpenAIChat::Response> OpenAIChat::chat(AString message) {
     { Message::Role::USER, std::move(message)} ,
   });
 }
+
+template<>
+struct AJsonConv<OpenAIChat::Message::Attachment> {
+    static AJson toJson(const OpenAIChat::Message::Attachment& v) {
+        return std::visit(aui::lambda_overloaded {
+            [](const _<AImage>& image) -> AJson {
+                AByteBuffer jpg;
+                JpgImageLoader::save(jpg, AImageView(*image));
+                return AJson::Object {
+                    {"type", "image_url"},
+                    {"image_url", "data:image/jpg;base64,{}"_format(jpg.toBase64String())}
+                };
+            },
+        }, v);
+    }
+};
+
+template<>
+struct AJsonConv<AVector<OpenAIChat::Message>> {
+    static AJson toJson(const AVector<OpenAIChat::Message>& v) {
+        AJson::Array result;
+        for (const auto& message : v) {
+            // reverse engineered from vscode copilot plugin
+            if (!message.attachments.empty()) {
+                result << aui::to_json(OpenAIChat::Message{
+                    .role = message.role,
+                    .content = "<attachments>",
+                });
+                result << AJson::Object {
+                    { "role", aui::to_json(message.role) },
+                    { "content", aui::to_json(message.attachments) },
+                };
+                result << aui::to_json(OpenAIChat::Message{
+                    .role = message.role,
+                    .content = "</attachments>",
+                });
+            }
+            result << aui::to_json(message);
+        }
+        return result;
+    }
+};
 
 
 AFuture<OpenAIChat::Response> OpenAIChat::chat(AVector<Message> messages) {

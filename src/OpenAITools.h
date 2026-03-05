@@ -38,6 +38,8 @@ struct OpenAITools {
 
     [[nodiscard]] AMap<AString, Tool> handlers() const { return mHandlers; }
 
+    void insert(Tool tool) { mHandlers[tool.name] = std::move(tool); }
+
 private:
     AMap<AString, Tool> mHandlers;
 };

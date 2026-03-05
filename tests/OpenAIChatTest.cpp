@@ -5,6 +5,8 @@
 #include "AUI/Thread/AEventLoop.h"
 #include "OpenAITools.h"
 
+static const auto TEST_DATA = APath(__FILE__).parent() / "data";
+
 static constexpr auto SYSTEM_PROMPT = R"(
 You are an expert AI programming assistant, working with a user in the VS Code editor.
 When asked for your name, you must respond with "Kuni". When asked about the model you are using, you must state that you are using gpt-oss-20b-128k:latest.
@@ -66,12 +68,21 @@ Handle niche topics – For obscure or less‑known libraries/frameworks, still 
 )";
 
 TEST(OpenAIChat, Basic) {
-  OpenAIChat session{ .systemPrompt = SYSTEM_PROMPT };
-  auto response = session.chat("Answer SHORTLY. What time is it?")->choices.at(0).message.content;
-  EXPECT_TRUE(response.contains("content") ||
-              response.contains("information") || response.contains("cannot") ||
-              response.contains("provide") || response.contains("time"))
-      << response;
+    AEventLoop loop;
+    IEventLoop::Handle h(&loop);
+    AAsyncHolder async;
+    async << []() -> AFuture<> {
+        OpenAIChat session{ .systemPrompt = SYSTEM_PROMPT };
+        auto response = (co_await session.chat("Answer SHORTLY. What time is it? Do not make up information; if you don't have access to a tool, report it.")).choices.at(0).message.content;
+        EXPECT_TRUE(response.contains("content") ||
+                    response.contains("information") || response.contains("cannot") ||
+                    response.contains("provide") || response.contains("time"))
+            << response;
+    }();
+
+    while (async.size() > 0) {
+        loop.iteration();
+    }
 }
 
 TEST(OpenAIChat, ToolUsage) {
@@ -120,4 +131,77 @@ TEST(OpenAIChat, ToolUsage) {
     while (async.size() > 0) {
         loop.iteration();
     }
+}
+
+TEST(OpenAIChat, ImageRecognition) {
+    AEventLoop loop;
+    IEventLoop::Handle h(&loop);
+    AAsyncHolder async;
+    async << []() -> AFuture<> {
+        OpenAIChat session{
+            .systemPrompt = SYSTEM_PROMPT,
+        };
+
+        AVector<OpenAIChat::Message> messages = {
+            {
+                .role = OpenAIChat::Message::Role::USER,
+                .content = "What is it?",
+                .attachments = { AImage::fromFile(TEST_DATA / "sussybaka.jpg") },
+            },
+        };
+        auto response = co_await session.chat(messages);
+        EXPECT_FALSE(response.choices.empty());
+        auto content = response.choices[0].message.content.lowercase();
+        EXPECT_TRUE(content.contains("cat")) << "\"cat\" should be mentioned: " << content;
+    }();
+
+    while (async.size() > 0) {
+        loop.iteration();
+    }
+}
+
+TEST(OpenAIChat, ToolAttachments) {
+    // not sure if return an image from tool works well, so made a dedicated test for it.
+
+    AEventLoop loop;
+    IEventLoop::Handle h(&loop);
+    AAsyncHolder async;
+    async << []() -> AFuture<> {
+        OpenAITools tools = {
+            {
+                .name = "open_attachment",
+                .description = "Retrieves attachment.",
+                .handler = [](OpenAITools::Ctx json) -> AFuture<AString> {
+                    co_return "12:00 AM";
+                },
+            }
+        };
+
+        OpenAIChat session{
+            .systemPrompt = SYSTEM_PROMPT,
+            .tools = tools.asJson(),
+        };
+
+        AVector<OpenAIChat::Message> messages = {
+            {
+                .role = OpenAIChat::Message::Role::USER,
+                .content = "Please #open_attachment and describe what is it."
+            }
+        };
+        auto response = co_await session.chat(messages);
+        EXPECT_FALSE(response.choices.empty());
+        EXPECT_FALSE(response.choices[0].message.tool_calls.empty());
+        messages << response.choices[0].message;
+        messages << co_await tools.handleToolCalls(response.choices[0].message.tool_calls);
+
+        response = co_await session.chat(messages);
+        EXPECT_FALSE(response.choices.empty());
+        auto content = response.choices[0].message.content.lowercase();
+        EXPECT_TRUE(content.contains("cat")) << "\"cat\" should be mentioned: " << content;
+    }();
+
+    while (async.size() > 0) {
+        loop.iteration();
+    }
+
 }

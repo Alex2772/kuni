@@ -10,31 +10,31 @@ namespace {
     class AppMock: public AppBase {
     public:
         AppMock() {
-            ON_CALL(*this, dairyEntryIsRelatedToCurrentContext(testing::_)).WillByDefault([this](const AString& s) -> AFuture<bool> {
-                auto b = co_await AppBase::dairyEntryIsRelatedToCurrentContext(s);
+            ON_CALL(*this, diaryEntryIsRelatedToCurrentContext(testing::_)).WillByDefault([this](const AString& s) -> AFuture<bool> {
+                auto b = co_await AppBase::diaryEntryIsRelatedToCurrentContext(s);
                 if (!b) {
-                    throw AException("We expect AI to remember the dairy page");
+                    throw AException("We expect AI to remember the diary page");
                 }
                 co_return b;
             });
         }
 
-        MOCK_METHOD(void, dairySave, (const AString& message), (override));
-        MOCK_METHOD(AVector<AString>, dairyRead, (), (const override));
+        MOCK_METHOD(void, diarySave, (const AString& message), (override));
+        MOCK_METHOD(AVector<AString>, diaryRead, (), (const override));
         MOCK_METHOD(AFuture<>, telegramPostMessage, (int64_t id, AString text), (override));
-        MOCK_METHOD(AFuture<bool>, dairyEntryIsRelatedToCurrentContext, (const AString& dairyEntry), (override));
+        MOCK_METHOD(AFuture<bool>, diaryEntryIsRelatedToCurrentContext, (const AString& diaryEntry), (override));
     };
 }
 
-TEST(Dairy, Basic) {
+TEST(Diary, Basic) {
     auto app = _new<AppMock>();
-    ON_CALL(*app, dairySave(testing::_)).WillByDefault([](const AString& message) {
-        ALogger::info("AppMock") << "dairySave: " << message;
+    ON_CALL(*app, diarySave(testing::_)).WillByDefault([](const AString& message) {
+        ALogger::info("AppMock") << "diarySave: " << message;
         if (!message.contains("trigraphs")) {
-            throw AException("We expect LLM to save info about c++ trigraphs to the dairy");
+            throw AException("We expect LLM to save info about c++ trigraphs to the diary");
         }
     });
-    EXPECT_CALL(*app, dairySave(testing::_));
+    EXPECT_CALL(*app, diarySave(testing::_));
 
     app->passNotificationToAI(R"(
 Today you read an article. Contents below.
@@ -53,12 +53,12 @@ encourages implementations not to do so. Through C++14, trigraphs are supported 
 Visual C++ continues to support trigraph substitution, but it's disabled by default. For information on how to enable
 trigraph substitution, see /Zc:trigraphs (Trigraphs Substitution).
 )");
-    app->dairyDumpMessages();
+    app->diaryDumpMessages();
     AThread::processMessages();
 }
 
-TEST(Dairy, Remember) {
-    AVector<AString> dairy;
+TEST(Diary, Remember) {
+    AVector<AString> diary;
 
     {
         auto app = _new<AppMock>();
@@ -66,14 +66,14 @@ TEST(Dairy, Remember) {
         ON_CALL(*app, telegramPostMessage(testing::_, testing::_)).WillByDefault([](int64_t id, AString text) -> AFuture<> {
             co_return;
         });
-        EXPECT_CALL(*app, dairySave(testing::_));
-        ON_CALL(*app, dairySave(testing::_)).WillByDefault([&](const AString& message) noexcept {
-            ALogger::info("AppMock") << "dairySave: " << message;
+        EXPECT_CALL(*app, diarySave(testing::_));
+        ON_CALL(*app, diarySave(testing::_)).WillByDefault([&](const AString& message) noexcept {
+            ALogger::info("AppMock") << "diarySave: " << message;
             const auto lower = message.lowercase();
             if (!(lower.contains("arc") && lower.contains("warden"))) {
                 throw AException("we expect AI to remember Arc Warden");
             }
-            dairy << message;
+            diary << message;
         });
 
         app->passNotificationToAI(R"(
@@ -83,7 +83,7 @@ Today I was playing several games of Dota 2. Both times I was playing Arc Warden
 :( my teammates weren't bad though.
 )");
         AThread::processMessages();
-        *app->dairyDumpMessages();
+        *app->diaryDumpMessages();
         AThread::processMessages();
     }
 
@@ -92,8 +92,8 @@ Today I was playing several games of Dota 2. Both times I was playing Arc Warden
     // we expect AI to remember Alex2772 plays Arc Warden.
     {
         auto app = _new<AppMock>();
-        ON_CALL(*app, dairyRead()).WillByDefault([&] {
-            return testing::Return(dairy);
+        ON_CALL(*app, diaryRead()).WillByDefault([&] {
+            return testing::Return(diary);
         }());
         testing::InSequence s;
         app->passNotificationToAI(R"(
