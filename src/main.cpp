@@ -1,3 +1,4 @@
+#include <random>
 #include <range/v3/action/insert.hpp>
 #include <range/v3/algorithm/max_element.hpp>
 #include <range/v3/algorithm/min_element.hpp>
@@ -14,6 +15,8 @@
 #include "AUI/Util/kAUI.h"
 #include "AppBase.h"
 #include "telegram/TelegramClient.h"
+
+using namespace std::chrono_literals;
 
 namespace {
 
@@ -35,7 +38,7 @@ namespace {
 
 
     protected:
-        AFuture<> telegramPostMessage(int64_t chatId, AString text) override {
+        AFuture<> telegramPostMessage(int64_t chatId, AString text) {
             co_await telegram()->sendQueryWithResult([&] {
                 auto msg = td::td_api::make_object<td::td_api::sendMessage>();
                 msg->chat_id_ = chatId;
@@ -52,25 +55,28 @@ namespace {
             }());
         }
 
-        AVector<AString> diaryRead() const override {
+        AVector<DiaryEntry> diaryRead() const override {
             APath diaryDir(DIARY_DIR);
             if (!diaryDir.isDirectoryExists()) {
                 return {};
             }
-            AVector<AString> diary;
+            AVector<DiaryEntry> diary;
             for (const auto& file: diaryDir.listDir()) {
                 if (file.isRegularFileExists() && file.extension() == "md") {
-                    diary << AString::fromUtf8(AByteBuffer::fromStream(AFileInputStream(file)));
+                    diary << DiaryEntry {
+                        .id = file.filenameWithoutExtension(),
+                        .text = AString::fromUtf8(AByteBuffer::fromStream(AFileInputStream(file))),
+                    };
                 }
             }
             return diary;
         }
 
-        void diarySave(const AString& message) override {
+        void diarySave(const DiaryEntry& entry) override {
             APath diaryDir(DIARY_DIR);
             diaryDir.makeDirs();
-            auto diaryFile = diaryDir / "{}.md"_format(std::chrono::system_clock::now().time_since_epoch().count());
-            AFileOutputStream(diaryFile) << message;
+            auto diaryFile = diaryDir / "{}.md"_format(entry.id);
+            AFileOutputStream(diaryFile) << entry.text;
             ALogger::info("App") << "diarySave: " << diaryFile;
         }
 
@@ -88,8 +94,15 @@ namespace {
                     for (const auto& chatId: chats->chat_ids_) {
                         auto chat = co_await telegram()->sendQueryWithResult(
                             TelegramClient::toPtr(td::td_api::getChat(chatId)));
-                        result += "<chat chat_id=\"{}\" title=\"{}\" type=\"{}\""_format(chat->id_, chat->title_,
-                                                                                         to_string(chat->type_));
+                        auto type = [&]() -> AStringView {
+                            switch (chat->type_->get_id()) {
+                                case td::td_api::chatTypePrivate::ID: return "direct messages";
+                                case td::td_api::chatTypeBasicGroup::ID: return "group chat";
+                                case td::td_api::chatTypeSupergroup::ID: return "channel";
+                                default: return "unknown";
+                            }
+                        }();
+                        result += "<chat chat_id=\"{}\" title=\"{}\" type=\"{}\""_format(chat->id_, chat->title_, type);
                         if (chat->unread_count_ > 0) {
                             result += " unread_count=\"{}\""_format(chat->unread_count_);
                         }
@@ -150,14 +163,15 @@ namespace {
             } else {
                 notification += "Channel \"{}\" (chat_id={}) created a new post\n"_format(chat->title_, chat->id_);
             }
-            notification += "\n</notification>\n";
+            notification += "\n</notification>\n"
+            "You don't have any chat open. Use #open tool to open the chat";
 
             passNotificationToAI(
                 std::move(notification),
                 {
                     {
                         .name = "open",
-                        .description = "Opens notification. Use this if you'd like to reply.",
+                        .description = "Open \"{}\" chat. Use this if you'd like to reply or see messages."_format(chat->title_),
                         .handler = [this, chatId = chat->id_](OpenAITools::Ctx ctx) -> AFuture<AString> {
                             return llmuiOpenTelegramChat(ctx.tools, chatId);
                         },
@@ -190,7 +204,31 @@ namespace {
             string = "malicious";
         }
 
+        AMap<AString /* path */, AString /* description */> mImages = {};
+
     public:
+        AFuture<AString> describePhoto(AStringView pathToImage) {
+            if (const auto i = mImages.contains(pathToImage)) {
+                co_return i->second;
+            }
+            OpenAIChat chat {
+                .systemPrompt = config::PHOTO_TO_TEXT_PROMPT,
+                .model = config::MODEL_PHOTO_TO_TEXT,
+            };
+            AString context = "<context>\n";
+            for (const auto& i : temporaryContext()) {
+                context += "<context_item>\n";
+                context += i.content;
+                context += "\n</context_item>\n";
+            }
+
+            context += "\n\n</context>\n\nPhoto:\n\n";
+            context += OpenAIChat::embedImage(*AImage::fromFile(pathToImage));
+            context += "\n\nDescribe the last photo.";
+            auto response = co_await chat.chat(std::move(context));
+            co_return mImages[pathToImage] = "<photo description>\n{}\n</photo>"_format(response.choices.at(0).message.content);
+        }
+
         AFuture<AString> llmuiFormatChatHistoryMessage(td::td_api::message& msg, const td::td_api::chat& chat,
                                                        AStringView xmlTag = "message") {
             int64_t senderId{};
@@ -230,7 +268,7 @@ namespace {
                     if (auto targetPhotoIt = ranges::max_element(photo.photo_->sizes_, std::less{},
                                                                  [&](const auto& s) { return s->width_ * s->height_; });
                         targetPhotoIt != photo.photo_->sizes_.end()) {
-                        result += OpenAIChat::embedImage(*(co_await fetchPhoto(targetPhotoIt->get()->photo_)));
+                        result += co_await describePhoto(co_await fetchPhoto(targetPhotoIt->get()->photo_));
                     }
                 }
             }
@@ -349,14 +387,14 @@ namespace {
             co_return result;
         }
 
-        AFuture<_<AImage>> fetchPhoto(td::td_api::object_ptr<td::td_api::file>& photo) {
+        AFuture<APath> fetchPhoto(td::td_api::object_ptr<td::td_api::file>& photo) {
             if (!photo->local_ || !photo->local_->is_downloading_completed_) {
                 photo = co_await mTelegram->sendQueryWithResult(
                     TelegramClient::toPtr(td::td_api::downloadFile(photo->id_, 16, 0, 0, true)));
             }
             AUI_ASSERT(photo->local_ != nullptr);
             AUI_ASSERT(!photo->local_->path_.empty());
-            co_return AImage::fromFile(photo->local_->path_);
+            co_return photo->local_->path_;
         }
 
         AFuture<AString> llmuiOpenTelegramChat(OpenAITools& tools, int64_t chatId) {
@@ -366,7 +404,10 @@ namespace {
             removeNotifications("<notification chat_id=\"{}\">\n"_format(chatId));
             auto chat = aui::ptr::manage_shared((co_await mTelegram->sendQueryWithResult(TelegramClient::toPtr(td::td_api::getChat(chatId)))).release(), [this, self = shared_from_this()](td::td_api::chat* chat) {
                 setOnline(false);
-                mTelegram->sendQuery(TelegramClient::toPtr(td::td_api::closeChat(chat->id_)));
+                try {
+                    mTelegram->sendQuery(TelegramClient::toPtr(td::td_api::sendChatAction(chat->id_, {}, {}, nullptr)));
+                    mTelegram->sendQuery(TelegramClient::toPtr(td::td_api::closeChat(chat->id_)));
+                } catch (...) {}
                 delete chat;
             });
             AString result = "You opened the chat \"{}\" in Telegram. You see last messages:\n"_format(chat->title_);
@@ -416,10 +457,14 @@ You do not need to greet each time you receive a new message.
 
 DM is a private tet-a-tet dialogue with you and one specific person. Both participants are likely to respond to each
 other, through you still are not obligated to reply to each message.
+
+You can recognize your own messages (sender = "Kuni"). Be careful to not repeat yourself and maintain logical
+constistency between your own responses.
 </instructions>
 )"_format(chat->title_);
                         break;
                     case td::td_api::chatTypeBasicGroup::ID:
+                        basicGroup:
                         result += R"(
 <instructions>
 You are in group chat called \"{}\".
@@ -434,7 +479,11 @@ You do not need to greet each time you receive a new message.
 </instructions>
 )"_format(chat->title_);
                         break;
-                    case td::td_api::chatTypeSupergroup::ID:
+                    case td::td_api::chatTypeSupergroup::ID: {
+                        if (!static_cast<td::td_api::chatTypeSupergroup&>(*chat->type_).is_channel_) {
+                            // lol what?
+                            goto basicGroup;
+                        }
                         result += R"(
 <instructions>
 You are in telegram channel (also known as supergroup) called \"{}\".
@@ -446,6 +495,7 @@ on them.
 )"_format(chat->title_);
                         tools = {};
                         co_return result; // no tools for channels
+                    }
                 }
             }
 
@@ -462,10 +512,48 @@ on them.
                                 },
                             .required = {"text"},
                         },
-                    .handler = [this, chat](OpenAITools::Ctx ctx) -> AFuture<AString> {
+                    .handler = [this, chat, messagesInRow = _new<int>(0)](OpenAITools::Ctx ctx) -> AFuture<AString> {
+                        if (*messagesInRow > 10) {
+                            // stupid AI can't recognize it spams messages despite the warning
+                            throw AException("Too many messages in a row. Don't spam!");
+                        }
                         const auto& object = ctx.args.asObjectOpt().valueOrException("object expected");
                         auto message = object["text"].asStringOpt().valueOrException("`text` string expected");
+                        if (message.contains("\n\n")) {
+                            if (!message.contains("```")) {
+                                // despite the prompt, stupid af LLM still often sends big unnatural messages.
+                                // once LLM receives this error message he is like "oh. the system suggests splitting
+                                // messages properly. it is even noted in my system prompt" and does the job right
+                                throw AException("do not split sentences into paragraphs (\n\n). Instead, "
+                                    "send multiple messages by subsequent #send_telegram_message calls");
+                            }
+                        }
+                        mTelegram->sendQuery(TelegramClient::toPtr(td::td_api::sendChatAction(chat->id_, {}, {}, TelegramClient::toPtr(td::td_api::chatActionTyping()))));
+
+                        // random wait. You definitely don't want to receive 4 large messages in 1 sec right?
+                        static std::default_random_engine re(std::chrono::high_resolution_clock::now().time_since_epoch().count());
+                        static std::uniform_int_distribution<int> dist(50, 200);
+                        co_await AThread::asyncSleep(message.length() * dist(re) * 1ms);
+
+                        // actually send a message. we don't really need to wait until tdlib reports message sent
+                        // successfully (this is exactly when in telegram desktop the message status changes from clock
+                        // to one tick).
+                        // however, if something goes wrong, this is reported as an exception to LLM and it will know
+                        // that a technical issue appeared during sending the message (i.e., LLMs bot was banned)
                         co_await telegramPostMessage(chat->id_, message);
+
+                        // indicate that bot is typing once again; this would feel natural if llm sends series of
+                        // messages.
+                        // if not, `chat` will send chat action nullptr and close the chat in dtor.
+                        mTelegram->sendQuery(TelegramClient::toPtr(td::td_api::sendChatAction(chat->id_, {}, {}, TelegramClient::toPtr(td::td_api::chatActionTyping()))));
+
+                        ++*messagesInRow;
+
+                        if (*messagesInRow > 2) {
+                            co_return "Message sent successfully to \"{}\". Warning: you have sent {} messages in a row! Give your participant space to breathe!"_format(chat->title_, *messagesInRow);
+                        }
+
+                        // llm really likes success messages.
                         co_return "Message sent successfully to \"{}\"."_format(chat->title_);
                     },
                 },
@@ -473,7 +561,9 @@ on them.
                     .name = "get_chat_photo",
                     .description = "Retrieves photo of \"{}\" chat. Use this to get basic idea of a person or group chat based on their profile photo."_format(chat->title_),
                     .handler = [this, chat](OpenAITools::Ctx ctx) -> AFuture<AString> {
-                        auto image = OpenAIChat::embedImage(*(co_await fetchPhoto(chat->photo_->big_)));
+                        // just a freestanding function. sometimes LLM decides to check person's photo without an
+                        // instruction!
+                        auto image = co_await describePhoto(co_await fetchPhoto(chat->photo_->big_));
                         co_return "<chat_photo chat_name=\"{}\">{}</chat_photo>"_format(chat->title_, image);
                     },
                 },

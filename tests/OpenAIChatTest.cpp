@@ -5,6 +5,7 @@
 #include "AUI/Thread/AEventLoop.h"
 #include "OpenAITools.h"
 #include "config.h"
+#include "util/cosine_similarity.h"
 
 static const auto TEST_DATA = APath(__FILE__).parent() / "data";
 
@@ -206,16 +207,6 @@ TEST(OpenAIChat, ToolAttachments) {
 
 }
 
-template<typename T>
-double cosine_similarity(const std::valarray<T>& a,
-                         const std::valarray<T>& b) {
-    if (a.size() != b.size()) throw AException("size mismatch: {} and {}"_format(a.size(), b.size()));
-    const T dot = (a * b).sum();
-    const T na = std::sqrt((a * a).sum());
-    const T nb = std::sqrt((b * b).sum());
-    if (na == 0.0 || nb == 0.0) return 0.0; // or throw, depending on needs
-    return dot / (na * nb);
-}
 
 TEST(OpenAIChat, Embeddings) {
     // not sure if return an image from tool works well, so made a dedicated test for it.
@@ -228,8 +219,8 @@ TEST(OpenAIChat, Embeddings) {
         auto arcWarden = co_await session.embedding("Arc Warden");
         auto dota = co_await session.embedding("Dota");
         auto fart = co_await session.embedding("fart");
-        auto isDota = cosine_similarity(arcWarden, dota);
-        auto isFart = cosine_similarity(arcWarden, fart);
+        auto isDota = util::cosine_similarity(arcWarden, dota);
+        auto isFart = util::cosine_similarity(arcWarden, fart);
         EXPECT_GT(isDota, isFart) << "Arc Warden should be Dota hero";
         co_return;
 

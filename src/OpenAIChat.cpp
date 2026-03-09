@@ -145,7 +145,7 @@ AFuture<OpenAIChat::Response> OpenAIChat::chat(AVector<Message> messages) {
       { "stream", false },
       { "use_context", false },
       { "include_sources", true },
-      { "model", config::MODEL },
+      { "model", model },
       { "tools", tools },
     });
   AFileOutputStream("query.json") << query.toStdString();

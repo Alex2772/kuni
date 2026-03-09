@@ -10,6 +10,7 @@
 struct OpenAIChat {
     AString systemPrompt;
     AString baseUrl =  "http://" AUI_PP_STRINGIZE(OPENAICHAT_ADDRESS) "/";
+    AString model = config::MODEL;
 
     AJson tools = AJson::Array{};
 

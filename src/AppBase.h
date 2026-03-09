@@ -16,34 +16,64 @@ public:
      * @param notification notification text message in natural language (i.e., "you received a message from "...": ...; an
      * @param actions immediate actions (tools) related to the notification (i.e., open related chat)
      * alarm triggerred, etc...)
+     * @return Promise satisfied when the notification is processed.
      * @details
      * Think of it as your phone's notifications: you receive a notification, read it and (maybe) react to it.
      */
-    void passNotificationToAI(AString notification, OpenAITools actions = {});
+    const AFuture<>& passNotificationToAI(AString notification, OpenAITools actions = {});
 
     AFuture<> diaryDumpMessages();
 
     void actProactively();
 
+
+    struct DiaryEntry {
+        AString id;
+        AString text;
+    };
+
+    struct DiaryEntryEx {
+        AString id;
+        struct Metadata {
+            float score = 0.f;
+            AString lastUsed = "never";
+            int usageCount = 0;
+            std::valarray<float> embedding;
+        } metadata;
+        AString freeformBody;
+
+        void incrementUsageCount() {
+            metadata.usageCount++;
+            metadata.lastUsed = "{}"_format(std::chrono::system_clock::now());
+        }
+    };
+
+    struct DiaryEntryExAndRelatedness {
+        std::list<DiaryEntryEx>::iterator entry;
+        aui::float_within_0_1 relatedness;
+    };
+
+    [[nodiscard]] const AVector<OpenAIChat::Message>& temporaryContext() const { return mTemporaryContext; }
+
+    AFuture<AVector<DiaryEntryExAndRelatedness>> diaryQuery(const std::valarray<float>& query);
+
 protected:
     AAsyncHolder mAsync;
-    virtual AFuture<> telegramPostMessage(int64_t chatId, AString text) {
-        ALogger::warn("AppBase") << "telegramPostMessage stub (" << chatId << ", " << text << ")";
-        co_return;
-    }
+
+    aui::float_within_0_1 mRelevanceThreshold = 0.5f;
 
     /**
      * @brief Returns diary entries that was saved previously by diarySave.
      */
-    virtual AVector<AString> diaryRead() const {
+    virtual AVector<DiaryEntry> diaryRead() const {
         return {};
     }
 
-    virtual void diarySave(const AString& message) {
-        ALogger::warn("AppBase") << "diarySave stub (" << message << ")";
+    virtual void diarySave(const DiaryEntry& dairyEntry) {
+        ALogger::warn("AppBase") << "diarySave stub (" << dairyEntry.text << ")";
     }
 
-    virtual AFuture<bool> diaryEntryIsRelatedToCurrentContext(const AString& diaryEntry);
+    virtual AFuture<aui::float_within_0_1> diaryEntryIsRelated(const std::valarray<float>& context, DiaryEntryEx& entry);
 
     /**
      * @brief Adds always available actions
@@ -62,12 +92,17 @@ private:
     struct Notification {
         AString message;
         OpenAITools actions;
+        AFuture<> onProcessed;
     };
     std::queue<Notification> mNotifications;
     AFuture<> mNotificationsSignal;
     _<ATimer> mWakeupTimer;
     // OpenAITools mTools;
-    aui::lazy<AVector<AString>> mCachedDiary = [this]{ return diaryRead(); };
+    static std::list<DiaryEntryEx> diaryParse(AVector<DiaryEntry> diary);
+
+    void diarySave(const DiaryEntryEx& dairyEntry);
+
+    aui::lazy<std::list<DiaryEntryEx>> mCachedDiary = [this]{ return diaryParse(diaryRead()); };
 
     AVector<OpenAIChat::Message> mTemporaryContext {};
 
