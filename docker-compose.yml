@@ -1,0 +1,46 @@
+services:
+ # ollama:
+ #   image: ollama/ollama:0.17.6
+ #   volumes:
+ #     - ./bin/ollama:/root/.ollama
+ #     - ./ollama_setup.sh:/ollama_setup.sh
+ #   ports:
+ #     - "11434:11434"
+ #   restart: always
+ #   entrypoint: [ "/usr/bin/bash", "/ollama_setup.sh" ]
+ #   deploy:
+ #     resources:
+ #       reservations:
+ #         devices:
+ #           - driver: nvidia
+ #             count: all
+ #             capabilities: [ gpu ]
+
+  sd:
+    image: universonic/stable-diffusion-webui:full
+    command: --no-half --no-half-vae --precision full --api
+    restart: always
+    ports:
+      - "7860:8080/tcp"
+    volumes:
+      - ./bin/sd/inputs:/app/stable-diffusion-webui/inputs
+      - ./bin/sd/textual_inversion_templates:/app/stable-diffusion-webui/textual_inversion_templates
+      - ./bin/sd/embeddings:/app/stable-diffusion-webui/embeddings
+      - ./bin/sd/extensions:/app/stable-diffusion-webui/extensions
+      - ./bin/sd/models:/app/stable-diffusion-webui/models
+      - ./bin/sd/localizations:/app/stable-diffusion-webui/localizations
+      - ./bin/sd/outputs:/app/stable-diffusion-webui/outputs
+    cap_drop:
+      - ALL
+    cap_add:
+      - NET_BIND_SERVICE
+    deploy:
+      mode: global
+      placement:
+        constraints:
+          - "node.labels.iface != extern"
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              capabilities: [gpu]
