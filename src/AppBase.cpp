@@ -19,6 +19,7 @@
 #include "AUI/Util/kAUI.h"
 #include "OpenAIChat.h"
 #include "config.h"
+#include "KuniCharacter.h"
 #include "util/cosine_similarity.h"
 
 using namespace std::chrono_literals;
@@ -155,7 +156,7 @@ AppBase::AppBase(APath workingDir): mDiary(workingDir / "diary"), mWakeupTimer(_
                     .handler = escape,
                 });
                 OpenAIChat llm {
-                    .systemPrompt = config::SYSTEM_PROMPT,
+                    .systemPrompt = getSystemPrompt(),
                     .tools = notification.actions.asJson(),
                 };
 
@@ -260,7 +261,7 @@ AFuture<> AppBase::diaryDumpMessages() {
     };
 
     OpenAIChat chat {
-        .systemPrompt = config::SYSTEM_PROMPT,
+        .systemPrompt = getSystemPrompt(),
         // .tools = mTools.asJson, // no tools should be involved.
     };
     naxyi:
@@ -355,4 +356,9 @@ AString AppBase::takeDiaryEntry(const Diary::EntryExAndRelatedness& i) {
     AString result = "<{}>\n{}\n</{}>\n"_format(formattedTag, i.entry->freeformBody, formattedTag);
     mDiary.unload(i.entry);
     return result;
+}
+
+AString AppBase::getSystemPrompt()
+{
+    return "{}\n\n<your_appearance>\n{}\n</your_appearance>"_format(kuni_character::getBasePrompt(), kuni_character::getAppearancePrompt());
 }

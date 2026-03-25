@@ -142,6 +142,7 @@ TEST(OpenAIChat, ImageRecognition) {
     async << []() -> AFuture<> {
         OpenAIChat session{
             .systemPrompt = SYSTEM_PROMPT,
+            .config = config::ENDPOINT_PHOTO_TO_TEXT,
         };
 
         AVector<OpenAIChat::Message> messages = {

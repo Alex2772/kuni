@@ -143,7 +143,7 @@ AFuture<OpenAIChat::Response> OpenAIChat::chat(AVector<Message> messages) {
     }
     auto response = AJson::fromBuffer((co_await ACurl::Builder(config.endpoint.baseUrl + "chat/completions")
                                            .withMethod(ACurl::Method::HTTP_POST)
-                                           .withTimeout(config::OPENAI_REQUEST_TIMEOUT)
+                                           .withTimeout(config::REQUEST_TIMEOUT)
                                            .withHeaders(std::move(headers))
                                            .withBody(query.toStdString())
                                            .runAsync())
@@ -162,7 +162,7 @@ AFuture<std::valarray<double>> OpenAIChat::embedding(AString input) {
     }
     auto response = AJson::fromBuffer((co_await ACurl::Builder(config.endpoint.baseUrl + "embeddings")
                                            .withMethod(ACurl::Method::HTTP_POST)
-                                           .withTimeout(config::OPENAI_REQUEST_TIMEOUT)
+                                           .withTimeout(config::REQUEST_TIMEOUT)
                                            .withHeaders(std::move(headers))
                                            .withBody(AJson::toString(AJson::Object{
                                                {"model", config.model},

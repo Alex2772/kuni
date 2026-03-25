@@ -96,10 +96,6 @@ AFuture<double> Diary::entryIsRelated(const std::valarray<double>& context, Entr
     if (entry.freeformBody.empty()) {
         co_return 0.0;
     }
-    if (entry.freeformBody.contains("<important_note")) {
-        entry.metadata.confidence = 1.0;
-        co_return 1.0;
-    }
     if (entry.metadata.embedding.size() != context.size()) {
         entry.metadata.embedding = co_await OpenAIChat{.config = config::ENDPOINT_EMBEDDING}.embedding(entry.freeformBody);
         save(entry);
@@ -225,8 +221,6 @@ AFuture<> Diary::sleepingConsolidation() {
 
         try {
             ALOG_DEBUG("Diary") << "Response: " << response.choices.at(0).message.content;
-            response.choices.at(0).message.content.replaceAll("<important_note />", ""); // костыль
-            response.choices.at(0).message.content.replaceAll("<important_note/>", "");  // для другого
             for (const auto& entry : response.choices.at(0).message.content.split("\n---")) {
                 if (entry.length() < 10) {
                     continue; // unknown shit

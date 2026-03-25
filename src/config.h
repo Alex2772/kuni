@@ -6,7 +6,6 @@
 
 namespace config {
     static constexpr auto SYSTEM_PROMPT = R"(
-When asked for your name, you must respond with "Kuni".
 Follow the user's requirements carefully & to the letter.
 <instructions>
 # General
@@ -348,7 +347,7 @@ Use proper Markdown formatting in your answers.
     static constexpr auto REPEAT_YOURSELF_TRIGGER_MAX = 0.7f;
     static constexpr auto REPEAT_YOURSELF_MAX_HISTORY = 32;
 
-    static constexpr auto OPENAI_REQUEST_TIMEOUT = std::chrono::minutes(10);
+    static constexpr auto REQUEST_TIMEOUT = std::chrono::minutes(10);
 
     static constexpr auto DIARY_PROMPT = R"(
 It's time to open diary and share your thoughts, emotions and feelings! How did you spent your time? Write shortly, but
@@ -656,6 +655,6 @@ selfie
 age_30
 medium breasts
 <lora:perfecteyes:1>
- <lora:Iridescence:1>
+<lora:Iridescence:1>
 )";
 } // namespace config

@@ -80,5 +80,7 @@ private:
 
     Diary mDiary{"diary"};
 
+    static AString getSystemPrompt();
+
 };
 

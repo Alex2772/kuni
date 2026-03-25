@@ -5,6 +5,8 @@
 #include <range/v3/view/transform.hpp>
 #include <range/v3/range/conversion.hpp>
 
+#include "config.h"
+
 static constexpr auto LOG_TAG = "StableDiffusionClient";
 
 AJSON_FIELDS(StableDiffusionClient::Txt2ImgRequest,
@@ -40,6 +42,7 @@ AFuture<StableDiffusionClient::Txt2ImgResponse> StableDiffusionClient::txt2img(c
                                            .withMethod(ACurl::Method::HTTP_POST)
                                            .withHeaders(std::move(headers))
                                            .withBody(query.toStdString())
+                                           .withTimeout(config::REQUEST_TIMEOUT)
                                            .runAsync())
                                           .body;
     auto response = AJson::fromBuffer(responseBody);
