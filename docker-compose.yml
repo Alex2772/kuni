@@ -18,7 +18,7 @@ services:
 
   sd:
     image: universonic/stable-diffusion-webui:full
-    command: --medvram --api
+    command: --lowvram --api
     restart: always
     ports:
       - "7860:8080/tcp"

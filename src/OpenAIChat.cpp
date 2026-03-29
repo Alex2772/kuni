@@ -151,6 +151,9 @@ AFuture<OpenAIChat::Response> OpenAIChat::chat(AVector<Message> messages) {
                                            .withBody(query.toStdString())
                                            .runAsync())
                                           .body);
+    if (response.contains("error")) {
+        throw AException("Ollama error: " + AJson::toString(response["error"]));
+    }
     AFileOutputStream("last_response.json") << response;
     AFileOutputStream(logsDir / "{}.1response.json"_format(now)) << response;
     ALOG_TRACE(LOG_TAG) << "Response: " << AJson::toString(response);
@@ -173,6 +176,9 @@ AFuture<std::valarray<double>> OpenAIChat::embedding(AString input) {
                                            }))
                                            .runAsync())
                                           .body);
+    if (response.contains("error")) {
+        throw AException("Ollama error: " + AJson::toString(response["error"]));
+    }
     const auto& array = response["data"][0]["embedding"].asArray();
 
     std::valarray result(0.0, array.size());
