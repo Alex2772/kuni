@@ -10,10 +10,22 @@
 #include <range/v3/range/conversion.hpp>
 #include <range/v3/view/filter.hpp>
 
+#include "OpenAIChat.h"
 #include "AUI/Image/png/PngImageLoader.h"
 #include "AUI/IO/AFileInputStream.h"
 
 static constexpr auto LOG_TAG = "ImageGenerator";
+static constexpr auto TRIAL_COUNT = 20;
+
+static AJson parseResponse(AString content) {
+    // Basic JSON extraction if the model wrapped it in markdown
+    if (content.contains("```json")) {
+        content = content.split("```json").at(1).split("```").at(0);
+    } else if (content.contains("```")) {
+        content = content.split("```").at(1).split("```").at(0);
+    }
+    return AJson::fromString(content);
+}
 
 AFuture<_<AImage>> ImageGenerator::generate(AString description) {
     AString appearancePrompt = kuni_character::getAppearancePrompt();
@@ -22,83 +34,90 @@ AFuture<_<AImage>> ImageGenerator::generate(AString description) {
     naxyi:
     ALogger::info(LOG_TAG) << "Engineering initial prompt for: " << description;
     PromptPair currentPrompt {
-        .positive = co_await engineerInitialPrompt(description, appearancePrompt),
-        .negative = "text, signature, raw photo",
+        .positive = "",
+        .negative = "(text:2), (signature:2), raw photo",
     };
+    co_await engineerPrompt(currentPrompt, description, appearancePrompt);
     AString firstFeedback;
 
-    while (trialIndex <= 10) {
-        ++trialIndex;
-        static std::default_random_engine ge(std::time(nullptr));
-        {
-            ALogger::info(LOG_TAG) << "Iteration " << trialIndex << " with prompt:\npositive=" << currentPrompt.positive << "\n\nnegative=" << currentPrompt.negative;
+    AString descriptionWithAppearance = "<character name=\"Kuni\" canonical_description>\n{}\n</character canonical_description>\n<user_description overrides_canonical=\"true\">\n{}\n</user_description overrides_canonical=\"true\">"_format(appearancePrompt, description);
 
-            StableDiffusionClient::Txt2ImgResponse response;
-            try
+    while (trialIndex <= TRIAL_COUNT) {
+        try {
+            ++trialIndex;
+            static std::default_random_engine ge(std::time(nullptr));
             {
-                response = co_await mSdClient.txt2img({
-                    .prompt = currentPrompt.positive,
-                    .negative_prompt = currentPrompt.negative,
-                    .steps =  30,
-                    .cfg_scale = std::uniform_real_distribution<>(1.0, 5.0)(ge),
-                    .width = std::uniform_int_distribution<>(768, 1024)(ge),
-                    .height = std::uniform_int_distribution<>(768, 1024)(ge),
-                });
-            } catch (const AException& e) {
-                ALogger::err(LOG_TAG) << "Stable diffusion failed:: " << e;
-                goto tryGallery;
+                ALogger::info(LOG_TAG) << "Iteration " << trialIndex << " with prompt:\npositive=" << currentPrompt.positive << "\n\nnegative=" << currentPrompt.negative;
+
+                StableDiffusionClient::Txt2ImgResponse response;
+                try
+                {
+                    response = co_await mSdClient.txt2img({
+                        .prompt = currentPrompt.positive,
+                        .negative_prompt = currentPrompt.negative,
+                        .steps =  30,
+                        .cfg_scale = std::uniform_real_distribution<>(1.0, 7.0)(ge),
+                        .width = std::uniform_int_distribution<>(768, 1400)(ge),
+                        .height = std::uniform_int_distribution<>(768, 1400)(ge),
+                    });
+                } catch (const AException& e) {
+                    ALogger::err(LOG_TAG) << "Stable diffusion failed:: " << e;
+                    goto tryGallery;
+                }
+                if (response.images.empty()) {
+                    throw AException("Stable Diffusion returned no images");
+                }
+                auto lastImage = response.images[0];
+                PngImageLoader::save(AFileOutputStream{ "image_generator_tmp.png" }, *lastImage);
+
+                ALogger::info(LOG_TAG) << "Assessing image...";
+                auto assessment = co_await assessImage(*lastImage, descriptionWithAppearance);
+
+                if (assessment.satisfied) {
+                    ALogger::info(LOG_TAG) << "Satisfied with the result. " << assessment.feedback;
+                    auto dst = APath("data/gallery/{}.png"_format(std::chrono::system_clock::now()));
+                    dst.parent().makeDirs();
+                    PngImageLoader::save(AFileOutputStream{ dst }, *lastImage);
+                    co_return lastImage;
+                }
+                if (firstFeedback.empty()) {
+                    firstFeedback = assessment.feedback;
+                }
+
+                ALogger::info(LOG_TAG) << "Not satisfied. Feedback: " << assessment.feedback;
+                co_await engineerPrompt(currentPrompt, description, appearancePrompt, assessment.feedback);
             }
-            if (response.images.empty()) {
-                throw AException("Stable Diffusion returned no images");
+
+
+            tryGallery:
+            // // in case SD fails, let's try a photo from gallery.
+            // auto galleryFiles = APath("data/gallery").listDir(AFileListFlags::REGULAR_FILES);
+            // if (galleryFiles.empty())
+            // {
+            //     continue;
+            // }
+            // auto randomFile = galleryFiles[std::uniform_int_distribution<>(0, galleryFiles.size() - 1)(ge)];
+            // ALogger::info(LOG_TAG) << "Trying to supply image from gallery: " << randomFile;
+            // auto lastImage = AImage::fromBuffer(AByteBuffer::fromStream(AFileInputStream{ randomFile }));
+            // auto assessment = co_await assessImage(*lastImage, descriptionWithAppearance);
+            // if (assessment.satisfied) {
+            //     ALogger::info(LOG_TAG) << "Satisfied with the image from gallery: " << assessment.feedback;
+            //     co_return lastImage;
+            // }
+
+            if (trialIndex % size_t(std::sqrt(TRIAL_COUNT)) == 0) {
+                ALogger::info(LOG_TAG) << "Last trial failed. Retrying with different prompt...";
+                goto naxyi;
             }
-            auto lastImage = response.images[0];
-            PngImageLoader::save(AFileOutputStream{ "image_generator_tmp.png" }, *lastImage);
-
-            ALogger::info(LOG_TAG) << "Assessing image...";
-            auto assessment = co_await assessImage(*lastImage, description, currentPrompt);
-
-            if (assessment.satisfied) {
-                ALogger::info(LOG_TAG) << "Satisfied with the result. " << assessment.feedback;
-                auto dst = APath("data/gallery/{}.png"_format(std::chrono::system_clock::now()));
-                dst.parent().makeDirs();
-                PngImageLoader::save(AFileOutputStream{ dst }, *lastImage);
-                co_return lastImage;
-            }
-            if (firstFeedback.empty()) {
-                firstFeedback = assessment.feedback;
-            }
-
-            ALogger::info(LOG_TAG) << "Not satisfied. Feedback: " << assessment.feedback;
-            currentPrompt = std::move(assessment.adjustedPrompts);
-        }
-
-
-        tryGallery:
-        // in case SD fails, let's try a photo from gallery.
-        auto galleryFiles = APath("data/gallery").listDir(AFileListFlags::REGULAR_FILES);
-        if (galleryFiles.empty())
-        {
-            continue;
-        }
-        auto randomFile = galleryFiles[std::uniform_int_distribution<>(0, galleryFiles.size() - 1)(ge)];
-        ALogger::info(LOG_TAG) << "Trying to supply image from gallery: " << randomFile;
-        auto lastImage = AImage::fromBuffer(AByteBuffer::fromStream(AFileInputStream{ randomFile }));
-        auto assessment = co_await assessImage(*lastImage, description, currentPrompt);
-        if (assessment.satisfied) {
-            ALogger::info(LOG_TAG) << "Satisfied with the image from gallery: " << assessment.feedback;
-            co_return lastImage;
-        }
-
-        if (trialIndex % 5 == 0) {
-            ALogger::info(LOG_TAG) << "Last trial failed. Retrying with different prompt...";
-            goto naxyi;
+        } catch (const AException& e) {
+            ALogger::err(LOG_TAG) << "Failed to generate image: " << e;
         }
     }
 
     throw AException("can't find image: feedback: \"{}\"; make photo_desc shorter"_format(firstFeedback));
 }
 
-AFuture<AString> ImageGenerator::engineerInitialPrompt(const AString& description, const AString& appearancePrompt) {
+AFuture<> ImageGenerator::engineerPrompt(PromptPair& out, const AString& description, const AString& appearancePrompt, const AString& feedback) {
     OpenAIChat chat = mChatClient;
     chat.systemPrompt = R"(
 You are an expert Stable Diffusion prompt engineer.
@@ -111,25 +130,107 @@ Guidelines:
   description and stable-diffusion-optimized prompt. Base your prompt on the character's stable-diffusion prompt,
   preserving original aesthetics of the character, avoid altering original character design.
 - Who made the image and how? Almost always it would be selfie, unless description explicitly specifies a photographer.
-- Output ONLY the final prompt, nothing else.
-)";
+- If previous prompt iteration were provided, adjust them according to feedback and make sure it still satisfies
+  original character design and desired photo description.
 
-    AString message = "User description: {}\n\n<character name=\"Kuni\">{}</character name=\"Kuni\">\n\nGenerate SD prompt:"_format(description, appearancePrompt);
-    auto response = co_await chat.chat(message);
+# Characters
+
+<character name="Kuni">
+{}
+</character name="Kuni">
+
+# Desired photo description
+
+```
+{}
+```
+
+# Output formatting
+
+Respond in JSON object format with the following fields:
+
+- "positivePrompt": string, positive prompt
+- "negativePrompt": string, negative prompt
+
+)"_format(appearancePrompt, description);
+
+    auto messages = [&] {
+        AString message;
+
+        message += "# Previous prompt iteration \n";
+        message += "Positive prompt: ";
+        message += out.positive;
+        message += "\n\n";
+        message += "Negative prompt: ";
+        message += out.negative;
+        message += "\n\n";
+
+        if (!feedback.empty()) {
+            message += "# Feedback to previous prompt iteration\n";
+            message += feedback;
+        }
+
+        message += R"(
+
+<instructions>
+When improving the prompt:
+- Prefer Stable Diffusion weighting syntax like (term:1.2) or (phrase:1.5).
+- Do not make the prompt longer just to improve emphasis.
+- If the prompt is too long, shorten it by removing filler words.
+- Only add new words if the image is missing a critical concept.
+- Keep the final prompt short, structured, and friendly for Stable Diffusion.
+- Do not alter original character design
+- "positivePrompt": string, a slightly modified version of the current positive prompt to fix the issues.
+- "negativePrompt": string, a slightly modified version of the current negative prompt to fix the issues.
+
+Positive prompt is what to include to the image.
+
+Negative prompt is what to avoid in the image.
+</instructions>
+    )";
+
+        message += "\nGenerate SD prompt:";
+        return AVector<OpenAIChat::Message>{
+            OpenAIChat::Message{
+                .role = OpenAIChat::Message::Role::USER,
+                .content = message,
+            }
+        };
+    }();
+    auto response = co_await chat.chat(messages);
+    naxyi:
     if (response.choices.empty()) {
         throw AException("OpenAI returned no choices for initial prompt engineering");
     }
     auto content = response.choices[0].message.content;
-    while (content.startsWith(" ") || content.startsWith("\n") || content.startsWith("\r") || content.startsWith("\t")) {
-        content = content.substr(1);
+    auto json = parseResponse(content);
+    out = {
+        .positive = json["positivePrompt"].asString(),
+        .negative = json["negativePrompt"].asString(),
+    };
+
+    for (const auto&[name, prompt] : std::array {std::make_pair("positive", &out.positive), std::make_pair("negative", &out.negative) }) {
+        prompt->replaceAll(") ", "), "); // add commas
+        auto wordCount = ranges::count_if(*prompt, [](char c ){ return c == ' '; });
+        if (wordCount > 60) {
+            // long prompts to stable diffusion are generally distorting the character base design.
+            if (messages.size() > 3) {
+                throw AException("adjusted {} prompt is too long."_format(name));
+            }
+            messages << OpenAIChat::Message{
+                .role = OpenAIChat::Message::Role::USER,
+                .content = "Adjusted {} prompt is too long. Shorten it to 50 words or less.; restructure or adjust word (weights:1.5) instead"_format(name)
+            };
+            response = co_await chat.chat(messages);
+            ALogger::warn(LOG_TAG) << "Adjusted {} prompt is too long. Shortening..."_format(name);
+            goto naxyi;
+        }
     }
-    while (content.endsWith(" ") || content.endsWith("\n") || content.endsWith("\r") || content.endsWith("\t")) {
-        content = content.substr(0, content.length() - 1);
-    }
-    co_return content;
+
+    co_return;
 }
 
-AFuture<ImageGenerator::AssessmentResult> ImageGenerator::assessImage(const AImage& image, const AString& description, const PromptPair& currentPrompt) {
+AFuture<ImageGenerator::AssessmentResult> ImageGenerator::assessImage(const AImage& image, const AString& description) {
     OpenAIChat chat = mChatClient;
     // Note: mChatClient.config should ideally be a vision-capable model.
     chat.systemPrompt = R"(
@@ -151,55 +252,27 @@ Reject the image if ANY of the following are true:
   warped edges, bad lighting, or inconsistent shadows.
 - The image only partially satisfies the description.
 - You are uncertain whether the image is correct.
+- Canonical character design was not preserved.
+- Canonical character description includes all known facts about the character; including those that are not directly
+  related to the composition requested by the user.
+- If the user's description overrides a canonical detail, the image must follow the description, not the canonical
+  detail. Canonical design is the fallback only when the description does not specify an alternative.
 - "explicit nudity", unless asked.
 
 Important rule:
 - If there is any reasonable doubt, set "satisfied" to false.
+- Use canonical character design as the default baseline, but let the user's description override any conflicting details.
+- If canonical says one thing and description says another, judge the image against the description.
 - Only set "satisfied" to true if the image is excellent, coherent, anatomically correct, compositionally plausible, and
   closely matches the description.
-- Stable diffusion supports increasing phrase weights by wrapping them in braces and a number: (age 20:2) means SD should
-  focus on `age 20` twice as much. Utilize this when adjusting prompts.
-
-When improving the prompt:
-- Prefer Stable Diffusion weighting syntax like (term:1.2) or (phrase:1.5).
-- Do not make the prompt longer just to improve emphasis.
-- If the prompt is too long, shorten it by removing filler words.
-- Only add new words if the image is missing a critical concept.
-- Keep the final prompt short, structured, and friendly for Stable Diffusion.
-- Satisfy `User Description`
 
 Output your assessment in JSON format with the following fields:
 - "satisfied": boolean, true if the image is high quality and matches the description.
 - "feedback": string, explaining what's wrong if not satisfied.
-- "adjustedPositivePrompt": string, a slightly modified version of the current positive prompt to fix the issues.
-- "adjustedNegativePrompt": string, a slightly modified version of the current negative prompt to fix the issues.
 
-Positive prompt is what to include to the image.
-
-Negative prompt is what to avoid in the image.
-
-# Current positive prompt used
-
-```
 {}
-```
-
-# Current negative prompt used
-
-```
-{}
-```
-
-# User description
-
-```
-{}
-```
-
-When assessing the image, rely on "User description" only! Do not use positive prompts and negative prompts for
-assessment! Use them only for generating new prompts!
 )";
-    chat.systemPrompt = chat.systemPrompt.format(currentPrompt.positive, currentPrompt.negative, description);
+    chat.systemPrompt = chat.systemPrompt.format(description);
 
     AVector<OpenAIChat::Message> messages = {
         OpenAIChat::Message{
@@ -209,48 +282,21 @@ assessment! Use them only for generating new prompts!
     };
     auto response = co_await chat.chat(messages);
 
-    naxyi:
     if (response.choices.empty()) {
         throw AException("OpenAI returned no choices for image assessment");
     }
-    messages << response.choices[0].message;
-
-    AString content = response.choices[0].message.content;
-    // Basic JSON extraction if the model wrapped it in markdown
-    if (content.contains("```json")) {
-        content = content.split("```json").at(1).split("```").at(0);
-    } else if (content.contains("```")) {
-        content = content.split("```").at(1).split("```").at(0);
-    }
+    auto responseContent = response.choices[0].message.content;
 
     try {
-        auto json = AJson::fromString(content);
+        auto json = parseResponse(responseContent);
         AssessmentResult result{
             .satisfied = json["satisfied"].asBool(),
             .feedback = json["feedback"].asString(),
-            .adjustedPrompts {
-                .positive = json["adjustedPositivePrompt"].asString(),
-                .negative = json["adjustedNegativePrompt"].asString(),
-            },
         };
-        auto wordCount = ranges::count_if(result.adjustedPrompts.positive, [](char c ){ return c == ' '; });
-        if (wordCount > 60) {
-            // long prompts to stable diffusion are generally distorting the character base design.
-            if (messages.size() > 3) {
-                co_return AssessmentResult{.satisfied = false, .feedback = "avoid infinite loop", .adjustedPrompts = currentPrompt };
-            }
-            messages << OpenAIChat::Message{
-                .role = OpenAIChat::Message::Role::USER,
-                .content = "Adjusted prompt is too long. Shorten it to 50 words or less.; restructure or adjust word (weights:1.5) instead"
-            };
-            response = co_await chat.chat(messages);
-            ALogger::warn(LOG_TAG) << "Adjusted prompt is too long. Shortening...";
-            goto naxyi;
-        }
         co_return result;
     } catch (const AException& e) {
-        ALogger::err(LOG_TAG) << "Failed to parse assessment JSON: " << e << "\nContent: " << content;
+        ALogger::err(LOG_TAG) << "Failed to parse assessment JSON: " << e << "\nContent: " << responseContent;
         // Fallback: assume satisfied if parsing fails to avoid infinite loops, but log error
-        co_return AssessmentResult{.satisfied = false, .feedback = "JSON parsing failed", .adjustedPrompts = currentPrompt };
+        co_return AssessmentResult{.satisfied = false, .feedback = "" };
     }
 }

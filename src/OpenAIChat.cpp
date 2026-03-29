@@ -123,6 +123,9 @@ AFuture<OpenAIChat::Response> OpenAIChat::chat(AVector<Message> messages) {
             "messages",
             aui::to_json(messages),
         },
+        { "options", AJson::Object{
+            {"num_predict", config::DIARY_TOKEN_COUNT_TRIGGER } // hopefully helps with stuck prediction (infinite reasoning)
+        } },
         {"stream", false},
         {"use_context", false},
         {"include_sources", true},

@@ -35,9 +35,8 @@ private:
     struct AssessmentResult {
         bool satisfied;
         AString feedback;
-        PromptPair adjustedPrompts;
     };
 
-    AFuture<AString> engineerInitialPrompt(const AString& description, const AString& appearancePrompt);
-    AFuture<AssessmentResult> assessImage(const AImage& image, const AString& description, const PromptPair& currentPrompt);
+    AFuture<> engineerPrompt(PromptPair& out, const AString& description, const AString& appearancePrompt, const AString& feedback = "");
+    AFuture<AssessmentResult> assessImage(const AImage& image, const AString& description);
 };

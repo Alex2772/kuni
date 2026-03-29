@@ -767,11 +767,7 @@ on them.
                         // handle photo_desc
                         AOptional<_<AImage>> photo;
                         if (!photoDesc.empty()) {
-                            try {
-                                photo = co_await ImageGenerator{StableDiffusionClient{}, OpenAIChat{.config = config::ENDPOINT_PHOTO_TO_TEXT}}.generate(photoDesc);
-                            } catch (const AException& e) {
-                                ALogger::warn(LOG_TAG) << "Failed to generate photo: " << e;
-                            }
+                            photo = co_await ImageGenerator{StableDiffusionClient{}, OpenAIChat{.config = config::ENDPOINT_PHOTO_TO_TEXT}}.generate(photoDesc);
                         }
 
                         // actually send a message. we don't really need to wait until tdlib reports message sent
