@@ -48,6 +48,40 @@ and what is not.
 Kuni requires sleep, as a human does. It restructures received information, compresses it, finds contradictions and
 reasons.
 
+### Diary sleeping consolidation
+
+This is the process where Kuni “sleeps” and reorganizes its diary memory, similar to how a human might consolidate
+memories overnight.
+
+During sleep, the system:
+- Loads diary entries from storage.
+- Sorts them so recent entries are processed first, but still allows some randomness.
+- Repeatedly picks memory chunks to work on until:
+  - the diary is fully processed, or
+  - a maximum sleep time is reached.
+
+For each chosen chunk:
+- finds related entries using embedding similarity,
+- sends a grouped prompt to the model,
+- asks it to compress, merge, rewrite, or discard redundant memories,
+- writes back new consolidated entries.
+
+The goal is to mimic a human-like sleep cycle:
+- recent experiences are more likely to be revisited,
+- some older random memories can surface too,
+- repeated or low-value memories can be merged into stronger summaries,
+- memory becomes shorter, cleaner, and more useful for future retrieval,
+- combining several similar diary notes into one,
+- keeping the useful emotional or factual parts,
+- discarding weak or duplicate fragments,
+- reassigning new IDs so fresh consolidated memories appear “recent” again.
+
+The intended effect: over time, this should make the diary behave more like human memory:
+- important things stay accessible,
+- similar memories become grouped,
+- the system doesn’t keep re-processing the same raw event forever,
+- sleep creates a sort of memory compression and reflection phase.
+
 ## Thoughts
 
 **Def. by Wikipedia** In their most common sense, thought and thinking refer to cognitive processes that occur

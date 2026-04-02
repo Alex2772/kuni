@@ -1,6 +1,7 @@
 #include "Diary.h"
 
 #include <random>
+#include <range/v3/action/sort.hpp>
 
 #include "AUI/IO/AFileInputStream.h"
 #include "AUI/IO/AFileOutputStream.h"
@@ -149,20 +150,55 @@ struct SleepingConsolidationMeta {
 AJSON_FIELDS(SleepingConsolidationMeta, AJSON_FIELDS_ENTRY(confidence))
 
 AFuture<> Diary::sleepingConsolidation() {
-    reload();
+    // emulates human sleeping behavior against diary.
+
+    static std::default_random_engine re(std::time(nullptr));
+    // reload();
+    mCachedDiary = parse(read(mDiaryDir))
+        | ranges::to_vector
+        | ranges::action::sort([](const EntryEx& a, const EntryEx& b) {
+            return a.id > b.id; // recent first, old last
+        })
+        | ranges::to<std::list<EntryEx>>;
+
     auto id = std::chrono::duration_cast<std::chrono::seconds>(std::chrono::system_clock::now().time_since_epoch()).count();
     const auto count = mCachedDiary->size();
-    while (!mCachedDiary->empty()) {
-        // auto middle = mCachedDiary->begin();
-        // for (int i = 0; i < config::DIARY_TOKEN_COUNT_TRIGGER / config::DIARY_AVERAGE_ENTRY_SIZE && middle != mCachedDiary->end(); ++i, ++middle);
-        // ranges::partial_sort(mCachedDiary, middle,)
+    const auto sleepStartTime = std::chrono::steady_clock::now();
+    while (!mCachedDiary->empty()) { // we'll remove considered diary entries from mCachedDiary and save them to disk.
+        if (std::chrono::steady_clock::now() - sleepStartTime >= config::SLEEP_MAX_TIME) {
+            // we reached sleep max time.
+            // how many memory pieces did we cover? this depends on LLM's processing speed.
+            // both cloud deepseek-chat and (qwen3.5:9b on a RTX4090) can process about 500 Kuni's diary entries per
+            // hour.
+            // anyway, we don't need to process all entries, neither human brain does.
+            // this also means our algorithm does not require memory decay (i.e., deleting old unrelevant entries).
+            // Kuni will remember everything, but they would not spend LLMs processing power on reflecting about
+            // same shit everytime.
+            // there's a small chance Kuni will remember old stuff, see below.
+            break;
+        }
 
         auto target = [&] {
+            // during your sleep its likely you see the past couple of days. however, have you encountered
+            // some random shit from 2 years ago were you screwed up on a party? the random condition emulates exactly
+            // this
+            if (std::uniform_real_distribution<>(0.0, 1.0)(re) < 0.8) [[likely]] {
+                // likely branch.
+                // we will pick up the most recent target.
+                // also, LLM really likes to write new entries that mostly duplicate contents of those that were loaded
+                // into its context via RAG from context's embedding; AFAIK new details or reflections were added.
+                // maybe it's not a bad thing; considering the fact that below we will find related entries as well
+                // and mix them together.
+                auto entry = mCachedDiary->begin();
+                auto asValue = std::move(*entry);
+                mCachedDiary->erase(entry);
+                return asValue;
+            }
+            // unlikely branch.
             // pick a random target.
             // in perspective, this gives more shuffled chunks, so each sleep consolidation slightly different chunks
             // are compared.
             // this gives uniform distribution of information and merging/splitting behavior.
-            static std::default_random_engine re(std::time(nullptr));
             auto idx = re() % mCachedDiary->size();
             auto entry = mCachedDiary->begin();
             while (idx--) {
@@ -178,7 +214,7 @@ AFuture<> Diary::sleepingConsolidation() {
         tryAgain:
         AVector<EntryExAndRelatedness> results;
         try {
-            results = co_await query(target.metadata.embedding, {.confidenceFactor = 0.f /* we need just embedding relatence */});
+            results = co_await query(target.metadata.embedding, {.confidenceFactor = 0.f /* we need just embedding relatedness */});
         } catch (const AException& e) {
             ALogger::err("Diary") << "sleepingConsolidation can't query " << e;
             goto tryAgain;
@@ -186,6 +222,8 @@ AFuture<> Diary::sleepingConsolidation() {
 
         AStringVector ids;
         AStringVector idsToRemove;
+
+        ids << target.id;
 
         auto body = [&] {
             AString body;
@@ -238,6 +276,11 @@ AFuture<> Diary::sleepingConsolidation() {
                     // drop.
                     continue;
                 }
+
+                // IMPORTANT CONSIDERATION: we'll delete old entries, replacing them with the newer ones. this will
+                // effectively update their ids, thus, during next sleep, they will appear again closer to the beginning
+                // of the processing queue.
+                // this algorithm encourages to keep in mind the most recent events and reflect on them specifically.
                 save(EntryEx{
                     .id = "{}"_format(id++),
                     .metadata = {

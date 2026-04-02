@@ -368,10 +368,12 @@ Use proper Markdown formatting in your answers.
     static constexpr auto TEMPERATURE = 0.2f; // средняя температура по больнице
 
     static constexpr auto REPEAT_YOURSELF_TRIGGER_AVG = 0.7f; // lower is stricter
-    static constexpr auto REPEAT_YOURSELF_TRIGGER_MAX = 0.8f; // lower is stricter
+    static constexpr auto REPEAT_YOURSELF_TRIGGER_MAX = 0.7f; // lower is stricter
     static constexpr auto REPEAT_YOURSELF_MAX_HISTORY = 32;
 
     static constexpr auto REQUEST_TIMEOUT = std::chrono::minutes(10);
+
+    static constexpr auto SLEEP_MAX_TIME = std::chrono::hours(3);
 
     static constexpr auto DIARY_PROMPT = R"(
 It's time to open diary and share your thoughts, emotions and feelings! How did you spent your time? Write shortly, but
