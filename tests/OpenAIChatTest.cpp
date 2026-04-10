@@ -86,6 +86,40 @@ TEST(OpenAIChat, Basic) {
     }
 }
 
+TEST(OpenAIChat, BasicStreaming) {
+    AEventLoop loop;
+    IEventLoop::Handle h(&loop);
+    AAsyncHolder async;
+    async.setOnException([](const AException& e) {
+        ALogger::err("OpenAIChat") << e;
+        GTEST_NONFATAL_FAILURE_("caught exception");
+    });
+    async << []() -> AFuture<> {
+        OpenAIChat session{ .systemPrompt = SYSTEM_PROMPT, .config = config::ENDPOINT_CHEAP_LLM };
+        auto streaming = session.chatStreaming({ {OpenAIChat::Message::Role::USER, "Answer SHORTLY. What time is it? Do not make up information; if you don't have access to a tool, report it."} });;
+        size_t callTimes = 0;
+        AObject::connect(streaming->response.changed, AObject::GENERIC_OBSERVER, [&callTimes, prevContent = _new<AString>()](const OpenAIChat::Response& m) {
+            EXPECT_EQ(m.choices.at(0).message.role, OpenAIChat::Message::Role::ASSISTANT);
+            if (!prevContent->empty()) {
+                EXPECT_TRUE(m.choices.at(0).message.content.startsWith(*prevContent)) << "Streaming response should contain previous content: " << m.choices.at(0).message.content;
+            }
+            *prevContent = m.choices.at(0).message.content;
+            callTimes++;
+        });
+        co_await streaming->completed;
+        const auto& response = streaming->response->choices.at(0).message.content;
+        EXPECT_GE(callTimes, 1) << "Should have at least one signal";
+        EXPECT_TRUE(response.contains("content") ||
+                    response.contains("information") || response.contains("cannot") ||
+                    response.contains("provide") || response.contains("time"))
+            << response;
+    }();
+
+    while (async.size() > 0) {
+        loop.iteration();
+    }
+}
+
 TEST(OpenAIChat, ToolUsage) {
 
     AEventLoop loop;

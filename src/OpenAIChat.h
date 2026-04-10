@@ -6,6 +6,7 @@
 #include "AUI/Thread/AFuture.h"
 #include "AUI/Util/APreprocessor.h"
 #include "config.h"
+#include "AUI/Common/AProperty.h"
 
 struct OpenAIChat {
     AString systemPrompt;
@@ -63,10 +64,19 @@ struct OpenAIChat {
         } usage;
     };
 
+    struct StreamingResponse {
+        AProperty<Response> response;
+        AFuture<> completed;
+    };
+
     AFuture<Response> chat(AString message);
     AFuture<Response> chat(AVector<Message> messages);
+    _<StreamingResponse> chatStreaming(AVector<Message> messages);
 
     AFuture<std::valarray<double>> embedding(AString input);
+
+private:
+    AJson makeQueryString(AVector<Message> messages);
 };
 
 template<>

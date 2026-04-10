@@ -50,6 +50,34 @@ AJSON_FIELDS(OpenAIChat::Response::Usage,
 
 )
 
+struct StreamingResponse {
+    AString id;
+    AString object;
+    AString model;
+    AString system_fingerprint;
+    int64_t created;
+    struct Choice {
+        int index{};
+        OpenAIChat::Message delta;
+    };
+    AVector<Choice> choices;
+};
+
+AJSON_FIELDS(StreamingResponse,
+    AJSON_FIELDS_ENTRY(id)
+    AJSON_FIELDS_ENTRY(object)
+    AJSON_FIELDS_ENTRY(model)
+    AJSON_FIELDS_ENTRY(system_fingerprint)
+    AJSON_FIELDS_ENTRY(choices)
+    AJSON_FIELDS_ENTRY(created)
+    )
+
+
+AJSON_FIELDS(StreamingResponse::Choice,
+    AJSON_FIELDS_ENTRY(index)
+    AJSON_FIELDS_ENTRY(delta)
+    )
+
 AFuture<OpenAIChat::Response> OpenAIChat::chat(AString message) {
     return chat({
         {Message::Role::USER, std::move(message)},
@@ -117,28 +145,29 @@ AString OpenAIChat::embedImage(AImageView image) {
     return "<{}>data:image/jpg;base64,{}</{}>"_format(EMBEDDING_TAG, jpg.toBase64String(), EMBEDDING_TAG);
 }
 
+AJson OpenAIChat::makeQueryString(AVector<OpenAIChat::Message> messages) {
+    AJson json {
+        {
+          "messages",
+          aui::to_json(messages),
+        },
+        { "max_tokens", maxTokens },   // hopefully helps with stuck prediction (infinite reasoning)
+        { "stream", false },
+        { "use_context", false },
+        { "include_sources", true },
+        { "model", config.model },
+        { "tools", tools },
+        { "temperature", config::TEMPERATURE },
+    };
+    if (seed) {
+        json["seed"] = *seed;
+    }
+    return json;
+}
 
 AFuture<OpenAIChat::Response> OpenAIChat::chat(AVector<Message> messages) {
     messages.insert(messages.begin(), {Message::Role::SYSTEM_PROMPT, systemPrompt});
-    auto query = AJson::toString([&] {
-        AJson json {
-            {
-              "messages",
-              aui::to_json(messages),
-            },
-            { "max_tokens", maxTokens },   // hopefully helps with stuck prediction (infinite reasoning)
-            { "stream", false },
-            { "use_context", false },
-            { "include_sources", true },
-            { "model", config.model },
-            { "tools", tools },
-            { "temperature", config::TEMPERATURE },
-        };
-        if (seed) {
-            json["seed"] = *seed;
-        }
-        return json;
-    }());
+    AString query = AJson::toString(makeQueryString(messages));
     AFileOutputStream("last_query.json") << query.toStdString();
     const auto logsDir = APath("logs");
     logsDir.makeDirs();
@@ -168,6 +197,78 @@ AFuture<OpenAIChat::Response> OpenAIChat::chat(AVector<Message> messages) {
         ALOG_DEBUG(LOG_TAG) << "Response reasoning: " << responseResult.choices.at(0).message.reasoning_content << responseResult.choices.at(0).message.reasoning;
     }
     co_return responseResult;
+}
+_<OpenAIChat::StreamingResponse> OpenAIChat::chatStreaming(AVector<Message> messages) {
+    messages.insert(messages.begin(), {Message::Role::SYSTEM_PROMPT, systemPrompt});
+    AString query = [&] {
+        auto json = makeQueryString(messages);
+        json["stream"] = true;
+        return AJson::toString(json);
+    }();
+    AFileOutputStream("last_query.json") << query.toStdString();
+    const auto logsDir = APath("logs");
+    logsDir.makeDirs();
+    auto now = std::chrono::system_clock::now();
+    AFileOutputStream(logsDir / "{}.0query.json"_format(now)) << query.toStdString();
+
+    ALOG_TRACE(LOG_TAG) << "QueryStreaming: " << query;
+    AVector<AString> headers = {"Content-Type: application/json"};
+    if (!config.endpoint.bearerKey.empty()) {
+        headers << "Authorization: Bearer {}"_format(config.endpoint.bearerKey);
+    }
+    auto result = _new<OpenAIChat::StreamingResponse>();
+    auto processJson = [=, caller = AThread::current()](AJson json) {
+        caller->enqueue([=, json = std::move(json)] {
+            auto response = aui::from_json<::StreamingResponse>(json);
+            auto out = result->response.writeScope();
+            out->id = response.id;
+            out->created = response.created;
+            out->model = response.model;
+            out->system_fingerprint = response.system_fingerprint;
+            for (const auto& choice: response.choices) {
+                while (out->choices.size() <= choice.index) {
+                    out->choices.emplace_back().index = out->choices.size();
+                }
+                auto& choiceOut = out->choices.at(choice.index);
+                choiceOut.message.role = choice.delta.role;
+                choiceOut.message.content += choice.delta.content;
+                choiceOut.message.reasoning+= choice.delta.reasoning;
+                choiceOut.message.reasoning_content += choice.delta.reasoning_content;
+            }
+        });
+    };
+
+    result->completed = [&]() -> AFuture<> {
+        co_await ACurl::Builder(config.endpoint.baseUrl + "chat/completions")
+                                               .withMethod(ACurl::Method::HTTP_POST)
+                                               .withTimeout(config::REQUEST_TIMEOUT)
+                                               .withHeaders(std::move(headers))
+                                               .withBody(query.toStdString())
+                                               .withWriteCallback([=](AByteBufferView piece) -> size_t {
+                                                   try {
+                                                       AStringView asString(piece.toStdStringView());
+                                                       ALOG_DEBUG(LOG_TAG) << "QueryStreaming piece " << asString;
+                                                       if (asString.length() <= 6) {
+                                                           return 0;
+                                                       }
+                                                       if (!asString.startsWith("data: ")) {
+                                                           throw AException("Expected 'data:' prefix");
+                                                       }
+                                                       asString = asString.substr(6);
+                                                       if (asString.startsWith("[DONE]")) {
+                                                           return piece.size();
+                                                       }
+                                                       processJson(AJson::fromString(asString));
+
+                                                       return piece.size();
+                                                   } catch (const AEOFException&) {
+                                                       return 0;
+                                                   }
+
+                                               })
+                                               .runAsync();
+    }();
+    return result;
 }
 
 AFuture<std::valarray<double>> OpenAIChat::embedding(AString input) {
