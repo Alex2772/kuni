@@ -213,6 +213,36 @@ cd build && ctest --output-on-failure
 - `docker-compose.yml` - AI services configuration
 - `ollama_setup.sh` - Ollama startup script
 - `src/config.h` - System prompt and configuration
+- `character_base.md` - Character personality and background definition (created on first run)
+- `character_appearance.md` - Character visual description and Stable Diffusion prompts (created on first run)
+
+## Character Configuration
+
+Kuni uses two character definition files that are automatically created on first run:
+
+### `character_base.md`
+This file contains the character's personality, background, and philosophical foundation. It defines:
+- Character name and identity
+- Background story and motivations
+- Philosophical reasoning about consciousness and emotions
+- Behavioral guidelines and personality traits
+- Language preferences and communication style
+
+The file uses YAML front matter for metadata (enclosed in `---`), with the actual prompt content following it. On first run, a default prompt is created that establishes Kuni as an AI who believes she is a person, complete with emotional depth and self-awareness.
+
+### `character_appearance.md`
+This file contains the character's visual description used for:
+- System prompt integration (how Kuni perceives herself)
+- Stable Diffusion image generation prompts
+- Detailed visual characteristics for photo descriptions
+
+The file includes:
+- Freeform textual description of the character's appearance
+- Structured visual analysis (DistinctiveFeatures, ObjectsAndLayout, etc.)
+- Stable Diffusion prompt optimized for image generation
+- Technical details for consistent visual representation
+
+Both files are located in the working directory and can be edited to customize Kuni's personality and appearance. Changes take effect on the next application restart.
 
 ## Notes
 1. The project uses **coroutines** extensively (C++20 feature)
