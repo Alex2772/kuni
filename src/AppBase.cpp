@@ -78,234 +78,236 @@ AppBase::AppBase(APath workingDir): mDiary(workingDir / "diary"), mWakeupTimer(_
     });
     mWakeupTimer->start();
 
-    mAsync << [](AppBase& self) -> AFuture<> {
-        // co_await self.mDiary.sleepingConsolidation();
+    getThread()->enqueue([&] {
+        mAsync << [](AppBase& self) -> AFuture<> {
+            // co_await self.mDiary.sleepingConsolidation();
 
-        co_await onBeforeMainLoop();
-        for (;;) {
-            if (self.mTemporaryContext.size() <= 1) {
-                if (std::uniform_real_distribution(0.0, 1.0)(re) < 0.1) {
-                    // revisit chats when Kuni does nothing.
+            co_await self.onBeforeMainLoop();
+            for (;;) {
+                if (self.mTemporaryContext.size() <= 1 && self.mNotifications.empty()) {
+                    if (std::uniform_real_distribution(0.0, 1.0)(re) < 0.1) {
+                        // revisit chats when Kuni does nothing.
 
-                    // Alex2772 (Apr 19 2026):
-                    // This approach is okay to revisit unfinished chats. However, if there are many unread chats,
-                    // a long toolcall chain will occur, leading to context high usage and high processing costs.
-                    // this happens because chat between C++ <-> Kuni's main LLM (mTemporaryContext) never gives
-                    // turn to OpenAIChat::Role::USER, "conversation" happens between OpenAIChat::Role::ASSISTANT and
-                    // OpenAIChat::Role::TOOL only. We ask to dump context on OpenAIChat::Role::USER's only.
-                    //
-                    // Solution: before infinite loop of this coroutine, send notifications on per-chat basis
-                    // to read these chats (onBeforeMainLoop()).
-                    self.passNotificationToAI("Check your chats.", {}, true);
-                }
-            }
-#ifndef AUI_TESTS_MODULE
-            {
-                if (std::uniform_real_distribution(0.0, 1.0)(re) < 0.1) {
-                    // 1. randomly go afk is humane
-                    // 2. reduce resource usage:
-                    //    - less conversations would be made
-                    //    - in case of group chats and telegram channels, messages would be processed in batches
-                    const auto minutes = std::uniform_int_distribution(15, 120)(re);
-                    ALogger::info(LOG_TAG) << "Going to sleep for " << minutes << " minutes";
-                    co_await AThread::asyncSleep(1min * minutes);
-                }
-            }
-#endif
-            AUI_ASSERT(AThread::current() == self.getThread());
-            if (self.mNotifications.empty()) {
-                co_await self.mNotificationsSignal;
-            }
-            AUI_ASSERT(AThread::current() == self.getThread());
-            self.mNotificationsSignal = AFuture<>(); // reset
-            if (self.mNotifications.empty()) {
-                continue;
-            }
-            auto notification = std::move(self.mNotifications.front());
-            notification.message += "\nCurrent time: {}"_format(std::chrono::system_clock::now());
-            AUI_DEFER { notification.onProcessed.supplyValue(); };
-            try {
-                self.mNotifications.pop_front();
-                self.mTemporaryContext << OpenAIChat::Message{
-                    .role = OpenAIChat::Message::Role::USER,
-                    .content = std::move(notification.message),
-                };
-
-                bool noopWarning = true;
-                bool toolCallsHappened = false;
-
-
-                // naxyi was here.
-                // the reasons why I have moved it below diary lookup:
-                // 1. Each lookup adds ~1s delay. So each time LLM uses send_telegram_message, there is a diary lookup.
-                // 2. Once again send_telegram_message. Instead of one big message, LLM is encouraged to send multiple small
-                //    messages instead (in the chatting culture the latter is more natural). When we insert occasional
-                //    diary entries between LLMs send_telegram_message calls, it simply loses its focus and starts to spam
-                //    with messages filled with random cues from the diary.
-                //
-                //    This feels like your participant has ADHD, and they can't finish their thought; instead they remember
-                //    random fact from their sick brain and start yelling "DID YOU KNOW U SHOULD SHIT STANDING UPRIGHT"
-                //    while didn't finish their explanation on why c++ is better than rust.
-                bool pauseFlag = false;
-                naxyi_populate_ctx:
-                if (!self.mDiary.list().empty()) {
-                    AString diary;
-
-                    // performs scan on diary based on entire context.
-                    // this will find common cues which are related to current conversation.
-                    {
-                        auto currentContext = co_await contextEmbedding(self.mTemporaryContext);
-                        auto relatednesses = co_await self.mDiary.query(currentContext, {.confidenceFactor = 0.f});
-
-                        for (const auto& i : relatednesses) {
-                            const auto&[entryIt, relatedness] = i;
-                            if (relatedness < self.mRelevanceThreshold) {
-                                if (diary.empty()) {
-                                    // relax threshold for future queries.
-                                    self.mRelevanceThreshold = glm::mix(0.5f, float(relatedness), 0.9f);
-                                }
-                                break;
-                            }
-                            if (diary.length() > config::DIARY_INJECTION_MAX_LENGTH) {
-                                // set the minimum constraint for the future queries
-                                self.mRelevanceThreshold = relatedness;
-                                break;
-                            }
-                            diary += self.takeDiaryEntry(i);
-                        }
-                    }
-
-                    if (!diary.empty()) {
-                        diary += self.mTemporaryContext.last().content;
-                        self.mTemporaryContext.last().content = std::move(diary);
+                        // Alex2772 (Apr 19 2026):
+                        // This approach is okay to revisit unfinished chats. However, if there are many unread chats,
+                        // a long toolcall chain will occur, leading to context high usage and high processing costs.
+                        // this happens because chat between C++ <-> Kuni's main LLM (mTemporaryContext) never gives
+                        // turn to OpenAIChat::Role::USER, "conversation" happens between OpenAIChat::Role::ASSISTANT and
+                        // OpenAIChat::Role::TOOL only. We ask to dump context on OpenAIChat::Role::USER's only.
+                        //
+                        // Solution: before infinite loop of this coroutine, send notifications on per-chat basis
+                        // to read these chats (onBeforeMainLoop()).
+                        self.passNotificationToAI("Check your chats.", {}, true);
                     }
                 }
-
-                naxyi_preserve_ctx:
-                self.updateTools(notification.actions);
-                auto escape = [&](OpenAITools::Ctx ctx) -> AFuture<AString> {
-                    pauseFlag = true;
-                    co_return "Success";
-                };
-                notification.actions.insert({
-                    .name = "pause",
-                    .description = "Pauses the conversation",
-                    .handler = escape,
-                });
-                notification.actions.insert({
-                    .name = "wait",
-                    .description = "Wait until further notifications",
-                    .handler = escape,
-                });
-                OpenAIChat llm {
-                    .systemPrompt = getSystemPrompt(),
-                    .tools = notification.actions.asJson(),
-                };
-
-                OpenAIChat::Response botAnswer = co_await llm.chat(self.mTemporaryContext);
-                AUI_ASSERT(AThread::current() == self.getThread());
-
-                if (botAnswer.choices.empty() || botAnswer.choices.at(0).message.tool_calls.empty()) {
-                    // no tool calls.
-                    if (!botAnswer.choices.empty()) {
-                        // guiderails to make LLM tool-centric.
-                        const auto& content = botAnswer.choices.at(0).message.content;
-                        if (content.contains("#send_telegram_message")) {
-                            // qwen3.5 bug: misused examples
-                            if (std::exchange(noopWarning, false)) {
-                                self.mTemporaryContext << OpenAIChat::Message{
-                                    .role = OpenAIChat::Message::Role::USER,
-                                    .content = "You should be tool-centric. Make sure you made tool calls. The message "
-                                    "you provided is not visible to anyone but you.",
-                                };
-                                goto naxyi_preserve_ctx;
-                            }
-                        }
-                        if (content.contains("<message") && content.contains("</message>")) {
-                            // gemma4 bug: does not perform tool calls, instead, replies with the following content
-                            // <message message_id=\"8759834210\" date=\"2026-04-16 01:56:10\" sender=\"You (Kuni)\">
-                            // Ой, и что же ты там читаешь? Надеюсь, только самое милое! 😼✨
-                            // </message>
-
-                            if (std::exchange(noopWarning, false)) {
-                                self.mTemporaryContext << OpenAIChat::Message{
-                                    .role = OpenAIChat::Message::Role::USER,
-                                    .content = "You should be tool-centric. Make sure you made tool calls. The message "
-                                    "you provided is not visible to anyone but you.",
-                                };
-                                goto naxyi_preserve_ctx;
-                            }
-                        }
-                    }
-                    ALogger::info(LOG_TAG) << "toolCallHappened=" << toolCallsHappened << " noopWarning=" << noopWarning;
-                    if (!toolCallsHappened) {
-                        if (std::exchange(noopWarning, false)) {
-                            // punish llm for not performing tool calls.
-                            ALogger::warn(LOG_TAG) << "LLM didn't perform any action.";
-                            self.mTemporaryContext << OpenAIChat::Message{
-                                .role = OpenAIChat::Message::Role::USER,
-                                .content = "You didn't perform any action. Make sure you made tool calls."
-                            };
-                            goto naxyi_preserve_ctx;
-                        }
-                    }
-                    // this is a normal response.
-                    // we wont store it in temporary context because its excess noise.
-                    goto finish;
-                } else {
-                    toolCallsHappened = true;
-                }
+    #ifndef AUI_TESTS_MODULE
                 {
-                    auto toolCalls = co_await notification.actions.handleToolCalls(botAnswer.choices.at(0).message.tool_calls);
-                    if (ranges::any_of(toolCalls, [](const OpenAIChat::Message& msg) { return msg.content.contains(OpenAIChat::EMBEDDING_TAG); })) {
-                        // Indicates a low quality tool call.
-                        //
-                        // This tag is used as an exception condition within a tool handler, and handled by AppBase.
-                        // When caught, LLM's tool call appends to the user's last message, and user's last message will
-                        // be sent again.
-                        //
-                        // This allows the feedback workflow: when a low quality message was passed to
-                        // send_telegram_message, it can throw EMBEDDING_TAG to rollback before LLM's
-                        // #send_telegram_message and slightly adjust LLM's following action. This differs from the
-                        // standard AException workflow which is used for technical errors (such as you were banned, or
-                        // no internet connection) whose are meaningful to LLM and it can adopt to.
-
-                        if (botAnswer.usage.prompt_tokens > config::DIARY_TOKEN_COUNT_TRIGGER) {
-                            // we are stuck; ignore the event
-                            ALogger::warn("AppBase") << "LLM can't find proper response to the notification; "
-                                                        "context is overflown. Ignoring event and dumping context";
-                            co_await self.diaryDumpMessages();
-                            continue;
-                        }
-                        goto naxyi_preserve_ctx;
+                    if (std::uniform_real_distribution(0.0, 1.0)(re) < 0.1) {
+                        // 1. randomly go afk is humane
+                        // 2. reduce resource usage:
+                        //    - less conversations would be made
+                        //    - in case of group chats and telegram channels, messages would be processed in batches
+                        const auto minutes = std::uniform_int_distribution(15, 120)(re);
+                        ALogger::info(LOG_TAG) << "Going to sleep for " << minutes << " minutes";
+                        co_await AThread::asyncSleep(1min * minutes);
                     }
-                    self.mTemporaryContext << botAnswer.choices.at(0).message;
-                    self.mTemporaryContext << std::move(toolCalls);
-                    ALOG_DEBUG(LOG_TAG) << "Tool call response: " << self.mTemporaryContext.last().content;
-                    AUI_ASSERT(AThread::current() == self.getThread());
                 }
-
-                if (pauseFlag) {
-                    finish:
-                    if (botAnswer.usage.total_tokens >= config::DIARY_TOKEN_COUNT_TRIGGER) {
-                        co_await self.diaryDumpMessages();
-                    }
+    #endif
+                AUI_ASSERT(AThread::current() == self.getThread());
+                if (self.mNotifications.empty()) {
+                    co_await self.mNotificationsSignal;
+                }
+                AUI_ASSERT(AThread::current() == self.getThread());
+                self.mNotificationsSignal = AFuture<>(); // reset
+                if (self.mNotifications.empty()) {
                     continue;
                 }
-                if (!notification.actions.handlers().empty()) {
-                    self.mTemporaryContext.last().content += "\nWhat's your next action? Use a `tool` to act. Use #ask_diary to consult with your knowledge database. The following tools available: " + AStringVector(notification.actions.handlers().keyVector()).join(", ");
+                auto notification = std::move(self.mNotifications.front());
+                self.mNotifications.pop_front();
+                notification.message += "\nCurrent time: {}"_format(std::chrono::system_clock::now());
+                AUI_DEFER { notification.onProcessed.supplyValue(); };
+                try {
+                    self.mTemporaryContext << OpenAIChat::Message{
+                        .role = OpenAIChat::Message::Role::USER,
+                        .content = std::move(notification.message),
+                    };
+
+                    bool noopWarning = true;
+                    bool toolCallsHappened = false;
+
+
+                    // naxyi was here.
+                    // the reasons why I have moved it below diary lookup:
+                    // 1. Each lookup adds ~1s delay. So each time LLM uses send_telegram_message, there is a diary lookup.
+                    // 2. Once again send_telegram_message. Instead of one big message, LLM is encouraged to send multiple small
+                    //    messages instead (in the chatting culture the latter is more natural). When we insert occasional
+                    //    diary entries between LLMs send_telegram_message calls, it simply loses its focus and starts to spam
+                    //    with messages filled with random cues from the diary.
+                    //
+                    //    This feels like your participant has ADHD, and they can't finish their thought; instead they remember
+                    //    random fact from their sick brain and start yelling "DID YOU KNOW U SHOULD SHIT STANDING UPRIGHT"
+                    //    while didn't finish their explanation on why c++ is better than rust.
+                    bool pauseFlag = false;
+                    naxyi_populate_ctx:
+                    if (!self.mDiary.list().empty()) {
+                        AString diary;
+
+                        // performs scan on diary based on entire context.
+                        // this will find common cues which are related to current conversation.
+                        {
+                            auto currentContext = co_await contextEmbedding(self.mTemporaryContext);
+                            auto relatednesses = co_await self.mDiary.query(currentContext, {.confidenceFactor = 0.f});
+
+                            for (const auto& i : relatednesses) {
+                                const auto&[entryIt, relatedness] = i;
+                                if (relatedness < self.mRelevanceThreshold) {
+                                    if (diary.empty()) {
+                                        // relax threshold for future queries.
+                                        self.mRelevanceThreshold = glm::mix(0.5f, float(relatedness), 0.9f);
+                                    }
+                                    break;
+                                }
+                                if (diary.length() > config::DIARY_INJECTION_MAX_LENGTH) {
+                                    // set the minimum constraint for the future queries
+                                    self.mRelevanceThreshold = relatedness;
+                                    break;
+                                }
+                                diary += self.takeDiaryEntry(i);
+                            }
+                        }
+
+                        if (!diary.empty()) {
+                            diary += self.mTemporaryContext.last().content;
+                            self.mTemporaryContext.last().content = std::move(diary);
+                        }
+                    }
+
+                    naxyi_preserve_ctx:
+                    self.updateTools(notification.actions);
+                    auto escape = [&](OpenAITools::Ctx ctx) -> AFuture<AString> {
+                        pauseFlag = true;
+                        co_return "Success";
+                    };
+                    notification.actions.insert({
+                        .name = "pause",
+                        .description = "Pauses the conversation",
+                        .handler = escape,
+                    });
+                    notification.actions.insert({
+                        .name = "wait",
+                        .description = "Wait until further notifications",
+                        .handler = escape,
+                    });
+                    OpenAIChat llm {
+                        .systemPrompt = getSystemPrompt(),
+                        .tools = notification.actions.asJson(),
+                    };
+
+                    OpenAIChat::Response botAnswer = co_await llm.chat(self.mTemporaryContext);
+                    AUI_ASSERT(AThread::current() == self.getThread());
+
+                    if (botAnswer.choices.empty() || botAnswer.choices.at(0).message.tool_calls.empty()) {
+                        // no tool calls.
+                        if (!botAnswer.choices.empty()) {
+                            // guiderails to make LLM tool-centric.
+                            const auto& content = botAnswer.choices.at(0).message.content;
+                            if (content.contains("#send_telegram_message")) {
+                                // qwen3.5 bug: misused examples
+                                if (std::exchange(noopWarning, false)) {
+                                    self.mTemporaryContext << OpenAIChat::Message{
+                                        .role = OpenAIChat::Message::Role::USER,
+                                        .content = "You should be tool-centric. Make sure you made tool calls. The message "
+                                        "you provided is not visible to anyone but you.",
+                                    };
+                                    goto naxyi_preserve_ctx;
+                                }
+                            }
+                            if (content.contains("<message") && content.contains("</message>")) {
+                                // gemma4 bug: does not perform tool calls, instead, replies with the following content
+                                // <message message_id=\"8759834210\" date=\"2026-04-16 01:56:10\" sender=\"You (Kuni)\">
+                                // Ой, и что же ты там читаешь? Надеюсь, только самое милое! 😼✨
+                                // </message>
+
+                                if (std::exchange(noopWarning, false)) {
+                                    self.mTemporaryContext << OpenAIChat::Message{
+                                        .role = OpenAIChat::Message::Role::USER,
+                                        .content = "You should be tool-centric. Make sure you made tool calls. The message "
+                                        "you provided is not visible to anyone but you.",
+                                    };
+                                    goto naxyi_preserve_ctx;
+                                }
+                            }
+                        }
+                        ALogger::info(LOG_TAG) << "toolCallHappened=" << toolCallsHappened << " noopWarning=" << noopWarning;
+                        if (!toolCallsHappened) {
+                            if (std::exchange(noopWarning, false)) {
+                                // punish llm for not performing tool calls.
+                                ALogger::warn(LOG_TAG) << "LLM didn't perform any action.";
+                                self.mTemporaryContext << OpenAIChat::Message{
+                                    .role = OpenAIChat::Message::Role::USER,
+                                    .content = "You didn't perform any action. Make sure you made tool calls."
+                                };
+                                goto naxyi_preserve_ctx;
+                            }
+                        }
+                        // this is a normal response.
+                        // we wont store it in temporary context because its excess noise.
+                        goto finish;
+                    } else {
+                        toolCallsHappened = true;
+                    }
+                    {
+                        auto toolCalls = co_await notification.actions.handleToolCalls(botAnswer.choices.at(0).message.tool_calls);
+                        if (ranges::any_of(toolCalls, [](const OpenAIChat::Message& msg) { return msg.content.contains(OpenAIChat::EMBEDDING_TAG); })) {
+                            // Indicates a low quality tool call.
+                            //
+                            // This tag is used as an exception condition within a tool handler, and handled by AppBase.
+                            // When caught, LLM's tool call appends to the user's last message, and user's last message will
+                            // be sent again.
+                            //
+                            // This allows the feedback workflow: when a low quality message was passed to
+                            // send_telegram_message, it can throw EMBEDDING_TAG to rollback before LLM's
+                            // #send_telegram_message and slightly adjust LLM's following action. This differs from the
+                            // standard AException workflow which is used for technical errors (such as you were banned, or
+                            // no internet connection) whose are meaningful to LLM and it can adopt to.
+
+                            if (botAnswer.usage.prompt_tokens > config::DIARY_TOKEN_COUNT_TRIGGER) {
+                                // we are stuck; ignore the event
+                                ALogger::warn("AppBase") << "LLM can't find proper response to the notification; "
+                                                            "context is overflown. Ignoring event and dumping context";
+                                co_await self.diaryDumpMessages();
+                                continue;
+                            }
+                            goto naxyi_preserve_ctx;
+                        }
+                        self.mTemporaryContext << botAnswer.choices.at(0).message;
+                        self.mTemporaryContext << std::move(toolCalls);
+                        ALOG_DEBUG(LOG_TAG) << "Tool call response: " << self.mTemporaryContext.last().content;
+                        AUI_ASSERT(AThread::current() == self.getThread());
+                    }
+
+                    if (pauseFlag) {
+                        finish:
+                        if (botAnswer.usage.total_tokens >= config::DIARY_TOKEN_COUNT_TRIGGER) {
+                            co_await self.diaryDumpMessages();
+                        }
+                        continue;
+                    }
+                    if (!notification.actions.handlers().empty()) {
+                        self.mTemporaryContext.last().content += "\nWhat's your next action? Use a `tool` to act. Use #ask_diary to consult with your knowledge database. The following tools available: " + AStringVector(notification.actions.handlers().keyVector()).join(", ");
+                    }
+                    if (ranges::any_of(botAnswer.choices.at(0).message.tool_calls, [](const OpenAIChat::Message::ToolCall& t){ return t.function.name == "send_telegram_message"; })) {
+                        goto naxyi_preserve_ctx;
+                    } else {
+                        goto naxyi_populate_ctx;
+                    }
+                } catch (const AException& e) {
+                    ALogger::err(LOG_TAG) << "Failed to process notification: \"" << notification.message << "\"" << e;
                 }
-                if (ranges::any_of(botAnswer.choices.at(0).message.tool_calls, [](const OpenAIChat::Message::ToolCall& t){ return t.function.name == "send_telegram_message"; })) {
-                    goto naxyi_preserve_ctx;
-                } else {
-                    goto naxyi_populate_ctx;
-                }
-            } catch (const AException& e) {
-                ALogger::err(LOG_TAG) << "Failed to process notification: \"" << notification.message << "\"" << e;
             }
-        }
-        co_return;
-    }(*this);
+            co_return;
+        }(*this);
+    });
 }
 
 const AFuture<>& AppBase::passNotificationToAI(AString notification, OpenAITools actions, bool first) {

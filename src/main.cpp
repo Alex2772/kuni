@@ -123,20 +123,7 @@ namespace {
                                "chats and unread chats, or to start a new conversation.",
                 .handler = [this](OpenAITools::Ctx ctx) -> AFuture<AString> {
                     co_await telegram()->waitForConnection();
-                    auto chats = co_await [&]() -> AFuture<AVector<td::td_api::object_ptr<td::td_api::chat>>> {
-                        auto chats = (co_await telegram()->sendQueryWithResult(TelegramClient::toPtr(
-                            td::td_api::getChats(TelegramClient::toPtr(td::td_api::chatListMain()), 50))))->chat_ids_
-                            | ranges::view::transform([&](td::td_api::int53 chatId) {
-                                return telegram()->sendQueryWithResult(TelegramClient::toPtr(td::td_api::getChat(chatId)));
-                            })
-                            | ranges::to_vector;
-                        AVector<td::td_api::object_ptr<td::td_api::chat>> result;
-                        result.reserve(chats.size());
-                        for (const auto& chat : chats) {
-                            result.push_back(co_await chat);
-                        }
-                        co_return result;
-                    }();
+                    auto chats = co_await getChats();
 
                     // oldest first, newest last (chats in queue), because LLM tends to prioritize chats from the
                     // top of the list.
@@ -227,9 +214,44 @@ Use absolute time in your queries.
             });
         }
 
+        AFuture<> onBeforeMainLoop() override {
+            co_await telegram()->waitForConnection();
+            co_await sendNotificationsOnInit();
+        }
+
     private:
         _<TelegramClient> mTelegram = _new<TelegramClient>();
 
+        AFuture<AVector<td::td_api::object_ptr<td::td_api::chat>>> getChats() {
+            auto chats = (co_await telegram()->sendQueryWithResult(TelegramClient::toPtr(
+                td::td_api::getChats(TelegramClient::toPtr(td::td_api::chatListMain()), 50))))->chat_ids_
+                | ranges::view::transform([&](td::td_api::int53 chatId) {
+                    return telegram()->sendQueryWithResult(TelegramClient::toPtr(td::td_api::getChat(chatId)));
+                })
+                | ranges::to_vector;
+            AVector<td::td_api::object_ptr<td::td_api::chat>> result;
+            result.reserve(chats.size());
+            for (const auto& chat : chats) {
+                result.push_back(co_await chat);
+            }
+            co_return result;
+        }
+
+        AFuture<> sendNotificationsOnInit() {
+            // tdlib does not send notifications for unread chats on program startup. we'll fix this.
+            auto chats = co_await getChats();
+            chats |= ranges::actions::reverse; // older first, newest last
+            for (auto& chat : chats) {
+                if (chat->unread_count_ == 0) {
+                    continue;
+                }
+                // make up a updateNewMessage event and pass it to handleTelegramEvent. the latter will format a
+                // notification for us.
+                td::td_api::updateNewMessage notification;
+                notification.message_ = std::move(chat->last_message_);
+                co_await handleTelegramEvent(std::move(notification));
+            }
+        }
 
         AFuture<> handleTelegramEvent(auto u) {
             TelegramClient::StubHandler{}(u);
