@@ -99,10 +99,10 @@ jobs:
         working-directory: ${{github.workspace}}/build/bin
         run: ${{github.workspace}}/build/bin/Tests.exe
 
-#      - name: Run Tests (Linux and macOS)
-#        if: runner.os != 'Windows'
-#        working-directory: ${{github.workspace}}/build/bin
-#        run: ${{github.workspace}}/build/bin/Tests
+      - name: Run Tests (Linux and macOS)
+        if: runner.os != 'Windows'
+        working-directory: ${{github.workspace}}/build/bin
+        run: ${{github.workspace}}/build/bin/Tests
 
       - name: Pack Windows Setup
         if: runner.os == 'Windows'
@@ -112,57 +112,57 @@ jobs:
           cmake --build . --config RelWithDebInfo
           cpack . -CRelWithDebInfo -B artifacts
 
-#      - name: Pack Portable
-#        working-directory: ${{github.workspace}}/build
-#        run: |
-#          cmake . -DAUI_APP_PACKAGING=${{ runner.os == 'Linux' && 'AUI_PORTABLE_TGZ' || 'AUI_PORTABLE_ZIP' }}
-#          cmake --build . --config RelWithDebInfo
-#          cpack . -CRelWithDebInfo -B artifacts
-#
-#      - name: Upload
-#        uses: actions/upload-artifact@v4
-#        with:
-#          path: ${{github.workspace}}/build/artifacts/*.*
-#          name: ${{ runner.os }}
-#
-#
-#  release-draft:
-#    runs-on: ubuntu-latest
-#    permissions: write-all
-#    if: github.event_name != 'pull_request'
-#    needs: [ build-desktop ]
-#    name: "Release draft"
-#    steps:
-#      - name: Fetch sources
-#        uses: actions/checkout@v4
-#
-#      - name: Extract version
-#        run: |
-#          VERSION=$(grep -Po '[0-9\.]+(?= # CI_PROJECT_VERSION)' CMakeLists.txt)
-#          echo "VERSION=$VERSION" >> $GITHUB_ENV
-#          echo "VERSION = $VERSION"
-#
-#      # Remove old release drafts
-#      - name: Remove Old Release Drafts
-#        env:
-#          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-#        run: |
-#          gh api repos/{owner}/{repo}/releases \
-#            --jq '.[] | select(.draft == true) | .id' \
-#            | xargs -I '{}' gh api -X DELETE repos/{owner}/{repo}/releases/{}
-#
-#      - name: Download artifacts
-#        uses: actions/download-artifact@v4
-#        with:
-#          path: artifacts
-#          merge-multiple: 'true'
-#
-#      - name: Create Release Draft
-#        env:
-#          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-#        run: |
-#          gh release create "v${{ env.VERSION }}" \
-#            --draft \
-#            --title "v${{ env.VERSION }}" \
-#            --target $GITHUB_SHA \
-#            artifacts/*.*
+      - name: Pack Portable
+        working-directory: ${{github.workspace}}/build
+        run: |
+          cmake . -DAUI_APP_PACKAGING=${{ runner.os == 'Linux' && 'AUI_PORTABLE_TGZ' || 'AUI_PORTABLE_ZIP' }}
+          cmake --build . --config RelWithDebInfo
+          cpack . -CRelWithDebInfo -B artifacts
+
+      - name: Upload
+        uses: actions/upload-artifact@v4
+        with:
+          path: ${{github.workspace}}/build/artifacts/*.*
+          name: ${{ runner.os }}
+
+
+  release-draft:
+    runs-on: ubuntu-latest
+    permissions: write-all
+    if: github.event_name != 'pull_request'
+    needs: [ build-desktop ]
+    name: "Release draft"
+    steps:
+      - name: Fetch sources
+        uses: actions/checkout@v4
+
+      - name: Extract version
+        run: |
+          VERSION=$(grep -Po '[0-9\.]+(?= # CI_PROJECT_VERSION)' CMakeLists.txt)
+          echo "VERSION=$VERSION" >> $GITHUB_ENV
+          echo "VERSION = $VERSION"
+
+      # Remove old release drafts
+      - name: Remove Old Release Drafts
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh api repos/{owner}/{repo}/releases \
+            --jq '.[] | select(.draft == true) | .id' \
+            | xargs -I '{}' gh api -X DELETE repos/{owner}/{repo}/releases/{}
+
+      - name: Download artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          merge-multiple: 'true'
+
+      - name: Create Release Draft
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release create "v${{ env.VERSION }}" \
+            --draft \
+            --title "v${{ env.VERSION }}" \
+            --target $GITHUB_SHA \
+            artifacts/*.*

@@ -38,3 +38,10 @@ aui_executable(${PROJECT_NAME})
 aui_link(${PROJECT_NAME} PUBLIC aui::core aui::json aui::curl aui::crypt aui::image aui::views Td::TdStatic toml11::toml11)
 
 aui_enable_tests(${PROJECT_NAME})
+
+# Setup icon, display name, etc
+aui_app(TARGET ${PROJECT_NAME}
+        NAME "AUI App Example"
+        VENDOR "AUI Project"
+        ICON "icon.svg"
+)
