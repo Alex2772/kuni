@@ -107,9 +107,18 @@ AppBase::AppBase(APath workingDir): mDiary(workingDir / "diary"), mWakeupTimer(_
                         // 2. reduce resource usage:
                         //    - less conversations would be made
                         //    - in case of group chats and telegram channels, messages would be processed in batches
-                        const auto minutes = std::uniform_int_distribution(15, 120)(re);
+                        const auto minutes = std::uniform_int_distribution(15, 60)(re);
                         ALogger::info(LOG_TAG) << "Going to sleep for " << minutes << " minutes";
-                        co_await AThread::asyncSleep(1min * minutes);
+                        for (int i = 0; i < minutes; ++i) {
+                            // костыль ну да сойдёт
+                            if (!self.mNotifications.empty()) {
+                                if (self.mNotifications.front().message.contains("{}"_format(config::PAPIK_CHAT_ID))) {
+                                    ALogger::info(LOG_TAG) << "Daddy woke me up";
+                                    break;
+                                }
+                            }
+                            co_await AThread::asyncSleep(1min);
+                        }
                     }
                 }
     #endif

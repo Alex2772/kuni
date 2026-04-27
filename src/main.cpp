@@ -95,35 +95,37 @@ namespace {
 
         void updateTools(OpenAITools& actions) override {
             AppBase::updateTools(actions);
-            actions.insert({
-                .name = "take_photo",
-                .description = "Takes a photo by Kuni. This tool is useful for creating selfies, photos of "
-                                 "surroundings, or any other images. "
-                                 "The result of this tool is a photo description and a filename. "
-                                 "The filename can then be sent to someone else using #send_telegram_message.",
-                .parameters =
-                    {
-                        .properties =
-                            {
-                                {"photo_desc", {
-                                    .type = "string",
-                                    .description = "Describes the image Kuni would like to achieve. Refer to yourself "
-                                                    "as Kuni. Avoid unnecessary details. Instead of specifying complex "
-                                                    "composition, prefer setting vibe of the image. "
-                                                    "Example: \"Kuni makes playful selfie\"",}},
-                            },
-                        .required = {"photo_desc"},
-                    },
-                .handler = [this](OpenAITools::Ctx ctx) -> AFuture<AString> {
-                    auto photoDesc = ctx.args["photo_desc"].asStringOpt().valueOrException("photo_desc is required");
-                    auto galleryImage = co_await ImageGenerator{StableDiffusionClient{}, OpenAIChat{.config = config::ENDPOINT_PHOTO_TO_TEXT, .numPredict = 1000 }}.generate(photoDesc);
-                    auto description = co_await describePhoto(galleryImage.path);
+            if constexpr (config::CAPABILITY_TAKE_PHOTO) {
+                actions.insert({
+                    .name = "take_photo",
+                    .description = "Takes a photo by Kuni. This tool is useful for creating selfies, photos of "
+                                     "surroundings, or any other images. "
+                                     "The result of this tool is a photo description and a filename. "
+                                     "The filename can then be sent to someone else using #send_telegram_message.",
+                    .parameters =
+                        {
+                            .properties =
+                                {
+                                    {"photo_desc", {
+                                        .type = "string",
+                                        .description = "Describes the image Kuni would like to achieve. Refer to yourself "
+                                                        "as Kuni. Avoid unnecessary details. Instead of specifying complex "
+                                                        "composition, prefer setting vibe of the image. "
+                                                        "Example: \"Kuni makes playful selfie\"",}},
+                                },
+                            .required = {"photo_desc"},
+                        },
+                    .handler = [this](OpenAITools::Ctx ctx) -> AFuture<AString> {
+                        auto photoDesc = ctx.args["photo_desc"].asStringOpt().valueOrException("photo_desc is required");
+                        auto galleryImage = co_await ImageGenerator{StableDiffusionClient{}, OpenAIChat{.config = config::ENDPOINT_PHOTO_TO_TEXT, .numPredict = 1000 }}.generate(photoDesc);
+                        auto description = co_await describePhoto(galleryImage.path);
 
-                    co_return "{}\n\nFilename: {}\n"
-                    "When writing diary, do not forget to mention this photo and its filename verbatim - you might need this in the future!\n\n"
-                    "You have created photo successfully. Review it carefully. Send it only if you are fully satisfied; use take_photo again to make another photo"_format(description, galleryImage.path.filename());
-                },
-            });
+                        co_return "{}\n\nFilename: {}\n"
+                        "When writing diary, do not forget to mention this photo and its filename verbatim - you might need this in the future!\n\n"
+                        "You have created photo successfully. Review it carefully. Send it only if you are fully satisfied; use take_photo again to make another photo"_format(description, galleryImage.path.filename());
+                    },
+                });
+            }
             actions.insert({
                 .name = "get_telegram_chats",
                 .description = "Returns a list of Telegram chats. Use this to seek chat_ids, looking for existing "
@@ -381,6 +383,8 @@ Use absolute time in your queries.
             notification += "\n</notification>\n"
             "You don't have any chat open. Use #open tool to open the chat";
 
+            const bool isImportant = userId == config::PAPIK_CHAT_ID;
+
             passNotificationToAI(
                 std::move(notification),
                 {
@@ -392,7 +396,7 @@ Use absolute time in your queries.
                         },
                     },
 
-                });
+                }, isImportant);
 
             co_return;
         }

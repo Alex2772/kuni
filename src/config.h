@@ -4,7 +4,9 @@
 #include "Endpoint.h"
 
 namespace config {
-    static constexpr bool RANDOMLY_GO_SLEEP = false;
+    static constexpr bool CAPABILITY_TAKE_PHOTO = true;
+
+    static constexpr bool RANDOMLY_GO_SLEEP = true;
     static constexpr bool DEEP_DIALOG_QUERY = false;
 
     static constexpr auto SYSTEM_PROMPT = R"(
