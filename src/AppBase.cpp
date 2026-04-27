@@ -435,7 +435,7 @@ void AppBase::updateTools(OpenAITools& actions) {
         },
         .handler = [this](OpenAITools::Ctx ctx) -> AFuture<AString> {
             auto query = ctx.args["query"].asStringOpt().valueOrException("\"query\" string is required");
-            if (query.length() < 80) {
+            if (query.length() < 60) {
                 // Alex2772 16-04-2026:
                 // changed from throw AException to co_return.
                 // AException is a technical error and the engine would load additional diary entries
