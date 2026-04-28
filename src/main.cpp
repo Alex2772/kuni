@@ -131,7 +131,13 @@ namespace {
                                         .description = "Describes the image Kuni would like to achieve. Refer to yourself "
                                                         "as Kuni. Avoid unnecessary details. Instead of specifying complex "
                                                         "composition, prefer setting vibe of the image. "
-                                                        "Example: \"Kuni makes playful selfie\"",}},
+                                                        "Example: \"Kuni makes playful selfie\""
+                                                        "take_photo only knows about Kuni.\n"
+                                                        "To draw other character, specify their name, and describe their\n"
+                                                        "appearance as specifically as possible."
+                                                        "Example: \"Selfie of Yuki - Kuni's sister: anime young female,"
+                                                        "gold eyes, white hair, white dress, black socks.\"\n"
+                                        ,}},
                                 },
                             .required = {"photo_desc"},
                         },

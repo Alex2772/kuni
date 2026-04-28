@@ -379,6 +379,7 @@ world) in the following format:
         // .model = "qwen3:14b",
         // .model = "deepseek-chat",
         // .model = "deepseek-reasoner",
+        // .model = "gemma4:26b",
 
         // .model = "gpt-oss-20b-128k:latest"; // норм но тупая
         // .model = "lfm2"; // не может вызвать тулы
