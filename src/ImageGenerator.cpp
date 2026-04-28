@@ -60,6 +60,11 @@ AFuture<ImageGenerator::GalleryImage> ImageGenerator::generate(AString descripti
                         .cfg_scale = std::uniform_real_distribution<>(1.0, 5.0)(ge),
                         .width = std::uniform_int_distribution<>(768, 1400)(ge),
                         .height = std::uniform_int_distribution<>(768, 1400)(ge),
+                        .enable_hr = true,
+                        .hr_scale = 1.5,
+                        .hr_upscaler = "Latent",
+                        .hr_second_pass_steps = 10,
+                        .denoising_strength = 0.7,
                     });
                 } catch (const AException& e) {
                     ALogger::err(LOG_TAG) << "Stable diffusion failed:: " << e;

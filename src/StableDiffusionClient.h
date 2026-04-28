@@ -32,6 +32,11 @@ struct StableDiffusionClient {
         int64_t height = 512;
         bool send_images = true;
         bool save_images = false;
+        bool enable_hr = false;
+        double hr_scale = 2.0;
+        AString hr_upscaler = "Latent";
+        int64_t hr_second_pass_steps = 0;
+        double denoising_strength = 0.7;
     };
 
     struct Txt2ImgResponse {
