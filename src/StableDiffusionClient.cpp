@@ -28,7 +28,7 @@ AJSON_FIELDS(StableDiffusionClient::Txt2ImgRequest,
              AJSON_FIELDS_ENTRY(height)
              AJSON_FIELDS_ENTRY(send_images)
              AJSON_FIELDS_ENTRY(override_settings)
-             AJSON_FIELDS_ENTRY(save_images))
+             AJSON_FIELDS_ENTRY(save_images)
              AJSON_FIELDS_ENTRY(enable_hr)
              AJSON_FIELDS_ENTRY(hr_scale)
              AJSON_FIELDS_ENTRY(hr_upscaler)
