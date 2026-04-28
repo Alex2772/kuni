@@ -26,15 +26,16 @@ auib_import(toml11 https://github.com/ToruNiina/toml11
         CMAKE_ARGS -DTOML11_ENABLE_ACCESS_CHECK=ON
 )
 
-auib_import(Boost https://github.com/boostorg/boost/releases/download/boost-1.84.0/boost-1.84.0.tar.xz
-        ARCHIVE
-        CMAKE_ARGS -DBOOST_ENABLE_CMAKE=ON
-)
+#auib_import(Boost https://github.com/boostorg/boost/releases/download/boost-1.84.0/boost-1.84.0.tar.xz
+#        ARCHIVE
+#        CMAKE_ARGS -DBOOST_ENABLE_CMAKE=ON
+#)
 
-auib_import(Crow https://github.com/crowcpp/crow
-    VERSION 21f8bcfa6b900fcc76ee01a5bc6823b129f1e63f
-    REQUIRES Boost
-    CMAKE_ARGS -DCROW_USE_BOOST=ON
+set(AUIB_HTTPLIB_VALIDATE OFF)
+
+auib_import(httplib https://github.com/yhirose/cpp-httplib
+    VERSION v0.43.1
+    CMAKE_ARGS -DHTTPLIB_USE_BROTLI_IF_AVAILABLE=OFF
 )
 
 auib_import(date https://github.com/HowardHinnant/date)
@@ -46,6 +47,6 @@ auib_import(Td https://github.com/tdlib/td
 aui_executable(${PROJECT_NAME})
 
 # Link required libs
-aui_link(${PROJECT_NAME} PUBLIC aui::core aui::json aui::curl aui::crypt aui::image aui::views Td::TdStatic toml11::toml11 Crow::Crow)
+aui_link(${PROJECT_NAME} PUBLIC aui::core aui::json aui::curl aui::crypt aui::image aui::views Td::TdStatic toml11::toml11 httplib::httplib)
 
 aui_enable_tests(${PROJECT_NAME})

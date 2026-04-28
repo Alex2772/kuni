@@ -10,7 +10,7 @@ TEST(Proxy, Basic) {
     IEventLoop::Handle h(&loop);
     AAsyncHolder async;
     async << []() -> AFuture<> {
-        proxy_server::init();
+        auto proxy = proxy_server::init();
         OpenAIChat session{
             .systemPrompt = "You are an assistant",
             .config = {
