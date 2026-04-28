@@ -20,6 +20,7 @@
 #include "AUI/Util/kAUI.h"
 #include "config.h"
 #include "AUI/IO/AByteBufferInputStream.h"
+#include "AUI/Util/ATokenizer.h"
 
 static constexpr auto LOG_TAG = "OpenAIChat";
 
@@ -203,53 +204,71 @@ _<OpenAIChat::StreamingResponse> OpenAIChat::chatStreaming(AVector<Message> mess
         headers << "Authorization: Bearer {}"_format(config.endpoint.bearerKey);
     }
     auto result = _new<OpenAIChat::StreamingResponse>();
-    auto processJson = [=, caller = AThread::current()](AJson json) {
-        caller->enqueue([=, json = std::move(json)] {
-            auto response = aui::from_json<::StreamingResponse>(json);
-            auto out = result->response.writeScope();
-            out->id = response.id;
-            out->created = response.created;
-            out->model = response.model;
-            out->system_fingerprint = response.system_fingerprint;
-            for (auto& choice: response.choices) {
-                choice.delta.role = Message::Role::ASSISTANT;
-                while (out->choices.size() <= choice.index) {
-                    out->choices.emplace_back().index = out->choices.size();
-                }
-                out->choices.at(choice.index).message += choice.delta;
-            }
-        });
-    };
 
     result->completed = [&]() -> AFuture<> {
+        const auto caller = AThread::current();
+        auto processJson = [=](AJson json) {
+            caller->enqueue([=, json = std::move(json)] {
+                auto response = aui::from_json<::StreamingResponse>(json);
+                auto out = result->response.writeScope();
+                out->id = response.id;
+                out->created = response.created;
+                out->model = response.model;
+                out->system_fingerprint = response.system_fingerprint;
+                for (auto& choice: response.choices) {
+                    choice.delta.role = Message::Role::ASSISTANT;
+                    while (out->choices.size() <= choice.index) {
+                        out->choices.emplace_back().index = out->choices.size();
+                    }
+                    out->choices.at(choice.index).message += choice.delta;
+                }
+            });
+        };
+
+        AByteBuffer jsonTempBuffer;
+        auto parseBuffer = [&, processJson] {
+            while (!jsonTempBuffer.empty()) {
+                ATokenizer tokenizer(std::make_unique<AByteBufferInputStream>(jsonTempBuffer));
+                AString command = tokenizer.readStringWhile([](char c) {
+                    return c != '{';
+                });
+                if (command.startsWith("data: [DONE]")) {
+                    break;
+                }
+                if (!command.startsWith("data:")) {
+                    break;
+                }
+                auto json = AJson::fromBuffer(jsonTempBuffer.slice(command.bytes().length()));
+                processJson(std::move(json));
+                const auto end = AStringView(jsonTempBuffer.data(), jsonTempBuffer.size()).find("\n\n");
+                const auto at = end == std::string::npos ? jsonTempBuffer.end() : jsonTempBuffer.begin() + end + 2;
+                jsonTempBuffer.erase(jsonTempBuffer.begin(), at);
+            }
+        };
         co_await ACurl::Builder(config.endpoint.baseUrl + "chat/completions")
                                                .withMethod(ACurl::Method::HTTP_POST)
                                                .withTimeout(config::REQUEST_TIMEOUT)
                                                .withHeaders(std::move(headers))
                                                .withBody(query.toStdString())
-                                               .withWriteCallback([=](AByteBufferView buffer) -> size_t {
+                                               .withWriteCallback([&parseBuffer, &jsonTempBuffer](AByteBufferView buffer) -> size_t {
                                                    ALOG_DEBUG(LOG_TAG) << "QueryStreaming piece " << buffer.toStdStringView();
-                                                   size_t bytesRead = 0;
+                                                   jsonTempBuffer << buffer;
                                                    try {
-                                                       for (const auto& piece : AStringView(buffer.toStdStringView()).split("\n\n")) {
-                                                           auto slice = piece;
-                                                           if (slice.length() <= 6) {
-                                                               break;
-                                                           }
-                                                           if (!slice.startsWith("data: ")) {
-                                                               throw AException("Expected 'data:' prefix");
-                                                           }
-                                                           slice = slice.substr(6);
-                                                           if (slice.startsWith("[DONE]")) {
-                                                               return buffer.size();
-                                                           }
-                                                           processJson(AJson::fromString(slice));
-                                                           bytesRead += piece.bytes().length() + 2;
-                                                       }
-                                                   } catch (const AEOFException&) {}
-                                                   return bytesRead;
+                                                       parseBuffer();
+                                                   } catch (const AJsonException& e) {
+                                                       // "unexpected" eof, parse later
+                                                   }
+                                                   return buffer.size();
                                                })
                                                .runAsync();
+        // finalize
+        parseBuffer();
+
+        // ensure we delivered all events before finishing the coroutine.
+#if AUI_DEBUG
+        AUI_ASSERT(AThread::current() == caller);
+#endif
+        AThread::processMessages();
     }();
     return result;
 }
