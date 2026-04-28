@@ -12,15 +12,18 @@
 
 #include "AUI/Common/AByteBuffer.h"
 #include "AUI/IO/AFileInputStream.h"
+#include "AUI/IO/APath.h"
 #include "AUI/Platform/Entry.h"
 #include "AUI/Util/ASharedRaiiHelper.h"
 #include "AUI/Util/kAUI.h"
 #include "AppBase.h"
 #include "ImageGenerator.h"
+#include "VoiceGenerator.h"
 #include "AUI/Image/jpg/JpgImageLoader.h"
 #include "telegram/TelegramClient.h"
 #include "ui/debug/KuniDebugWindow.h"
 #include "util/populate_from_diary_ai_if_needed.h"
+#include "util/secrets.h"
 
 #include <range/v3/action/reverse.hpp>
 #include <range/v3/algorithm/contains.hpp>
@@ -51,7 +54,7 @@ namespace {
 
 
     protected:
-        AFuture<> telegramPostMessage(int64_t chatId, AString text, AOptional<_<AImage>> photo = std::nullopt, int64_t replyTo = 0) {
+        AFuture<> telegramPostMessage(int64_t chatId, AString text, AOptional<_<AImage>> photo = std::nullopt, AOptional<APath> audioPath = std::nullopt, int64_t replyTo = 0) {
             // Check lockdown mode - only allow PAPIK_CHAT_ID if lockdown is enabled
             if constexpr (config::LOCKDOWN_MODE) {
                 if (chatId != config::PAPIK_CHAT_ID) {
@@ -75,6 +78,23 @@ namespace {
                         content->height_ = photo->get()->height();
                         JpgImageLoader::save(AFileOutputStream("temp.jpg"), **photo);
                         content->photo_ = TelegramClient::toPtr(td::td_api::inputFileLocal("temp.jpg"));
+                        return content;
+                    }
+
+                    if (audioPath) {
+                        auto content = td::td_api::make_object<td::td_api::inputMessageVoiceNote>();
+                        content->voice_note_ = TelegramClient::toPtr(td::td_api::inputFileLocal(audioPath->absolute().toStdString()));
+                        // content->album_cover_thumbnail_ = nullptr;
+                        content->duration_ = 0;
+                        // content->title_ = audioPath->filename();
+                        // content->performer_ = "";
+                        if (!text.empty()) {
+                            content->caption_ = [&] {
+                                auto t = td::td_api::make_object<td::td_api::formattedText>();
+                                t->text_ = text;
+                                return t;
+                            }();
+                        }
                         return content;
                     }
 
@@ -126,6 +146,41 @@ namespace {
                     },
                 });
             }
+            actions.insert({
+                .name = "record_audio",
+                .description = "Records a new voice message using ElevenLabs TTS and stores it in Kuni's voice gallery.",
+                .parameters = {
+                    .properties = {
+                        {"audio_desc", {
+                            .type = "string",
+                            .description = "Specifies the message Kuni would like to say. This is a TTS prompt, so the text will be converted directly into speech. Do NOT include instructions for the voice message in this field. Instead, write EXACTLY what you would say in a #send_telegram_message call. The description only has to include what the user will hear in the final voice message."_format()},
+                        },
+                    },
+                    .required = {"audio_desc"},
+                },
+                .handler = [this](OpenAITools::Ctx ctx) -> AFuture<AString> {
+                    auto audioDesc = ctx.args["audio_desc"].asStringOpt().valueOrException("audio_desc is required");
+                    if (audioDesc.trim().empty()) {
+                        throw AException("audio_desc must not be empty");
+                    }
+
+                    // really dirty fix: hit Kuni with an exception if it tries to say an introduction in a voice note
+                    if (audioDesc.contains("Kuni says") || audioDesc.contains("voice") || audioDesc.contains("tone")
+                        || audioDesc.contains("Kuni говорит") || audioDesc.contains("голосом") || audioDesc.contains("тоном")) {
+                        throw AException("Skip introductions in voice message. Instead, send the message content directly. For example, if you want to say \"Kuni says hello in a playful tone\" in a voice message, just send \"hello\".");
+                    }
+
+                    auto ttsApiKey = util::secrets()["elevenlabs"]["api_key"].as_string();
+                    AString voiceId = "pPdl9cQBQq4p6mRkZy2Z";
+                    if (util::secrets()["elevenlabs"].contains("voice_id")) {
+                        voiceId = util::secrets()["elevenlabs"]["voice_id"].as_string();
+                    }
+                    VoiceGenerator generator(ttsApiKey, voiceId);
+                    auto voiceMessage = co_await generator.generate(audioDesc, "ru", 1.2);
+
+                    co_return "Filename: {}"_format(voiceMessage.path.filename());
+                },
+            });
             actions.insert({
                 .name = "get_telegram_chats",
                 .description = "Returns a list of Telegram chats. Use this to seek chat_ids, looking for existing "
@@ -941,6 +996,10 @@ on them.
                                         "obtained by #take_photo tool; althrough you can attach any file as soon as "
                                         "their filename is correct."},
                                     },
+                                    {"audio_filename", {
+                                        .type = "string",
+                                        .description = "Attaches an audio file with the given filename from Kuni's voice gallery."},
+                                    },
                                     {"reply_to_message_id", {
                                         .type = "integer",
                                         .description = "If specified, the message will be rendered as a reply to the "
@@ -964,10 +1023,14 @@ on them.
 
                         const auto message = ctx.args["text"].asStringOpt().valueOr("");
                         const auto photoFilename = ctx.args["photo_filename"].asStringOpt().valueOr("");
+                        const auto audioFilename = ctx.args["audio_filename"].asStringOpt().valueOr("");
                         const auto replyTo = ctx.args["reply_to_message_id"].asLongIntOpt().valueOr(0);
 
-                        if (message.empty() && photoFilename.empty()) {
-                            throw AException("At least \"text\" or \"photo_filename\" must be populated");
+                        if (message.empty() && photoFilename.empty() && audioFilename.empty()) {
+                            throw AException("At least one of \"text\", \"photo_filename\" or \"audio_filename\" must be populated");
+                        }
+                        if (!photoFilename.empty() && !audioFilename.empty()) {
+                            throw AException("Cannot attach both photo and audio in a single message");
                         }
 
                         if (message.contains("\n\n")) {
@@ -1137,12 +1200,27 @@ on them.
                             photo = AImage::fromBuffer(AByteBuffer::fromStream(AFileInputStream(APath("data") / "gallery" / photoFilename)));
                         }
 
+                        AOptional<APath> audioPath;
+                        if (!audioFilename.empty()) {
+                            if (audioFilename.contains("/")) {
+                                throw AException("Invalid audio filename: \"{}\". Filename must not contain \"/\". ");
+                            }
+                            if (audioFilename.contains("..")) {
+                                throw AException("Invalid audio filename: \"{}\". Filename must not contain \"..\". ");
+                            }
+                            APath candidatePath = APath("data") / "voice_messages" / audioFilename;
+                            if (!candidatePath.isRegularFileExists()) {
+                                throw AException("Audio file not found: {}"_format(candidatePath.absolute()));
+                            }
+                            audioPath = candidatePath;
+                        }
+
                         // actually send a message. we don't really need to wait until tdlib reports message sent
                         // successfully (this is exactly when in telegram desktop the message status changes from clock
                         // to one tick).
                         // however, if something goes wrong, this is reported as an exception to LLM and it will know
                         // that a technical issue appeared during sending the message (i.e., LLMs bot was banned)
-                        co_await telegramPostMessage(chat->id_, message, std::move(photo), replyTo);
+                        co_await telegramPostMessage(chat->id_, message, std::move(photo), std::move(audioPath), replyTo);
 
                         // indicate that bot is typing once again; this would feel natural if llm sends series of
                         // messages.
