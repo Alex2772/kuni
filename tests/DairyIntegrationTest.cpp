@@ -13,8 +13,6 @@
 
 
 TEST(DiaryIntegration, Basic) {
-    TEST_REQUIRES_ENDPOINT(config::ENDPOINT_MAIN.endpoint);
-
     APath("test_data").removeFileRecursive();
     populateUnrelatedDiaryEntries();
     AEventLoop loop;
@@ -55,7 +53,6 @@ trigraph substitution, see /Zc:trigraphs (Trigraphs Substitution).
 }
 
 TEST(DiaryIntegration, Remember) {
-    TEST_REQUIRES_ENDPOINT(config::ENDPOINT_MAIN.endpoint);
     APath("test_data").removeFileRecursive();
     populateUnrelatedDiaryEntries();
     AEventLoop loop;
@@ -123,7 +120,6 @@ Guess which hero I was playing :)
 }
 
 TEST(DiaryIntegration, Query1) {
-    TEST_REQUIRES_ENDPOINT(config::ENDPOINT_MAIN.endpoint);
     APath("test_data").removeFileRecursive();
     populateUnrelatedDiaryEntries();
     Diary diary("test_data");
@@ -163,7 +159,6 @@ TEST(DiaryIntegration, Query1) {
 }
 
 TEST(DiaryIntegration, AskDiary) {
-    TEST_REQUIRES_ENDPOINT(config::ENDPOINT_MAIN.endpoint);
     // I refer to hampsters' specific quote: "ВСЁ ПОШЛО БЫ ЛУЧШЕ, ЕСЛИ БЫ У ВСЕХ БЫЛИ ШАРЫ" (1774022551.md)
     // nobody really will remember that unless was told to. (Kuni was told about this quote in 1774022551.md).
     APath("test_data").removeFileRecursive();
@@ -188,7 +183,6 @@ TEST(DiaryIntegration, AskDiary) {
 }
 
 TEST(DiaryIntegration, RealWorldChatHistorySneakyTopicSwitch) {
-    TEST_REQUIRES_ENDPOINT(config::ENDPOINT_MAIN.endpoint);
     // real world example: Kuni was not able to remember Wrecking Ball from Overwatch; although there are a lot of diary
     // entries related to that.
     // the reason for this is simple: CHAT_HISTORY embedding mostly refers to our dialogue with Kuni about memory
@@ -300,8 +294,6 @@ TEST(DiaryIntegration, RealWorldChatHistorySneakyTopicSwitch) {
 }
 
 TEST(DiaryIntegration, ConversationNoFollowUp) {
-    TEST_REQUIRES_ENDPOINT(config::ENDPOINT_MAIN.endpoint);
-
     // real world example: Kuni was trying to generate a follow-up despite the conversion was ended in fact.
     // this is especially noticeable because its responses are usually long, and it repeats itself
     // humans don't work like that. people tend to be lazy.
@@ -380,8 +372,6 @@ TEST(DiaryIntegration, ConversationNoFollowUp) {
 }
 
 TEST(DiaryIntegration, Merge) {
-    TEST_REQUIRES_ENDPOINT(config::ENDPOINT_MAIN.endpoint);
-
     APath("test_data").removeFileRecursive();
     Diary diary("test_data");
     diary.save({
@@ -414,8 +404,6 @@ TEST(DiaryIntegration, Merge) {
 }
 
 TEST(DiaryIntegration, Split) {
-    TEST_REQUIRES_ENDPOINT(config::ENDPOINT_MAIN.endpoint);
-
     APath("test_data").removeFileRecursive();
     Diary diary("test_data");
     diary.save({

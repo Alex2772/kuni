@@ -9,9 +9,6 @@
 
 TEST(ImageGeneratorIntegration, Generate)
 {
-    TEST_REQUIRES_ENDPOINT(config::ENDPOINT_MAIN.endpoint);
-    TEST_REQUIRES_ENDPOINT(config::ENDPOINT_SD);
-
     AEventLoop loop;
     IEventLoop::Handle h(&loop);
     AAsyncHolder async;

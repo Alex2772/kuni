@@ -9,8 +9,6 @@
 
 TEST(StableDiffusionIntegrationClient, Txt2Img)
 {
-    TEST_REQUIRES_ENDPOINT(config::ENDPOINT_SD);
-
     // This test requires a running Stable Diffusion WebUI with API enabled.
     // If it's not available, this test will fail or timeout.
     // We can't really run it in a headless environment without SD, 
