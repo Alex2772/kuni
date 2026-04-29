@@ -750,6 +750,20 @@ Use absolute time in your queries.
                         result += co_await describePhoto(co_await fetchPhoto(targetPhotoIt->get()->photo_));
                     }
                 }
+
+                if (msg.content_->get_id() == td::td_api::messageSticker::ID) {
+                    auto& sticker = static_cast<td::td_api::messageSticker&>(*msg.content_);
+                    if (sticker.sticker_->sticker_) {
+                        result += co_await describePhoto(co_await fetchPhoto(sticker.sticker_->sticker_));
+                    }
+                }
+
+                if (msg.content_->get_id() == td::td_api::messageAnimation::ID) {
+                    auto& animation = static_cast<td::td_api::messageAnimation&>(*msg.content_);
+                    if (animation.animation_->thumbnail_) {
+                        result += co_await describePhoto(co_await fetchPhoto(animation.animation_->thumbnail_->file_));
+                    }
+                }
             }
 
             result += extractMessageTypeAndText(msg);
