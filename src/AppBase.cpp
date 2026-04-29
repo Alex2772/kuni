@@ -107,9 +107,18 @@ AppBase::AppBase(APath workingDir): mDiary(workingDir / "diary"), mWakeupTimer(_
                         // 2. reduce resource usage:
                         //    - less conversations would be made
                         //    - in case of group chats and telegram channels, messages would be processed in batches
-                        const auto minutes = std::uniform_int_distribution(15, 120)(re);
+                        const auto minutes = std::uniform_int_distribution(15, 60)(re);
                         ALogger::info(LOG_TAG) << "Going to sleep for " << minutes << " minutes";
-                        co_await AThread::asyncSleep(1min * minutes);
+                        for (int i = 0; i < minutes; ++i) {
+                            // костыль ну да сойдёт
+                            if (!self.mNotifications.empty()) {
+                                if (self.mNotifications.front().message.contains("{}"_format(config::PAPIK_CHAT_ID))) {
+                                    ALogger::info(LOG_TAG) << "Daddy woke me up";
+                                    break;
+                                }
+                            }
+                            co_await AThread::asyncSleep(1min);
+                        }
                     }
                 }
     #endif
@@ -124,7 +133,8 @@ AppBase::AppBase(APath workingDir): mDiary(workingDir / "diary"), mWakeupTimer(_
                 }
                 auto notification = std::move(self.mNotifications.front());
                 self.mNotifications.pop_front();
-                notification.message += "\nCurrent time: {}"_format(std::chrono::system_clock::now());
+                notification.message += "\nCurrent time: {} UTC"_format(std::chrono::system_clock::now());
+                notification.onStartedProcessing.supplyValue();
                 AUI_DEFER { notification.onProcessed.supplyValue(); };
                 try {
                     if (notification.actions.handlers().size() == 1) {
@@ -323,8 +333,8 @@ AppBase::AppBase(APath workingDir): mDiary(workingDir / "diary"), mWakeupTimer(_
     });
 }
 
-const AFuture<>& AppBase::passNotificationToAI(AString notification, OpenAITools actions, bool first) {
-    const auto& result = mNotifications.emplace(first ? mNotifications.begin() : mNotifications.end(), std::move(notification), std::move(actions))->onProcessed;
+const AppBase::Notification& AppBase::passNotificationToAI(AString notification, OpenAITools actions, bool first) {
+    const auto& result = *mNotifications.emplace(first ? mNotifications.begin() : mNotifications.end(), std::move(notification), std::move(actions));
     mNotificationsSignal.supplyValue();
     return result;
 }
@@ -407,10 +417,17 @@ void AppBase::actProactively() {
 It's time to reflect on your thoughts!
   - maybe make some reasoning?\n"
   - maybe do some reflection?\n"
-  - maybe write to a person and initiate a dialogue with #send_telegram_message?\n"
+  - maybe write to a person and initiate a dialogue? whom you would like to write? maybe call #get_telegram_chats? You
+    can open one chat at a time - choose wisely!\n"
 Act proactively!
 )";
-    passNotificationToAI(std::move(prompt));
+    const auto& notification = passNotificationToAI(std::move(prompt));
+    notification.onStartedProcessing.onSuccess([&] {
+        mActingProactively = true;
+    });
+    notification.onProcessed.onSuccess([&] {
+        mActingProactively = false;
+    });
 }
 
 
@@ -427,7 +444,7 @@ void AppBase::updateTools(OpenAITools& actions) {
         },
         .handler = [this](OpenAITools::Ctx ctx) -> AFuture<AString> {
             auto query = ctx.args["query"].asStringOpt().valueOrException("\"query\" string is required");
-            if (query.length() < 150) {
+            if (query.length() < 60) {
                 // Alex2772 16-04-2026:
                 // changed from throw AException to co_return.
                 // AException is a technical error and the engine would load additional diary entries

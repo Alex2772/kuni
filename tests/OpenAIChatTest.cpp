@@ -331,3 +331,55 @@ TEST(OpenAIChat, Embeddings) {
     }
 
 }
+
+
+TEST(OpenAIChat, ParseResponse) {
+    static constexpr auto R = R"(
+{
+  "id": "gen-1777241316-pffm5r7c8ACtvqbrZqXm",
+  "object": "chat.completion",
+  "created": 1777241316,
+  "model": "google/gemma-3-12b-it",
+  "provider": "DeepInfra",
+  "system_fingerprint": null,
+  "choices": [
+    {
+      "index": 0,
+      "logprobs": null,
+      "finish_reason": "stop",
+      "native_finish_reason": "stop",
+      "message": {
+        "role": "assistant",
+        "content": "```json\n{\n  \"positivePrompt\": \"Anime girl, cat ears, shoulder-length white hair, messy strands, gold eyes, small nose, cute fangs, bare shoulders and chest, playful expression, leaning forward, soft lighting from window, floating particles in the air, dark corset with gold lace trim, thighhigh stockings with lace trim, delicate collarbones, beauty mark under left eye, rustic interior, wooden beams, selfie, (age_30:1.2), medium breasts, <lora:perfecteyes:1>, <lora:Iridescence:1>\",\n  \"negativePrompt\": \"(text:2), (signature:2), raw photo, group photo, multiple people\"\n}\n```",
+        "refusal": null,
+        "reasoning": null
+      }
+    }
+  ],
+  "usage": {
+    "prompt_tokens": 1113,
+    "completion_tokens": 152,
+    "total_tokens": 1265,
+    "cost": 0.000064,
+    "is_byok": false,
+    "prompt_tokens_details": {
+      "cached_tokens": 0,
+      "cache_write_tokens": 0,
+      "audio_tokens": 0,
+      "video_tokens": 0
+    },
+    "cost_details": {
+      "upstream_inference_cost": 0.000064,
+      "upstream_inference_prompt_cost": 0.000045,
+      "upstream_inference_completions_cost": 0.00002
+    },
+    "completion_tokens_details": {
+      "reasoning_tokens": 0,
+      "image_tokens": 0,
+      "audio_tokens": 0
+    }
+  }
+}
+)";
+    aui::from_json<OpenAIChat::Response>(AJson::fromString(R));
+}

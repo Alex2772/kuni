@@ -1,0 +1,5 @@
+.idea
+cmake-build-**
+*uild*
+.DS_Store
+bin

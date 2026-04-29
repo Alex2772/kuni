@@ -10,7 +10,7 @@
 
 struct OpenAIChat {
     AString systemPrompt;
-    int maxTokens = 8192;
+    int maxOutputTokens = 8192;
     EndpointAndModel config = ::config::ENDPOINT_MAIN;
     AOptional<int64_t> seed;
 
@@ -19,8 +19,9 @@ struct OpenAIChat {
     static constexpr auto EMBEDDING_TAG = "kuni_embedding";
     static AString embedImage(AImageView image);
 
-    int numPredict = config::DIARY_TOKEN_COUNT_TRIGGER / 10;
-
+    struct String: AString {
+        using AString::AString;
+    };
 
     struct Message {
         enum class Role {
@@ -30,16 +31,16 @@ struct OpenAIChat {
             TOOL,
           } role;
         AString content;
-        AString tool_call_id;
-        AString reasoning;
-        AString reasoning_content; // deepseek requires this
+        String tool_call_id;
+        String reasoning;
+        String reasoning_content; // deepseek requires this
         struct ToolCall {
-            AString id;
+            String id;
             int64_t index;
-            AString type;
+            String type;
             struct Function {
-                AString name;
-                AString arguments;
+                String name;
+                String arguments;
             } function;
 
             ToolCall& operator+=(const ToolCall& other) {
@@ -76,7 +77,7 @@ struct OpenAIChat {
         AString object;
         int64_t created;
         AString model;
-        AString system_fingerprint;
+        AOptional<AString> system_fingerprint;
         struct Choice {
             int64_t index;
             Message message;
@@ -138,3 +139,50 @@ struct AJsonConv<OpenAIChat::Message::Role> {
         throw AException("invalid role: " + str);
     }
 };
+
+template<>
+struct AJsonConv<OpenAIChat::String> {
+    static AJson toJson(const OpenAIChat::String& v) {
+        return static_cast<const AString&>(v);
+    }
+
+    static void fromJson(const AJson& json, OpenAIChat::String& out) {
+        if (json.isNull()) {
+            out = {};
+            return;
+        }
+        AJsonConv<AString>::fromJson(json, out);
+    }
+};
+
+AJSON_FIELDS(OpenAIChat::Message::ToolCall::Function,
+             (name, "name", AJsonFieldFlags::OPTIONAL)
+             (arguments, "arguments", AJsonFieldFlags::OPTIONAL)
+             )
+
+AJSON_FIELDS(OpenAIChat::Message::ToolCall,
+             (id, "id", AJsonFieldFlags::OPTIONAL)
+             (type, "type", AJsonFieldFlags::OPTIONAL)
+             (function, "function", AJsonFieldFlags::OPTIONAL)
+             AJSON_FIELDS_ENTRY(index))
+
+AJSON_FIELDS(OpenAIChat::Message,
+             (role, "role", AJsonFieldFlags::OPTIONAL)
+             (content, "content", AJsonFieldFlags::OPTIONAL)
+             (reasoning, "reasoning", AJsonFieldFlags::OPTIONAL)
+             (reasoning_content, "reasoning_content", AJsonFieldFlags::OPTIONAL)
+             (tool_call_id, "tool_call_id", AJsonFieldFlags::OPTIONAL)(tool_calls, "tool_calls",
+                                                                          AJsonFieldFlags::OPTIONAL))
+
+AJSON_FIELDS(OpenAIChat::Response::Choice,
+             AJSON_FIELDS_ENTRY(index) AJSON_FIELDS_ENTRY(message) AJSON_FIELDS_ENTRY(finish_reason))
+
+AJSON_FIELDS(OpenAIChat::Response,
+             AJSON_FIELDS_ENTRY(id) AJSON_FIELDS_ENTRY(object) AJSON_FIELDS_ENTRY(created) AJSON_FIELDS_ENTRY(model)
+                 AJSON_FIELDS_ENTRY(system_fingerprint) AJSON_FIELDS_ENTRY(choices) AJSON_FIELDS_ENTRY(usage))
+
+AJSON_FIELDS(OpenAIChat::Response::Usage,
+             AJSON_FIELDS_ENTRY(prompt_tokens) AJSON_FIELDS_ENTRY(completion_tokens) AJSON_FIELDS_ENTRY(total_tokens)
+
+)
+

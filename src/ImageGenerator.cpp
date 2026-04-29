@@ -60,6 +60,11 @@ AFuture<ImageGenerator::GalleryImage> ImageGenerator::generate(AString descripti
                         .cfg_scale = std::uniform_real_distribution<>(1.0, 5.0)(ge),
                         .width = std::uniform_int_distribution<>(768, 1400)(ge),
                         .height = std::uniform_int_distribution<>(768, 1400)(ge),
+                        .enable_hr = true,
+                        .hr_scale = 1.5,
+                        .hr_upscaler = "Latent",
+                        .hr_second_pass_steps = 10,
+                        .denoising_strength = 0.7,
                     });
                 } catch (const AException& e) {
                     ALogger::err(LOG_TAG) << "Stable diffusion failed:: " << e;
@@ -136,7 +141,6 @@ AFuture<> ImageGenerator::engineerPrompt(PromptPair& out, const AString& descrip
         safeDescription.replaceAll(word, "");
     }
     OpenAIChat chat = mChatClient;
-    chat.maxTokens = 3000;
     chat.systemPrompt = R"(
 You are an expert Stable Diffusion prompt engineer.
 Your task is to transform a freeform description into a high-quality, descriptive Stable Diffusion prompt.
@@ -258,7 +262,6 @@ Negative prompt is what to avoid in the image.
 
 AFuture<ImageGenerator::AssessmentResult> ImageGenerator::assessImage(const AImage& image, const AString& description) {
     OpenAIChat chat = mChatClient;
-    chat.maxTokens = 3000;
     // Note: mChatClient.config should ideally be a vision-capable model.
     chat.systemPrompt = R"(
 You are an extremely strict image critic and Stable Diffusion quality gate.

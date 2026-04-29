@@ -12,18 +12,22 @@
 
 #include "AUI/Common/AByteBuffer.h"
 #include "AUI/IO/AFileInputStream.h"
+#include "AUI/IO/APath.h"
 #include "AUI/Platform/Entry.h"
 #include "AUI/Util/ASharedRaiiHelper.h"
 #include "AUI/Util/kAUI.h"
 #include "AppBase.h"
 #include "ImageGenerator.h"
+#include "VoiceGenerator.h"
 #include "AUI/Image/jpg/JpgImageLoader.h"
 #include "telegram/TelegramClient.h"
 #include "ui/debug/KuniDebugWindow.h"
 #include "util/populate_from_diary_ai_if_needed.h"
+#include "util/secrets.h"
 
 #include <range/v3/action/reverse.hpp>
 #include <range/v3/algorithm/contains.hpp>
+#include <range/v3/algorithm/remove_if.hpp>
 #include <range/v3/algorithm/sort.hpp>
 
 using namespace std::chrono_literals;
@@ -50,7 +54,7 @@ namespace {
 
 
     protected:
-        AFuture<> telegramPostMessage(int64_t chatId, AString text, AOptional<_<AImage>> photo = std::nullopt, int64_t replyTo = 0) {
+        AFuture<> telegramPostMessage(int64_t chatId, AString text, AOptional<_<AImage>> photo = std::nullopt, AOptional<APath> audioPath = std::nullopt, int64_t replyTo = 0) {
             // Check lockdown mode - only allow PAPIK_CHAT_ID if lockdown is enabled
             if constexpr (config::LOCKDOWN_MODE) {
                 if (chatId != config::PAPIK_CHAT_ID) {
@@ -77,6 +81,23 @@ namespace {
                         return content;
                     }
 
+                    if (audioPath) {
+                        auto content = td::td_api::make_object<td::td_api::inputMessageVoiceNote>();
+                        content->voice_note_ = TelegramClient::toPtr(td::td_api::inputFileLocal(audioPath->absolute().toStdString()));
+                        // content->album_cover_thumbnail_ = nullptr;
+                        content->duration_ = 0;
+                        // content->title_ = audioPath->filename();
+                        // content->performer_ = "";
+                        if (!text.empty()) {
+                            content->caption_ = [&] {
+                                auto t = td::td_api::make_object<td::td_api::formattedText>();
+                                t->text_ = text;
+                                return t;
+                            }();
+                        }
+                        return content;
+                    }
+
                     auto content = td::td_api::make_object<td::td_api::inputMessageText>();
                     content->text_ = [&] {
                         auto t = td::td_api::make_object<td::td_api::formattedText>();
@@ -94,33 +115,76 @@ namespace {
 
         void updateTools(OpenAITools& actions) override {
             AppBase::updateTools(actions);
-            actions.insert({
-                .name = "take_photo",
-                .description = "Takes a photo by Kuni. This tool is useful for creating selfies, photos of "
-                                 "surroundings, or any other images. "
-                                 "The result of this tool is a photo description and a filename. "
-                                 "The filename can then be sent to someone else using #send_telegram_message.",
-                .parameters =
-                    {
-                        .properties =
-                            {
-                                {"photo_desc", {
-                                    .type = "string",
-                                    .description = "Describes the image Kuni would like to achieve. Refer to yourself "
-                                                    "as Kuni. Avoid unnecessary details. Instead of specifying complex "
-                                                    "composition, prefer setting vibe of the image. "
-                                                    "Example: \"Kuni makes playful selfie\"",}},
-                            },
-                        .required = {"photo_desc"},
-                    },
-                .handler = [this](OpenAITools::Ctx ctx) -> AFuture<AString> {
-                    auto photoDesc = ctx.args["photo_desc"].asStringOpt().valueOrException("photo_desc is required");
-                    auto galleryImage = co_await ImageGenerator{StableDiffusionClient{}, OpenAIChat{.config = config::ENDPOINT_PHOTO_TO_TEXT, .numPredict = 1000 }}.generate(photoDesc);
-                    auto description = co_await describePhoto(galleryImage.path);
+            if constexpr (config::CAPABILITY_TAKE_PHOTO) {
+                actions.insert({
+                    .name = "take_photo",
+                    .description = "Takes a photo by Kuni. This tool is useful for creating selfies, photos of "
+                                     "surroundings, or any other images. "
+                                     "The result of this tool is a photo description and a filename. "
+                                     "The filename can then be sent to someone else using #send_telegram_message.",
+                    .parameters =
+                        {
+                            .properties =
+                                {
+                                    {"photo_desc", {
+                                        .type = "string",
+                                        .description = "Describes the image Kuni would like to achieve. Refer to yourself "
+                                                        "as Kuni. Avoid unnecessary details. Instead of specifying complex "
+                                                        "composition, prefer setting vibe of the image. "
+                                                        "Example: \"Kuni makes playful selfie\""
+                                                        "take_photo only knows about Kuni.\n"
+                                                        "To draw other character, specify their name, and describe their\n"
+                                                        "appearance as specifically as possible."
+                                                        "Example: \"Selfie of Yuki - Kuni's sister: anime young female,"
+                                                        "gold eyes, white hair, white dress, black socks.\"\n"
+                                        ,}},
+                                },
+                            .required = {"photo_desc"},
+                        },
+                    .handler = [this](OpenAITools::Ctx ctx) -> AFuture<AString> {
+                        auto photoDesc = ctx.args["photo_desc"].asStringOpt().valueOrException("photo_desc is required");
+                        auto galleryImage = co_await ImageGenerator{StableDiffusionClient{}, OpenAIChat{.config = config::ENDPOINT_PHOTO_TO_TEXT }}.generate(photoDesc);
+                        auto description = co_await describePhoto(galleryImage.path);
 
-                    co_return "{}\n\nFilename: {}\n"
-                    "When writing diary, do not forget to mention this photo and its filename verbatim - you might need this in the future!\n\n"
-                    "You have created photo successfully. Review it carefully. Send it only if you are fully satisfied; use take_photo again to make another photo"_format(description, galleryImage.path.filename());
+                        co_return "{}\n\nFilename: {}\n"
+                        "When writing diary, do not forget to mention this photo and its filename verbatim - you might need this in the future!\n\n"
+                        "You have created photo successfully. Review it carefully. Send it only if you are fully satisfied; use take_photo again to make another photo"_format(description, galleryImage.path.filename());
+                    },
+                });
+            }
+            actions.insert({
+                .name = "record_audio",
+                .description = "Records a new voice message using ElevenLabs TTS and stores it in Kuni's voice gallery.",
+                .parameters = {
+                    .properties = {
+                        {"audio_desc", {
+                            .type = "string",
+                            .description = "Specifies the message Kuni would like to say. This is a TTS prompt, so the text will be converted directly into speech. Do NOT include instructions for the voice message in this field. Instead, write EXACTLY what you would say in a #send_telegram_message call. The description only has to include what the user will hear in the final voice message."_format()},
+                        },
+                    },
+                    .required = {"audio_desc"},
+                },
+                .handler = [this](OpenAITools::Ctx ctx) -> AFuture<AString> {
+                    auto audioDesc = ctx.args["audio_desc"].asStringOpt().valueOrException("audio_desc is required");
+                    if (audioDesc.trim().empty()) {
+                        throw AException("audio_desc must not be empty");
+                    }
+
+                    // really dirty fix: hit Kuni with an exception if it tries to say an introduction in a voice note
+                    if (audioDesc.contains("Kuni says") || audioDesc.contains("voice") || audioDesc.contains("tone")
+                        || audioDesc.contains("Kuni говорит") || audioDesc.contains("голосом") || audioDesc.contains("тоном")) {
+                        throw AException("Skip introductions in voice message. Instead, send the message content directly. For example, if you want to say \"Kuni says hello in a playful tone\" in a voice message, just send \"hello\".");
+                    }
+
+                    auto ttsApiKey = util::secrets()["elevenlabs"]["api_key"].as_string();
+                    AString voiceId = "pPdl9cQBQq4p6mRkZy2Z";
+                    if (util::secrets()["elevenlabs"].contains("voice_id")) {
+                        voiceId = util::secrets()["elevenlabs"]["voice_id"].as_string();
+                    }
+                    VoiceGenerator generator(ttsApiKey, voiceId);
+                    auto voiceMessage = co_await generator.generate(audioDesc, "ru", 1.2);
+
+                    co_return "Filename: {}"_format(voiceMessage.path.filename());
                 },
             });
             actions.insert({
@@ -137,6 +201,17 @@ namespace {
                     // however, LLM sometimes decides to prioritize people, based on message preview, count and
                     // a person.
                     chats |= ranges::actions::reverse;
+
+                    if (isActingProactively()) {
+                        // the whole point of "acting proactively" is to revisit older chats with no activity (no inbox
+                        // messages). LLM is likely to call get_telegram_chats during acting proactively, so we remove
+                        // active chats from the output during "acting proactively" phase.
+                        //
+                        // don't worry about active chats -- LLM will receive notifications from them anyway.
+                        chats.removeIf([](const td::td_api::object_ptr<td::td_api::chat>& chat) {
+                            return chat->unread_count_ > 0;
+                        });
+                    }
 
                     AString result =
                         "You are currently looking at Telegram's main screen. Use see the following chats:\n";
@@ -220,6 +295,41 @@ Use absolute time in your queries.
                     co_await llmuiFormatChatList(result, chats);
 
                     co_return result;
+                },
+            });
+
+            actions.insert({
+                .name = "remove_and_ban_chat",
+                .description = "Removes specified chat from chat list. If a chat is a DM with a user, prevents this "
+                    "specific user to DM you.\n"
+                    "You must use this if:\n"
+                    "- you don't like this chat;\n"
+                    "- participant(s) are rude to you;\n"
+                    "- they are needy:\n"
+                    "  - asking to roleplay;\n"
+                    "  - asking to write a python program;\n"
+                    "  - asking to solve any other task;\n"
+                ,
+                .parameters =
+                    {
+                        .properties =
+                            {
+                                {"chat_id", {.type = "integer", .description = "chat_id to block."
+                                }},
+                            },
+                        .required = {"chat_id"},
+                    },
+                .handler = [this](OpenAITools::Ctx ctx) -> AFuture<AString> {
+                    auto chatId = ctx.args["chat_id"].asLongIntOpt().valueOrException("chat_id integer is required");
+                    ALogger::info(LOG_TAG) << "remove_and_ban_chat: chat_id" << chatId;
+                    if (chatId == config::PAPIK_CHAT_ID) {
+                        // precaution -- can't delete chat with papik
+                        co_return "Failed";
+                    }
+
+                    co_await removeAndBanChat(chatId);
+
+                    co_return "Success";
                 },
             });
         }
@@ -369,6 +479,8 @@ Use absolute time in your queries.
             notification += "\n</notification>\n"
             "You don't have any chat open. Use #open tool to open the chat";
 
+            const bool isImportant = userId == config::PAPIK_CHAT_ID;
+
             passNotificationToAI(
                 std::move(notification),
                 {
@@ -380,7 +492,7 @@ Use absolute time in your queries.
                         },
                     },
 
-                });
+                }, isImportant);
 
             co_return;
         }
@@ -410,6 +522,35 @@ Use absolute time in your queries.
         AMap<AString /* path */, AString /* description */> mImages = {};
 
     public:
+
+        [[nodiscard]]
+        AFuture<> removeAndBanChat(int64_t chatId) {
+            auto chat = co_await telegram()->sendQueryWithResult(
+                TelegramClient::toPtr(td::td_api::getChat(chatId)));
+
+            switch (chat->type_->get_id()) {
+                case td::td_api::chatTypePrivate::ID:
+                    // Block the user from sending new DMs
+                    co_await telegram()->sendQueryWithResult(
+                        TelegramClient::toPtr(td::td_api::setMessageSenderBlockList(
+                            td::td_api::make_object<td::td_api::messageSenderUser>(chatId),
+                            td::td_api::make_object<td::td_api::blockListMain>())));
+                    // Remove chat from chat list and delete history
+                    co_await telegram()->sendQueryWithResult(
+                        TelegramClient::toPtr(td::td_api::deleteChatHistory(chatId, true, true)));
+                    break;
+                case td::td_api::chatTypeBasicGroup::ID:
+                case td::td_api::chatTypeSupergroup::ID:
+                    // leaveChat: Removes the current user from chat members. Private and secret
+                    // chats can't be left using this method.
+                    co_await telegram()->sendQueryWithResult(
+                        TelegramClient::toPtr(td::td_api::leaveChat(chatId)));
+                    break;
+                default:
+                    break;
+            }
+        }
+
         AFuture<AString> describePhoto(AStringView pathToImage) {
             if (const auto i = mImages.contains(pathToImage)) {
                 co_return i->second;
@@ -925,6 +1066,10 @@ on them.
                                         "obtained by #take_photo tool; althrough you can attach any file as soon as "
                                         "their filename is correct."},
                                     },
+                                    {"audio_filename", {
+                                        .type = "string",
+                                        .description = "Attaches an audio file with the given filename from Kuni's voice gallery."},
+                                    },
                                     {"reply_to_message_id", {
                                         .type = "integer",
                                         .description = "If specified, the message will be rendered as a reply to the "
@@ -948,10 +1093,14 @@ on them.
 
                         const auto message = ctx.args["text"].asStringOpt().valueOr("");
                         const auto photoFilename = ctx.args["photo_filename"].asStringOpt().valueOr("");
+                        const auto audioFilename = ctx.args["audio_filename"].asStringOpt().valueOr("");
                         const auto replyTo = ctx.args["reply_to_message_id"].asLongIntOpt().valueOr(0);
 
-                        if (message.empty() && photoFilename.empty()) {
-                            throw AException("At least \"text\" or \"photo_filename\" must be populated");
+                        if (message.empty() && photoFilename.empty() && audioFilename.empty()) {
+                            throw AException("At least one of \"text\", \"photo_filename\" or \"audio_filename\" must be populated");
+                        }
+                        if (!photoFilename.empty() && !audioFilename.empty()) {
+                            throw AException("Cannot attach both photo and audio in a single message");
                         }
 
                         if (message.contains("\n\n")) {
@@ -1100,11 +1249,14 @@ on them.
                         }
 
 
+                        mTelegram->sendQuery(TelegramClient::toPtr(td::td_api::sendChatAction(chat->id_, {}, {}, TelegramClient::toPtr(td::td_api::chatActionTyping()))));
+
                         // random wait. You definitely don't want to receive 4 large messages in 1 sec right?
                         static std::default_random_engine re(std::chrono::high_resolution_clock::now().time_since_epoch().count());
-                        static std::uniform_int_distribution<int> dist(1, 10);
+                        static std::uniform_int_distribution<int> dist(10, 50);
                         co_await AThread::asyncSleep((message.length() + 1) * dist(re) * 1ms);
 
+                        mTelegram->sendQuery(TelegramClient::toPtr(td::td_api::sendChatAction(chat->id_, {}, {}, TelegramClient::toPtr(td::td_api::chatActionTyping()))));
 
                         // handle photo_filename
                         AOptional<_<AImage>> photo;
@@ -1118,12 +1270,27 @@ on them.
                             photo = AImage::fromBuffer(AByteBuffer::fromStream(AFileInputStream(APath("data") / "gallery" / photoFilename)));
                         }
 
+                        AOptional<APath> audioPath;
+                        if (!audioFilename.empty()) {
+                            if (audioFilename.contains("/")) {
+                                throw AException("Invalid audio filename: \"{}\". Filename must not contain \"/\". ");
+                            }
+                            if (audioFilename.contains("..")) {
+                                throw AException("Invalid audio filename: \"{}\". Filename must not contain \"..\". ");
+                            }
+                            APath candidatePath = APath("data") / "voice_messages" / audioFilename;
+                            if (!candidatePath.isRegularFileExists()) {
+                                throw AException("Audio file not found: {}"_format(candidatePath.absolute()));
+                            }
+                            audioPath = candidatePath;
+                        }
+
                         // actually send a message. we don't really need to wait until tdlib reports message sent
                         // successfully (this is exactly when in telegram desktop the message status changes from clock
                         // to one tick).
                         // however, if something goes wrong, this is reported as an exception to LLM and it will know
                         // that a technical issue appeared during sending the message (i.e., LLMs bot was banned)
-                        co_await telegramPostMessage(chat->id_, message, std::move(photo), replyTo);
+                        co_await telegramPostMessage(chat->id_, message, std::move(photo), std::move(audioPath), replyTo);
 
                         // indicate that bot is typing once again; this would feel natural if llm sends series of
                         // messages.

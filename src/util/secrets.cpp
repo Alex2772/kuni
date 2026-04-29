@@ -19,6 +19,12 @@ hash = ""
 [ollama]
 # uncomment and specify this if you want Ollama web search
 # bearer_key = ""
+
+[elevenlabs]
+# ElevenLabs API key for TTS
+# api_key = ""
+# Optional default voice ID. If omitted, the built-in default voice id is used.
+# voice_id = "pPdl9cQBQq4p6mRkZy2Z"
 )";
 
 

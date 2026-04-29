@@ -126,7 +126,7 @@ TEST(WebSearch, SearchAppAI) {
     IEventLoop::Handle h(&loop);
     AAsyncHolder async;
 
-    async << app->passNotificationToAI("You received a notification. Use #openChat");
+    async << app->passNotificationToAI("You received a notification. Use #openChat").onProcessed;
 
     while (async.size() > 0) {
         loop.iteration();

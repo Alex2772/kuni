@@ -34,7 +34,7 @@ encourages implementations not to do so. Through C++14, trigraphs are supported 
 
 Visual C++ continues to support trigraph substitution, but it's disabled by default. For information on how to enable
 trigraph substitution, see /Zc:trigraphs (Trigraphs Substitution).
-)");
+)").onProcessed;
     while (async.size() > 0) {
         loop.iteration();
     }
@@ -69,7 +69,7 @@ You received a message from Alex2772 (chat_id=1):
 
 Today I was playing several games of Dota 2. Both times I was playing Arc Warden and both times we lost
 :( my teammates weren't bad though.
-)");
+)").onProcessed;
         while (async.size() > 0) {
             loop.iteration();
         }
@@ -96,7 +96,7 @@ You received a message from Alex2772 (chat_id=1):
 Today I won a match in Dota 2
 
 Guess which hero I was playing :)
-)");
+)").onProcessed;
         ON_CALL(*app, telegramPostMessage(testing::_))
             .WillByDefault([&](AString text) noexcept -> AFuture<> {
                 const auto lower = text.lowercase();
@@ -283,7 +283,7 @@ TEST(Diary, RealWorldChatHistorySneakyTopicSwitch) {
         EXPECT_CALL(*app, openChat()).Times(testing::AtLeast(1));
         EXPECT_CALL(*app, telegramPostMessage(testing::_)).Times(testing::AtLeast(1));
 
-        async << app->passNotificationToAI("You recevied a notification. Please use #open_chat to see mesages.");
+        async << app->passNotificationToAI("You recevied a notification. Please use #open_chat to see mesages.").onProcessed;
 
         while (async.size() > 0) {
             loop.iteration();
@@ -361,7 +361,7 @@ TEST(Diary, ConversationNoFollowUp) {
         EXPECT_CALL(*app, openChat()).Times(testing::AtLeast(1));
         EXPECT_CALL(*app, telegramPostMessage(testing::_)).Times(testing::Exactly(0));
 
-        async << app->passNotificationToAI("You recevied a notification. Please use #open_chat to see mesages.");
+        async << app->passNotificationToAI("You recevied a notification. Please use #open_chat to see mesages.").onProcessed;
 
         while (async.size() > 0) {
             loop.iteration();
