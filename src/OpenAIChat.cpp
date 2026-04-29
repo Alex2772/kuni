@@ -128,7 +128,7 @@ AJson OpenAIChat::makeQueryString(AVector<OpenAIChat::Message> messages) {
           "messages",
           aui::to_json(messages),
         },
-        { "max_tokens", maxTokens },   // hopefully helps with stuck prediction (infinite reasoning)
+        { "max_tokens", maxOutputTokens },   // hopefully helps with stuck prediction (infinite reasoning)
         { "stream", false },
         { "use_context", false },
         { "include_sources", true },

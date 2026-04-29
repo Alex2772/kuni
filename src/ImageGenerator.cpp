@@ -141,7 +141,6 @@ AFuture<> ImageGenerator::engineerPrompt(PromptPair& out, const AString& descrip
         safeDescription.replaceAll(word, "");
     }
     OpenAIChat chat = mChatClient;
-    chat.maxTokens = 3000;
     chat.systemPrompt = R"(
 You are an expert Stable Diffusion prompt engineer.
 Your task is to transform a freeform description into a high-quality, descriptive Stable Diffusion prompt.
@@ -263,7 +262,6 @@ Negative prompt is what to avoid in the image.
 
 AFuture<ImageGenerator::AssessmentResult> ImageGenerator::assessImage(const AImage& image, const AString& description) {
     OpenAIChat chat = mChatClient;
-    chat.maxTokens = 3000;
     // Note: mChatClient.config should ideally be a vision-capable model.
     chat.systemPrompt = R"(
 You are an extremely strict image critic and Stable Diffusion quality gate.

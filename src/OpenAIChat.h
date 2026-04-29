@@ -10,7 +10,7 @@
 
 struct OpenAIChat {
     AString systemPrompt;
-    int maxTokens = 8192;
+    int maxOutputTokens = 8192;
     EndpointAndModel config = ::config::ENDPOINT_MAIN;
     AOptional<int64_t> seed;
 
@@ -18,8 +18,6 @@ struct OpenAIChat {
 
     static constexpr auto EMBEDDING_TAG = "kuni_embedding";
     static AString embedImage(AImageView image);
-
-    int numPredict = config::DIARY_TOKEN_COUNT_TRIGGER / 10;
 
     struct String: AString {
         using AString::AString;

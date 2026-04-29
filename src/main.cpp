@@ -143,7 +143,7 @@ namespace {
                         },
                     .handler = [this](OpenAITools::Ctx ctx) -> AFuture<AString> {
                         auto photoDesc = ctx.args["photo_desc"].asStringOpt().valueOrException("photo_desc is required");
-                        auto galleryImage = co_await ImageGenerator{StableDiffusionClient{}, OpenAIChat{.config = config::ENDPOINT_PHOTO_TO_TEXT, .numPredict = 1000 }}.generate(photoDesc);
+                        auto galleryImage = co_await ImageGenerator{StableDiffusionClient{}, OpenAIChat{.config = config::ENDPOINT_PHOTO_TO_TEXT }}.generate(photoDesc);
                         auto description = co_await describePhoto(galleryImage.path);
 
                         co_return "{}\n\nFilename: {}\n"
