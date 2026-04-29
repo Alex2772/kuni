@@ -6,7 +6,7 @@
 #include "telegram/TelegramClient.h"
 
 
-TEST(Telegram, PostMessage) {
+TEST(TelegramIntegration, PostMessage) {
     AEventLoop loop;
     IEventLoop::Handle h(&loop);
     auto telegram = _new<TelegramClient>();

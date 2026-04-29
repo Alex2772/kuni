@@ -8,7 +8,7 @@
 
 #include <gmock/gmock-spec-builders.h>
 
-TEST(WebSearch, Basic) {
+TEST(WebSearchIntegration, Basic) {
     AEventLoop loop;
     IEventLoop::Handle h(&loop);
     AAsyncHolder async;
@@ -26,7 +26,7 @@ TEST(WebSearch, Basic) {
     EXPECT_TRUE(results.at(0).title.contains("aui-framework")) << results.at(0).title;
 }
 
-TEST(WebSearch, SearchAI) {
+TEST(WebSearchIntegration, SearchAI) {
     AEventLoop loop;
     IEventLoop::Handle h(&loop);
     AAsyncHolder async;
@@ -44,7 +44,7 @@ TEST(WebSearch, SearchAI) {
     EXPECT_TRUE(results.lowercase().contains("alex2772") || results.lowercase().contains("aui::core")) << results;
 }
 
-TEST(WebSearch, SearchAppAI) {
+TEST(WebSearchIntegration, SearchAppAI) {
 
     static constexpr auto CHAT_HISTORY = R"OLOLO(
 <message message_id="4965007360" date="2026-04-01 17:10:26" sender="Alex2772  (@alex2772sc) ">

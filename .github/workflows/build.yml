@@ -97,12 +97,12 @@ jobs:
       - name: Run Tests (Windows)
         if: runner.os == 'Windows'
         working-directory: ${{github.workspace}}/build/bin
-        run: ${{github.workspace}}/build/bin/Tests.exe
+        run: ${{github.workspace}}/build/bin/Tests.exe --gtest_filter=-"*Integration*"
 
       - name: Run Tests (Linux and macOS)
         if: runner.os != 'Windows'
         working-directory: ${{github.workspace}}/build/bin
-        run: ${{github.workspace}}/build/bin/Tests
+        run: ${{github.workspace}}/build/bin/Tests --gtest_filter=-"*Integration*"
 
       - name: Pack Windows Setup
         if: runner.os == 'Windows'

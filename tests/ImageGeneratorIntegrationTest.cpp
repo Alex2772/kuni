@@ -1,12 +1,17 @@
 #include "ImageGenerator.h"
+#include "common.h"
+
 #include <gmock/gmock.h>
 #include "AUI/Thread/AAsyncHolder.h"
 #include "AUI/Thread/AEventLoop.h"
 #include "config.h"
 #include "AUI/Image/png/PngImageLoader.h"
 
-TEST(ImageGenerator, Generate)
+TEST(ImageGeneratorIntegration, Generate)
 {
+    TEST_REQUIRES_ENDPOINT(config::ENDPOINT_MAIN.endpoint);
+    TEST_REQUIRES_ENDPOINT(config::ENDPOINT_SD);
+
     AEventLoop loop;
     IEventLoop::Handle h(&loop);
     AAsyncHolder async;

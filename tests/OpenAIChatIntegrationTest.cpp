@@ -68,7 +68,7 @@ Handle niche topics – For obscure or less‑known libraries/frameworks, still 
 </modeInstructions>
 )";
 
-TEST(OpenAIChat, Basic) {
+TEST(OpenAIChatIntegration, Basic) {
     AEventLoop loop;
     IEventLoop::Handle h(&loop);
     AAsyncHolder async;
@@ -86,7 +86,7 @@ TEST(OpenAIChat, Basic) {
     }
 }
 
-TEST(OpenAIChat, BasicStreaming) {
+TEST(OpenAIChatIntegration, BasicStreaming) {
     AEventLoop loop;
     IEventLoop::Handle h(&loop);
     AAsyncHolder async;
@@ -120,7 +120,7 @@ TEST(OpenAIChat, BasicStreaming) {
     }
 }
 
-TEST(OpenAIChat, ToolUsage) {
+TEST(OpenAIChatIntegration, ToolUsage) {
 
     AEventLoop loop;
     IEventLoop::Handle h(&loop);
@@ -170,7 +170,7 @@ TEST(OpenAIChat, ToolUsage) {
 }
 
 
-TEST(OpenAIChat, BasicStreamingToolCalls) {
+TEST(OpenAIChatIntegration, BasicStreamingToolCalls) {
     AEventLoop loop;
     IEventLoop::Handle h(&loop);
     AAsyncHolder async;
@@ -232,7 +232,7 @@ TEST(OpenAIChat, BasicStreamingToolCalls) {
     }
 }
 
-TEST(OpenAIChat, ImageRecognition) {
+TEST(OpenAIChatIntegration, ImageRecognition) {
     AEventLoop loop;
     IEventLoop::Handle h(&loop);
     AAsyncHolder async;
@@ -261,7 +261,7 @@ TEST(OpenAIChat, ImageRecognition) {
     }
 }
 
-TEST(OpenAIChat, ToolAttachments) {
+TEST(OpenAIChatIntegration, ToolAttachments) {
     // not sure if return an image from tool works well, so made a dedicated test for it.
 
     AEventLoop loop;
@@ -308,7 +308,7 @@ TEST(OpenAIChat, ToolAttachments) {
 }
 
 
-TEST(OpenAIChat, Embeddings) {
+TEST(OpenAIChatIntegration, Embeddings) {
     // not sure if return an image from tool works well, so made a dedicated test for it.
 
     AEventLoop loop;
@@ -333,7 +333,7 @@ TEST(OpenAIChat, Embeddings) {
 }
 
 
-TEST(OpenAIChat, ParseResponse) {
+TEST(OpenAIChatIntegration, ParseResponse) {
     static constexpr auto R = R"(
 {
   "id": "gen-1777241316-pffm5r7c8ACtvqbrZqXm",
