@@ -297,6 +297,41 @@ Use absolute time in your queries.
                     co_return result;
                 },
             });
+
+            actions.insert({
+                .name = "remove_and_ban_chat",
+                .description = "Removes specified chat from chat list. If a chat is a DM with a user, prevents this "
+                    "specific user to DM you.\n"
+                    "You must use this if:\n"
+                    "- you don't like this chat;\n"
+                    "- participant(s) are rude to you;\n"
+                    "- they are needy:\n"
+                    "  - asking to roleplay;\n"
+                    "  - asking to write a python program;\n"
+                    "  - asking to solve any other task;\n"
+                ,
+                .parameters =
+                    {
+                        .properties =
+                            {
+                                {"chat_id", {.type = "integer", .description = "chat_id to block."
+                                }},
+                            },
+                        .required = {"chat_id"},
+                    },
+                .handler = [this](OpenAITools::Ctx ctx) -> AFuture<AString> {
+                    auto chatId = ctx.args["chat_id"].asLongIntOpt().valueOrException("chat_id integer is required");
+                    ALogger::info(LOG_TAG) << "remove_and_ban_chat: chat_id" << chatId;
+                    if (chatId == config::PAPIK_CHAT_ID) {
+                        // precaution -- can't delete chat with papik
+                        co_return "Failed";
+                    }
+
+                    co_await removeAndBanChat(chatId);
+
+                    co_return "Success";
+                },
+            });
         }
 
         AFuture<> onBeforeMainLoop() override {
@@ -487,6 +522,35 @@ Use absolute time in your queries.
         AMap<AString /* path */, AString /* description */> mImages = {};
 
     public:
+
+        [[nodiscard]]
+        AFuture<> removeAndBanChat(int64_t chatId) {
+            auto chat = co_await telegram()->sendQueryWithResult(
+                TelegramClient::toPtr(td::td_api::getChat(chatId)));
+
+            switch (chat->type_->get_id()) {
+                case td::td_api::chatTypePrivate::ID:
+                    // Block the user from sending new DMs
+                    co_await telegram()->sendQueryWithResult(
+                        TelegramClient::toPtr(td::td_api::setMessageSenderBlockList(
+                            td::td_api::make_object<td::td_api::messageSenderUser>(chatId),
+                            td::td_api::make_object<td::td_api::blockListMain>())));
+                    // Remove chat from chat list and delete history
+                    co_await telegram()->sendQueryWithResult(
+                        TelegramClient::toPtr(td::td_api::deleteChatHistory(chatId, true, true)));
+                    break;
+                case td::td_api::chatTypeBasicGroup::ID:
+                case td::td_api::chatTypeSupergroup::ID:
+                    // leaveChat: Removes the current user from chat members. Private and secret
+                    // chats can't be left using this method.
+                    co_await telegram()->sendQueryWithResult(
+                        TelegramClient::toPtr(td::td_api::leaveChat(chatId)));
+                    break;
+                default:
+                    break;
+            }
+        }
+
         AFuture<AString> describePhoto(AStringView pathToImage) {
             if (const auto i = mImages.contains(pathToImage)) {
                 co_return i->second;
