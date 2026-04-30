@@ -155,10 +155,6 @@ AppBase::AppBase(APath workingDir): mDiary(workingDir / "diary"), mWakeupTimer(_
                         .content = std::move(notification.message),
                     };
 
-                    bool noopWarning = true;
-                    bool toolCallsHappened = false;
-
-
                     // naxyi was here.
                     // the reasons why I have moved it below diary lookup:
                     // 1. Each lookup adds ~1s delay. So each time LLM uses send_telegram_message, there is a diary lookup.
@@ -231,19 +227,19 @@ AppBase::AppBase(APath workingDir): mDiary(workingDir / "diary"), mWakeupTimer(_
 
                     if (botAnswer.choices.empty() || botAnswer.choices.at(0).message.tool_calls.empty()) {
                         // no tool calls.
+                        // each LLMs turn should end with "wait" or "pause"
+                        ALogger::warn(LOG_TAG) << "LLM didn't perform any action.";
                         if (!botAnswer.choices.empty()) {
                             // guiderails to make LLM tool-centric.
                             const auto& content = botAnswer.choices.at(0).message.content;
                             if (content.contains("#send_telegram_message")) {
                                 // qwen3.5 bug: misused examples
-                                if (std::exchange(noopWarning, false)) {
-                                    self.mTemporaryContext << OpenAIChat::Message{
-                                        .role = OpenAIChat::Message::Role::USER,
-                                        .content = "You should be tool-centric. Make sure you made tool calls. The message "
-                                        "you provided is not visible to anyone but you.",
-                                    };
-                                    goto naxyi_preserve_ctx;
-                                }
+                                self.mTemporaryContext << OpenAIChat::Message{
+                                    .role = OpenAIChat::Message::Role::USER,
+                                    .content = "Nice thoughts! However you should be tool-centric. Make sure you "
+                                    "made tool calls. The message you provided is not visible to anyone but you.",
+                                };
+                                goto naxyi_preserve_ctx;
                             }
                             if (content.contains("<message") && content.contains("</message>")) {
                                 // gemma4 bug: does not perform tool calls, instead, replies with the following content
@@ -251,33 +247,21 @@ AppBase::AppBase(APath workingDir): mDiary(workingDir / "diary"), mWakeupTimer(_
                                 // Ой, и что же ты там читаешь? Надеюсь, только самое милое! 😼✨
                                 // </message>
 
-                                if (std::exchange(noopWarning, false)) {
-                                    self.mTemporaryContext << OpenAIChat::Message{
-                                        .role = OpenAIChat::Message::Role::USER,
-                                        .content = "You should be tool-centric. Make sure you made tool calls. The message "
-                                        "you provided is not visible to anyone but you.",
-                                    };
-                                    goto naxyi_preserve_ctx;
-                                }
-                            }
-                        }
-                        ALogger::info(LOG_TAG) << "toolCallHappened=" << toolCallsHappened << " noopWarning=" << noopWarning;
-                        if (!toolCallsHappened) {
-                            if (std::exchange(noopWarning, false)) {
-                                // punish llm for not performing tool calls.
-                                ALogger::warn(LOG_TAG) << "LLM didn't perform any action.";
                                 self.mTemporaryContext << OpenAIChat::Message{
                                     .role = OpenAIChat::Message::Role::USER,
-                                    .content = "You didn't perform any action. Make sure you made tool calls."
+                                    .content = "Nice thoughts! However you should be tool-centric. Make sure you "
+                                    "made tool calls. The message you provided is not visible to anyone but you.",
                                 };
                                 goto naxyi_preserve_ctx;
                             }
                         }
-                        // this is a normal response.
-                        // we wont store it in temporary context because its excess noise.
-                        goto finish;
-                    } else {
-                        toolCallsHappened = true;
+                        // punish llm for not performing tool calls.
+                        self.mTemporaryContext << OpenAIChat::Message{
+                            .role = OpenAIChat::Message::Role::USER,
+                            .content = "Nice thoughts! However you should be tool-centric. Make sure you "
+                            "made tool calls. The message you provided is not visible to anyone but you.",
+                        };
+                        goto naxyi_preserve_ctx;
                     }
                     {
                         auto toolCalls = co_await notification.actions.handleToolCalls(botAnswer.choices.at(0).message.tool_calls);
