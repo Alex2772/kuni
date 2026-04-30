@@ -217,7 +217,8 @@ namespace {
                         "You are currently looking at Telegram's main screen. Use see the following chats:\n";
                     co_await llmuiFormatChatList(result, chats);
 
-                    result = co_await util::populateFromDiaryAIIfNeeded(temporaryContext(), diary(), "main_screen", R"(
+                    if constexpr (config::DEEP_CHATLIST_QUERY) {
+                        result = co_await util::populateFromDiaryAIIfNeeded(temporaryContext(), diary(), "main_screen", R"(
 {}
 
 Iterate over all chats and tell me what should I remember about each of them ({}).
@@ -232,6 +233,7 @@ Use absolute time in your queries.
 - chat rules
 - responsibilities
 )"_format(result, util::formatPastHours())) + result;
+                    }
                     result += "<instructions>\n"
                     "Chat list view is limited. Use #search_chats to search for a specific chat.\n"
                     "</instructions>";
