@@ -290,12 +290,52 @@ Use absolute time in your queries.
                     auto queryResult = co_await telegram()->sendQueryWithResult(TelegramClient::toPtr(td::td_api::searchChatsOnServer(query, 50)));
 
                     if (queryResult->chat_ids_.empty()) {
-                        co_return "No chats found satisfying your query.";
+                        co_return "No chats found satisfying your query. If you're trying to text someone you haven't seen before by username (@something), use #check_username.";
                     }
 
                     AString result;
                     auto chats = co_await chatIdsToChats(queryResult->chat_ids_);
                     co_await llmuiFormatChatList(result, chats);
+
+                    co_return result;
+                },
+            });
+
+            actions.insert({
+                .name = "check_username",
+                .description = "Tries to find a new Telegram chat by username",
+                .parameters =
+                    {
+                        .properties =
+                            {
+                                {"query", {.type = "string", .description = "The username or name of the "
+                                    "chat. Examples: \n"
+                                    "- @alex2772sc\n"
+                                    "- @kuni_loverz\n"
+                                }},
+                            },
+                        .required = {"query"},
+                    },
+                .handler = [this](OpenAITools::Ctx ctx) -> AFuture<AString> {
+                    if constexpr (!config::SHOULD_LOOKUP_USERNAMES) {
+                        co_return "You are not allowed to initiate conversations with new people.";
+                    }
+
+                    auto query = ctx.args["query"].asStringOpt().valueOrException("query string is required");
+                    if (query.startsWith("@")) {
+                        query = query.substr(1);
+                    }
+                    auto queryResult = co_await telegram()->sendQueryWithResult(TelegramClient::toPtr(td::td_api::searchPublicChat(query)));
+
+                    if (!queryResult->id_) {
+                        co_return "This username doesn't exist.";
+                    }
+
+                    AString result;
+                    auto chat = co_await chatIdToChat(queryResult->id_);
+                    co_await llmuiFormatChatSingle(result, std::move(chat));
+
+                    // result += "Use #open_chat_by_id with chat_id {} to open this chat and start the conversation."_format(queryResult->id_);
 
                     co_return result;
                 },
@@ -382,6 +422,41 @@ Use absolute time in your queries.
             }
         }
 
+        [[nodiscard]]
+        AFuture<> llmuiFormatChatSingle(AString& result, td::td_api::object_ptr<td::td_api::chat> chat) {
+            // Skip non-PAPIK chats in lockdown mode
+            if constexpr (config::LOCKDOWN_MODE) {
+                if (chat->id_ != config::PAPIK_CHAT_ID) {
+                    co_return;
+                }
+            }
+
+            auto type = [&]() -> AStringView {
+                switch (chat->type_->get_id()) {
+                    case td::td_api::chatTypePrivate::ID: return "direct messages";
+                    case td::td_api::chatTypeBasicGroup::ID: return "group chat";
+                    case td::td_api::chatTypeSupergroup::ID: return "channel";
+                    default: return "unknown";
+                }
+            }();
+            AString preview;
+            if (chat->last_message_) {
+                preview = co_await extractSenderName(*chat->last_message_);
+                preview += ": ";
+                preview += extractMessageTypeAndText(*chat->last_message_);
+                preview.replaceAll("\n", " ");
+
+                if (preview.length() > 80) {
+                    preview = preview.substr(0, 30) + "..." + preview.substr(preview.length() - 30);
+                }
+            }
+            result += "<chat chat_id=\"{}\" title=\"{}\" preview=\"{}\" type=\"{}\""_format(chat->id_, chat->title_, preview, type);
+            if (chat->unread_count_ > 0) {
+                result += " unread_count=\"{}\""_format(chat->unread_count_);
+            }
+            result += " />\n";
+        }
+
         AFuture<AVector<td::td_api::object_ptr<td::td_api::chat>>> chatIdsToChats(std::span<td::td_api::int53> ids) {
             auto chats =
                 ids | ranges::view::transform([&](td::td_api::int53 chatId) {
@@ -394,6 +469,10 @@ Use absolute time in your queries.
                 result.push_back(co_await chat);
             }
             co_return result;
+        }
+
+        AFuture<td::td_api::object_ptr<td::td_api::chat>> chatIdToChat(td::td_api::int53 id) {
+            co_return co_await telegram()->sendQueryWithResult(TelegramClient::toPtr(td::td_api::getChat(id)));;
         }
 
         AFuture<AVector<td::td_api::object_ptr<td::td_api::chat>>> getChats() {
@@ -923,9 +1002,15 @@ Use absolute time in your queries.
             ALOG_DEBUG(LOG_TAG) << "Loaded " << messages.size() << " message(s): " << chat->title_;
             if (messages.empty()) {
                 // Kuni sometimes opens random chats?
+<<<<<<< HEAD
                 throw AException("Failed to open chat");
+=======
+                // throw AException("Failed to open chat");
+>>>>>>> 24492b2 (Add proactive convo initiation)
 
-                // result += "This chat is empty. Start a new conversation!"; // just like in real tg client
+                result += "This chat is empty! Only proceed if you looked up a @username and it led you here.\n";
+                result += "Only write what you have to say to the chat; if someone asked you to text this person, just text them.\n";
+                result += "If you try to get back to the original chat and type something, you will be sending an extra message to the wrong chat.";
                 // goto naxyi;
             }
             {
