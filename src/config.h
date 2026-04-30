@@ -5,6 +5,7 @@
 
 namespace config {
     static constexpr bool CAPABILITY_TAKE_PHOTO = true;
+    static constexpr bool CAPABILITY_RECORD_AUDIO = true;
 
     static constexpr bool RANDOMLY_GO_SLEEP = true;
     static constexpr bool DEEP_DIALOG_QUERY = false;
