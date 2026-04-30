@@ -43,7 +43,7 @@ namespace {
 
     class App : public AppBase {
     public:
-        App(): AppBase("data") {
+        App(_<TelegramClient> telegram): AppBase("data"), mTelegram(std::move(telegram)) {
             ALOG_TRACE(LOG_TAG) << "App::App";
             mTelegram->onEvent = [this](td::td_api::object_ptr<td::td_api::Object> event) {
                 td::td_api::downcast_call(*event,
@@ -356,7 +356,7 @@ Use absolute time in your queries.
         }
 
     private:
-        _<TelegramClient> mTelegram = _new<TelegramClient>();
+        _<TelegramClient> mTelegram;
 
         [[nodiscard]]
         AFuture<> llmuiFormatChatList(AString& result, std::span<td::td_api::object_ptr<td::td_api::chat>> chats) {
@@ -1435,29 +1435,35 @@ AUI_ENTRY {
     }
 
     using namespace std::chrono_literals;
-    auto app = _new<App>();
-
-    _new<AThread>([] {
-        std::cin.get();
-        gEventLoop.stop();
-    })->start();
+    auto telegram = _new<TelegramClient>();
 
     AAsyncHolder async;
-    async << [](_<App> app) -> AFuture<> {
+    async << [](_<TelegramClient> telegram) -> AFuture<> {
         ALogger::info(LOG_TAG) << "Waiting for Telegram network...";
-        co_await app->telegram()->waitForConnection();
+        co_await telegram->waitForConnection();
         ALogger::info(LOG_TAG) << "Connected to Telegram";
-
         // app->actProactively(); // for tests
-    }(app);
+    }(telegram);
+
+    _<App> app;
+    AObject::connect(telegram->loggedIn, telegram, [&] {
+        app = _new<App>(telegram);
+        _new<AThread>([] {
+            ALogger::info(LOG_TAG) << "Bot is up and running. Press enter to shutdown gracefully.";
+            std::cin.get();
+            ALogger::info(LOG_TAG) << "Bot is shutting down. Please give some time to dump remaining context";
+            gEventLoop.stop();
+        })->start();
+    });
 
     IEventLoop::Handle h(&gEventLoop);
     gEventLoop.loop();
 
-    ALogger::info(LOG_TAG) << "Bot is shutting down. Please give some time to dump remaining context";
-    auto d = app->diaryDumpMessages();
-    while (!d.hasResult()) {
-        AThread::processMessages();
+    if (app) {
+        auto d = app->diaryDumpMessages();
+        while (!d.hasResult()) {
+            AThread::processMessages();
+        }
     }
 
     return 0;
