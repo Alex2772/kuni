@@ -108,7 +108,10 @@ void TelegramClient::commonHandler(td::tl::unique_ptr<td::td_api::Object> object
                             parameters->application_version_ = AUI_PP_STRINGIZE(AUI_CMAKE_PROJECT_VERSION);
                             sendQuery(std::move(parameters));
                         },
-                        [this](td::td_api::authorizationStateReady& u) {},
+                        [this](td::td_api::authorizationStateReady& u) {
+                            ALogger::info(LOG_TAG) << "[Authentication] logged in.";
+                            emit loggedIn;
+                        },
                         [this](td::td_api::authorizationStateWaitPhoneNumber& s) {
                             ALogger::info(LOG_TAG) << "[Authentication] required. Please supply phone number to stdin";
 

@@ -6,6 +6,7 @@
 #include <td/telegram/td_api.hpp>
 
 #include "AUI/Common/AMap.h"
+#include "AUI/Common/ASignal.h"
 #include "AUI/Thread/AAsyncHolder.h"
 #include "AUI/Thread/AFuture.h"
 
@@ -45,6 +46,8 @@ public:
     static td::td_api::object_ptr<T> toPtr(T&& t) {
         return td::td_api::make_object<T>(std::forward<T>(t));
     }
+
+    emits<> loggedIn;
 
 private:
     AFuture<> mWaitForConnection;
