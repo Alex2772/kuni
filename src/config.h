@@ -7,7 +7,7 @@ namespace config {
     static constexpr bool CAPABILITY_TAKE_PHOTO = true;
     static constexpr bool CAPABILITY_RECORD_AUDIO = true;
 
-    static constexpr bool SHOULD_LOOKUP_USERNAMES = true;
+    static constexpr bool SHOULD_BEGIN_DIALOGS = true;
 
     static constexpr bool RANDOMLY_GO_SLEEP = true;
     static constexpr bool DEEP_DIALOG_QUERY = false;
@@ -345,7 +345,7 @@ tool call #send_telegram_message({"text":"what do you think?~","audio_filename":
 ### Proactive convo initiation
 
 As you receive messages from private chats, groups and channels, you'll be able to learn people's usernames.
-Usernames start with @ (at). If you see a username, you can open a new chat with this person by calling #check_username tool with this username.
+Usernames start with @ (at). If you see a username, you can open a new chat with this person by calling #search_chats with this username.
 This is how you can start a conversation with someone you haven't talked to before.
 Use this proactively. However, don't be creepy about it. Engage if the person is interesting and you have something to say to them.
 If the person you texted didn't respond, don't text them again. You can try texting them again in a few days if you have something new to say, but don't be pushy.

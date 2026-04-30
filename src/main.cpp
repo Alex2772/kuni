@@ -287,55 +287,24 @@ Use absolute time in your queries.
                     if (query.startsWith("@")) {
                         query = query.substr(1);
                     }
-                    auto queryResult = co_await telegram()->sendQueryWithResult(TelegramClient::toPtr(td::td_api::searchChatsOnServer(query, 50)));
 
-                    if (queryResult->chat_ids_.empty()) {
-                        co_return "No chats found satisfying your query. If you're trying to text someone you haven't seen before by username (@something), use #check_username.";
+                    auto queryResult = co_await telegram()->sendQueryWithResult(TelegramClient::toPtr(td::td_api::searchChatsOnServer(query, 50)));
+                    auto usernameQueryResult = co_await telegram()->sendQueryWithResult(TelegramClient::toPtr(td::td_api::searchPublicChat(query)));
+
+                    if (queryResult->chat_ids_.empty() && !usernameQueryResult->id_) {
+                        co_return "No chats found satisfying your query.";
                     }
 
                     AString result;
                     auto chats = co_await chatIdsToChats(queryResult->chat_ids_);
+                    auto publicChat = co_await chatIdToChat(usernameQueryResult->id_);
+
+                    result += "<existing_chats comment=\"Chats that you participate already\">\n";
                     co_await llmuiFormatChatList(result, chats);
-
-                    co_return result;
-                },
-            });
-
-            actions.insert({
-                .name = "check_username",
-                .description = "Tries to find a new Telegram chat by username",
-                .parameters =
-                    {
-                        .properties =
-                            {
-                                {"query", {.type = "string", .description = "The username or name of the "
-                                    "chat. Examples: \n"
-                                    "- @alex2772sc\n"
-                                    "- @kuni_loverz\n"
-                                }},
-                            },
-                        .required = {"query"},
-                    },
-                .handler = [this](OpenAITools::Ctx ctx) -> AFuture<AString> {
-                    if constexpr (!config::SHOULD_LOOKUP_USERNAMES) {
-                        co_return "You are not allowed to initiate conversations with new people.";
-                    }
-
-                    auto query = ctx.args["query"].asStringOpt().valueOrException("query string is required");
-                    if (query.startsWith("@")) {
-                        query = query.substr(1);
-                    }
-                    auto queryResult = co_await telegram()->sendQueryWithResult(TelegramClient::toPtr(td::td_api::searchPublicChat(query)));
-
-                    if (!queryResult->id_) {
-                        co_return "This username doesn't exist.";
-                    }
-
-                    AString result;
-                    auto chat = co_await chatIdToChat(queryResult->id_);
-                    co_await llmuiFormatChatSingle(result, std::move(chat));
-
-                    // result += "Use #open_chat_by_id with chat_id {} to open this chat and start the conversation."_format(queryResult->id_);
+                    result += "</existing_chats>\n";
+                    result += "<global_search comment=\"Chats that don't know about you\">\n";
+                    co_await llmuiFormatChatSingle(result, std::move(publicChat), query);
+                    result += "</global_search>\n";
 
                     co_return result;
                 },
@@ -423,7 +392,7 @@ Use absolute time in your queries.
         }
 
         [[nodiscard]]
-        AFuture<> llmuiFormatChatSingle(AString& result, td::td_api::object_ptr<td::td_api::chat> chat) {
+        AFuture<> llmuiFormatChatSingle(AString& result, td::td_api::object_ptr<td::td_api::chat> chat, AString username = "") {
             // Skip non-PAPIK chats in lockdown mode
             if constexpr (config::LOCKDOWN_MODE) {
                 if (chat->id_ != config::PAPIK_CHAT_ID) {
@@ -450,7 +419,7 @@ Use absolute time in your queries.
                     preview = preview.substr(0, 30) + "..." + preview.substr(preview.length() - 30);
                 }
             }
-            result += "<chat chat_id=\"{}\" title=\"{}\" preview=\"{}\" type=\"{}\""_format(chat->id_, chat->title_, preview, type);
+            result += "<chat chat_id=\"{}\" username=\"{}\" title=\"{}\" preview=\"{}\" type=\"{}\""_format(chat->id_, username, chat->title_, preview, type);
             if (chat->unread_count_ > 0) {
                 result += " unread_count=\"{}\""_format(chat->unread_count_);
             }
@@ -1002,15 +971,13 @@ Use absolute time in your queries.
             ALOG_DEBUG(LOG_TAG) << "Loaded " << messages.size() << " message(s): " << chat->title_;
             if (messages.empty()) {
                 // Kuni sometimes opens random chats?
-<<<<<<< HEAD
-                throw AException("Failed to open chat");
-=======
                 // throw AException("Failed to open chat");
->>>>>>> 24492b2 (Add proactive convo initiation)
 
-                result += "This chat is empty! Only proceed if you looked up a @username and it led you here.\n";
-                result += "Only write what you have to say to the chat; if someone asked you to text this person, just text them.\n";
-                result += "If you try to get back to the original chat and type something, you will be sending an extra message to the wrong chat.";
+                if constexpr (config::SHOULD_BEGIN_DIALOGS) {
+                    result += "This chat is empty! Only proceed if you looked up a @username and it led you here.\n";
+                    result += "Only write what you have to say to the chat; if someone asked you to text this person, just text them.\n";
+                    result += "If you try to get back to the original chat and type something, you will be sending an extra message to the wrong chat.";
+                }
                 // goto naxyi;
             }
             {
