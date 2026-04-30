@@ -56,6 +56,7 @@ AJSON_FIELDS(StreamingResponse::Choice,
     )
 
 AFuture<OpenAIChat::Response> OpenAIChat::chat(AString message) {
+    ALOG_TRACE(LOG_TAG) << "chat(" << message << ")";
     return chat({
         {Message::Role::USER, std::move(message)},
     });
@@ -115,6 +116,7 @@ struct AJsonConv<AVector<OpenAIChat::Message>> {
 
 
 AString OpenAIChat::embedImage(AImageView image) {
+    ALOG_TRACE(LOG_TAG) << "embedImage";
     AByteBuffer jpg;
     auto resized = image.resizedLinearDownscale({672, 672});
     JpgImageLoader::save(jpg, resized);
@@ -123,6 +125,7 @@ AString OpenAIChat::embedImage(AImageView image) {
 }
 
 AJson OpenAIChat::makeQueryString(AVector<OpenAIChat::Message> messages) {
+    ALOG_TRACE(LOG_TAG) << "makeQueryString";
     AJson json {
         {
           "messages",
@@ -274,6 +277,7 @@ _<OpenAIChat::StreamingResponse> OpenAIChat::chatStreaming(AVector<Message> mess
 }
 
 AFuture<std::valarray<double>> OpenAIChat::embedding(AString input) {
+    ALOG_TRACE(LOG_TAG) << "embedding";
     if (input.empty()) {
         input = " ";
     }

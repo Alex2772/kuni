@@ -4,6 +4,7 @@
 
 #include "KuniCharacter.h"
 
+#include "AUI/Logging/ALogger.h"
 #include "AUI/Common/AByteBuffer.h"
 #include "AUI/IO/AFileInputStream.h"
 #include "AUI/IO/AFileOutputStream.h"
@@ -35,6 +36,7 @@ static AString readOrCreate(AStringView fileName, AStringView defaultContent)
 
 AString kuni_character::getBasePrompt()
 {
+    ALOG_TRACE("KuniCharacter") << "getBasePrompt";
     return readOrCreate("character_base.md", R"(---
 This is system prompt of the LLM character. You can adjust it for your taste (i.e., change name).
 In this prompt we define character name, some background and. We inspire LLM into thinking they have thoughts, emotions
@@ -159,6 +161,7 @@ Say hi. I'm usually around.
 
 AString kuni_character::getAppearancePrompt()
 {
+    ALOG_TRACE("KuniCharacter") << "getAppearancePrompt";
     return readOrCreate("character_appearance.md", R"(---
 Visual character description. This includes freeform description (of the profile photo) and a stable diffusion prompt.
 Both prompts are included into system prompt.

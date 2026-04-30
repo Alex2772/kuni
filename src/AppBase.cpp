@@ -36,6 +36,7 @@ static const auto WORKING_MEMORY_PATH = APath("data") / "working_memory.md";
 
 
 AFuture<std::valarray<double>> contextEmbedding(ranges::range auto && rng) {
+    ALOG_TRACE(LOG_TAG) << "contextEmbedding";
     AString basePrompt;
     AUI_ASSERT(!ranges::empty(rng));
     for (const OpenAIChat::Message& message: rng) {
@@ -327,12 +328,14 @@ AppBase::AppBase(APath workingDir): mDiary(workingDir / "diary"), mWakeupTimer(_
 }
 
 const AppBase::Notification& AppBase::passNotificationToAI(AString notification, OpenAITools actions, bool first) {
+    ALOG_TRACE(LOG_TAG) << "passNotificationToAI";
     const auto& result = *mNotifications.emplace(first ? mNotifications.begin() : mNotifications.end(), std::move(notification), std::move(actions));
     mNotificationsSignal.supplyValue();
     return result;
 }
 
 AFuture<> AppBase::diaryDumpMessages() {
+    ALOG_TRACE(LOG_TAG) << "diaryDumpMessages";
     // mDiary.reload(); // will find plagiarism against all entries. // commented out: exclude plagiarism checks for
     // included entries
     AUI_DEFER { mDiary.reload(); };
@@ -403,6 +406,7 @@ AFuture<> AppBase::diaryDumpMessages() {
 }
 
 void AppBase::actProactively() {
+    ALOG_TRACE(LOG_TAG) << "actProactively";
     AString prompt = "<your_diary_page just_for_reasoning no_plagiarism no_copy>\n";
     if (!mDiary.list().empty()) {
         auto idx = re() % mDiary.list().size();
@@ -434,6 +438,7 @@ Act proactively!
 
 
 void AppBase::updateTools(OpenAITools& actions) {
+    ALOG_TRACE(LOG_TAG) << "updateTools";
     actions.insert({
         .name = "ask_diary",
         .description = "Consult with Kuni's main knowledge database (subagent). Use this to retrieve additional pages from diary. USE THIS PROACTIVELY — especially when someone shares personal news, asks about past events, or mentions people/activities you might know about.\n\nExamples of when to call:\n- User says \"I wrote a song today\" → query: \"[sender name] said they wrote a song today. What do I know about them and songs? Do they participate in a band? Which songs do they write? What music do they listen to?\"\n- User asks \"what songs am I writing?\" → query: \"What songs does [sender name] write? What do I know about their musical activities?\"\n- User says \"I'm going to the gym\" → query: \"Does [sender name] go to the gym? Any related habits or routines?\"",
@@ -496,12 +501,14 @@ void AppBase::updateTools(OpenAITools& actions) {
 }
 
 void AppBase::removeNotifications(const AString& substring) {
+    ALOG_TRACE(LOG_TAG) << "removeNotifications: " << substring;
     mNotifications.erase(ranges::remove_if(mNotifications, [&](const Notification& n) {
         return n.message.contains(substring);
     }), mNotifications.end());
 }
 
 AString AppBase::takeDiaryEntry(const Diary::EntryExAndRelatedness& i) {
+    ALOG_TRACE(LOG_TAG) << "takeDiaryEntry: " << i.entry->id;
     if (ranges::any_of(mTemporaryContext, [&](const OpenAIChat::Message& m) {
         return m.content.contains(i.entry->freeformBody);
     })) {

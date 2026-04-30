@@ -17,6 +17,7 @@ AJSON_FIELDS(ElevenLabsClient::TextToSpeechRequest,
 
 AFuture<ElevenLabsClient::TextToSpeechResponse>
 ElevenLabsClient::textToSpeech(const TextToSpeechRequest& request) {
+    ALOG_TRACE(LOG_TAG) << "textToSpeech";
     if (baseUrl.empty()) {
         throw AException("ElevenLabs endpoint URL not configured");
     }

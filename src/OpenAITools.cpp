@@ -18,6 +18,7 @@ AJSON_FIELDS(OpenAITools::Tool, AJSON_FIELDS_ENTRY(type) AJSON_FIELDS_ENTRY(name
 
 
 OpenAITools::OpenAITools(std::initializer_list<Tool> tools) {
+    ALOG_TRACE("OpenAITools") << "OpenAITools";
     for (const auto& tool : tools) {
         AUI_ASSERT(tool.handler != nullptr);
         mHandlers[tool.name] = tool;
@@ -25,6 +26,7 @@ OpenAITools::OpenAITools(std::initializer_list<Tool> tools) {
 }
 
 AFuture<AVector<OpenAIChat::Message>> OpenAITools::handleToolCalls(const AVector<OpenAIChat::Message::ToolCall>& toolCalls) {
+    ALOG_TRACE("OpenAITools") << "handleToolCalls";
     AVector<OpenAIChat::Message> result;
     for (const auto& toolCall : toolCalls) {
         result << OpenAIChat::Message{
@@ -48,6 +50,7 @@ AFuture<AVector<OpenAIChat::Message>> OpenAITools::handleToolCalls(const AVector
 }
 
 AJson OpenAITools::asJson() const {
+    ALOG_TRACE("OpenAITools") << "asJson";
     return ranges::view::transform(mHandlers, [](const auto& tool) {
         return AJson::Object{
             {"type", tool.second.type },

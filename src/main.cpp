@@ -44,6 +44,7 @@ namespace {
     class App : public AppBase {
     public:
         App(): AppBase("data") {
+            ALOG_TRACE(LOG_TAG) << "App::App";
             mTelegram->onEvent = [this](td::td_api::object_ptr<td::td_api::Object> event) {
                 td::td_api::downcast_call(*event,
                                           [this](auto& u) { mAsync << this->handleTelegramEvent(std::move(u)); });
@@ -55,6 +56,7 @@ namespace {
 
     protected:
         AFuture<> telegramPostMessage(int64_t chatId, AString text, AOptional<_<AImage>> photo = std::nullopt, AOptional<APath> audioPath = std::nullopt, int64_t replyTo = 0) {
+            ALOG_TRACE(LOG_TAG) << "telegramPostMessage: chat_id" << chatId << " text=" << text << " photo=" << photo << " audioPath=" << audioPath << " replyTo=" << replyTo;
             // Check lockdown mode - only allow PAPIK_CHAT_ID if lockdown is enabled
             if constexpr (config::LOCKDOWN_MODE) {
                 if (chatId != config::PAPIK_CHAT_ID) {

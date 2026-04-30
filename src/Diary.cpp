@@ -20,12 +20,16 @@
 
 using namespace std::chrono_literals;
 
+static constexpr auto LOG_TAG = "Diary";
+
 Diary::Diary(APath diaryDir)
     : mDiaryDir(std::move(diaryDir)) {
+    ALOG_TRACE(LOG_TAG) << "Diary::Diary: " << diaryDir;
     mDiaryDir.makeDirs();
 }
 
 AVector<Diary::Entry> Diary::read(const APath& diaryDir) {
+    ALOG_TRACE(LOG_TAG) << "Diary::read: " << diaryDir;
     AVector<Entry> result;
     diaryDir.makeDirs();
     for (const auto& entry : diaryDir.listDir()) {
@@ -41,10 +45,12 @@ AVector<Diary::Entry> Diary::read(const APath& diaryDir) {
 }
 
 void Diary::save(const Entry& entry) {
+    ALOG_TRACE(LOG_TAG) << "Diary::save: " << entry.id;
     AFileOutputStream(mDiaryDir / (entry.id + ".md")) << entry.text;
 }
 
 void Diary::save(const EntryEx& entry) {
+    ALOG_TRACE(LOG_TAG) << "Diary::save(EntryEx): " << entry.id;
     // inject
     // ---
     // { ... }
@@ -58,6 +64,7 @@ void Diary::save(const EntryEx& entry) {
 }
 
 AFuture<AVector<Diary::EntryExAndRelatedness>> Diary::query(const std::valarray<double>& query, QueryOpts opts) {
+    ALOG_TRACE(LOG_TAG) << "Diary::query";
     struct DiaryEntryExAndRelatednessF {
         std::list<EntryEx>::iterator entry;
         AFuture<double> relatedness;

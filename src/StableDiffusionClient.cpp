@@ -36,6 +36,7 @@ AJSON_FIELDS(StableDiffusionClient::Txt2ImgRequest,
              AJSON_FIELDS_ENTRY(denoising_strength))
 
 AFuture<StableDiffusionClient::Txt2ImgResponse> StableDiffusionClient::txt2img(const Txt2ImgRequest& request) {
+    ALOG_TRACE(LOG_TAG) << "txt2img";
     auto query = AJson::toString(aui::to_json(request));
     ALOG_TRACE(LOG_TAG) << "Query: " << query;
 

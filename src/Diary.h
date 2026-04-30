@@ -208,7 +208,7 @@ public:
      * @brief Invalidate the cached diary so that it will be reloaded on
      *        next access.
      */
-    void reload() { mCachedDiary.reset(); }
+    void reload() { ALOG_TRACE("Diary") << "reload"; mCachedDiary.reset(); }
 
 
     /**

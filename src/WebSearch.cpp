@@ -20,7 +20,7 @@ AJSON_FIELDS(web::Result,
     )
 
 AFuture<AVector<web::Result>> web::search(AString query, int maxResults) {
-    ALOG_DEBUG(LOG_TAG) << "search query=\"" << query << "\"";
+    ALOG_TRACE(LOG_TAG) << "web::search: " << query;
     // Build JSON body
     AJson body = AJson::Object{{"query", std::move(query)} };
     if (maxResults> 0) {
@@ -44,7 +44,7 @@ AFuture<AVector<web::Result>> web::search(AString query, int maxResults) {
 }
 
 AFuture<AString> web::searchAI(AString query) {
-    ALOG_DEBUG(LOG_TAG) << "searchAI query=\"" << query << "\"";
+    ALOG_TRACE(LOG_TAG) << "web::searchAI: " << query;
     OpenAITools tools {
         OpenAITools::Tool {
             .name = "query",

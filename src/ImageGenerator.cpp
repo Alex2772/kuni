@@ -29,6 +29,7 @@ static AJson parseResponse(AString content) {
 }
 
 AFuture<ImageGenerator::GalleryImage> ImageGenerator::generate(AString description) {
+    ALOG_TRACE(LOG_TAG) << "generate: " << description;
     AString appearancePrompt = kuni_character::getAppearancePrompt();
     int trialIndex = 0;
 
@@ -136,6 +137,7 @@ static constexpr auto LOL_WHAT = {
 };
 
 AFuture<> ImageGenerator::engineerPrompt(PromptPair& out, const AString& description, const AString& appearancePrompt, const AString& feedback) {
+    ALOG_TRACE(LOG_TAG) << "engineerPrompt description=" << description << " appearancePrompt=" << appearancePrompt << " feedback=" << feedback;
     auto safeDescription = description;
     for (const auto& word : LOL_WHAT) {
         safeDescription.replaceAll(word, "");
@@ -261,6 +263,7 @@ Negative prompt is what to avoid in the image.
 }
 
 AFuture<ImageGenerator::AssessmentResult> ImageGenerator::assessImage(const AImage& image, const AString& description) {
+    ALOG_TRACE(LOG_TAG) << "assessImage description=" << description;
     OpenAIChat chat = mChatClient;
     // Note: mChatClient.config should ideally be a vision-capable model.
     chat.systemPrompt = R"(

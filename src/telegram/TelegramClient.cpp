@@ -16,6 +16,7 @@ namespace {
 
 
 TelegramClient::TelegramClient() : mTgUpdateTimer(_new<ATimer>(1s)) {
+    ALOG_TRACE(LOG_TAG) << "TelegramClient::TelegramClient";
     setSlotsCallsOnlyOnMyThread(true);
 
     td::ClientManager::execute(td::td_api::make_object<td::td_api::setLogVerbosityLevel>(1));
@@ -26,6 +27,7 @@ TelegramClient::TelegramClient() : mTgUpdateTimer(_new<ATimer>(1s)) {
 }
 
 AFuture<TelegramClient::Object> TelegramClient::sendQuery(td::td_api::object_ptr<td::td_api::Function> f) {
+    ALOG_TRACE(LOG_TAG) << "sendQuery";
     if (mQueryCountLastUpdate++ >= 5) {
         // Telegram is strict about using 3rdparty telegram clients. For this reason, we have to ensure that we wouldn't
         // trigger their security leading to ban of the account.
@@ -42,6 +44,7 @@ AFuture<TelegramClient::Object> TelegramClient::sendQuery(td::td_api::object_ptr
 }
 
 void TelegramClient::initClientManager() {
+    ALOG_TRACE(LOG_TAG) << "initClientManager";
     mClientManager = std::make_unique<td::ClientManager>();
     mClientId = mClientManager->create_client_id();
     sendQueryWithResult(td::td_api::make_object<td::td_api::getOption>("version"))
@@ -56,6 +59,7 @@ void TelegramClient::initClientManager() {
 }
 
 void TelegramClient::update() {
+    ALOG_TRACE(LOG_TAG) << "update";
     mQueryCountLastUpdate = 0;
     for (;;) {
         auto response = mClientManager->receive(0);
@@ -67,6 +71,7 @@ void TelegramClient::update() {
 }
 
 void TelegramClient::processResponse(td::ClientManager::Response response) {
+    ALOG_TRACE(LOG_TAG) << "processResponse";
     if (!response.object) {
         return;
     }
@@ -82,6 +87,7 @@ void TelegramClient::processResponse(td::ClientManager::Response response) {
 }
 
 void TelegramClient::commonHandler(td::tl::unique_ptr<td::td_api::Object> object) {
+    ALOG_TRACE(LOG_TAG) << "commonHandler";
     td::td_api::downcast_call(
         *object,
         aui::lambda_overloaded{
