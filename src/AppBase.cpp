@@ -21,7 +21,9 @@
 #include "config.h"
 #include "KuniCharacter.h"
 #include "WebSearch.h"
+#include "AUI/IO/AFileInputStream.h"
 #include "util/cosine_similarity.h"
+#include "util/important_things_to_remember.h"
 
 #include <range/v3/action/erase.hpp>
 
@@ -30,6 +32,7 @@ static std::default_random_engine re(std::time(nullptr));
 using namespace std::chrono_literals;
 
 static constexpr auto LOG_TAG = "App";
+static const auto WORKING_MEMORY_PATH = APath("data") / "working_memory.md";
 
 
 AFuture<std::valarray<double>> contextEmbedding(ranges::range auto && rng) {
@@ -174,7 +177,7 @@ AppBase::AppBase(APath workingDir): mDiary(workingDir / "diary"), mWakeupTimer(_
                         // performs scan on diary based on entire context.
                         // this will find common cues which are related to current conversation.
                         {
-                            auto currentContext = co_await contextEmbedding(self.mTemporaryContext);
+                            auto currentContext = co_await contextEmbedding(self.mTemporaryContext | ranges::view::take_last(3));
                             auto relatednesses = co_await self.mDiary.query(currentContext, {.confidenceFactor = 0.f});
 
                             for (const auto& i : relatednesses) {
@@ -310,6 +313,12 @@ AppBase::AppBase(APath workingDir): mDiary(workingDir / "diary"), mWakeupTimer(_
                     }
                 } catch (const AException& e) {
                     ALogger::err(LOG_TAG) << "Failed to process notification: \"" << notification.message << "\"" << e;
+                    if (e.getMessage().lowercase().contains("json")) {
+                        // If there's a JSON error, it means we have irreversibly damaged context. Best way to solve this
+                        // is to drop the temporary context entirery.
+                        ALogger::warn("AppBase") << "Context is damaged. Dropping context";
+                        self.mTemporaryContext.clear();
+                    }
                 }
             }
             co_return;
@@ -330,6 +339,14 @@ AFuture<> AppBase::diaryDumpMessages() {
     if (mTemporaryContext.empty()) {
         co_return;
     }
+    AString previousWorkingMemory;
+    if (WORKING_MEMORY_PATH.isRegularFileExists()) {
+        AByteBuffer buf;
+        buf << AFileInputStream(WORKING_MEMORY_PATH);
+        previousWorkingMemory = AStringView(buf.data(), buf.size());
+    }
+    auto importantThingsToRemember = util::importantThingsToRemember(mTemporaryContext, previousWorkingMemory);
+
     mTemporaryContext << OpenAIChat::Message{
         .role = OpenAIChat::Message::Role::USER,
         .content = config::DIARY_PROMPT,
@@ -381,6 +398,7 @@ AFuture<> AppBase::diaryDumpMessages() {
             .freeformBody = std::move(take),
         });
     }
+    AFileOutputStream(WORKING_MEMORY_PATH) << co_await importantThingsToRemember;
     mTemporaryContext.clear();
 }
 
@@ -484,6 +502,16 @@ void AppBase::removeNotifications(const AString& substring) {
 }
 
 AString AppBase::takeDiaryEntry(const Diary::EntryExAndRelatedness& i) {
+    if (ranges::any_of(mTemporaryContext, [&](const OpenAIChat::Message& m) {
+        return m.content.contains(i.entry->freeformBody);
+    })) {
+        // if mTemporaryContext already contains this diary entry verbatim - we don't need to reinclude it - it makes
+        // no sense to consume tokens for the same thing.
+        //
+        // the copypasted diary entry would not receive score.
+        return {};
+    }
+
     i.entry->metadata.score += (i.relatedness - 0.5f) * 2.f;
     i.entry->incrementUsageCount();
     ALogger::info("AppBase") << "Loaded into context: " << i.entry->id << ".md relatedness=" << i.relatedness << "\n" << i.entry->freeformBody;

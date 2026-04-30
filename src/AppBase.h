@@ -9,6 +9,7 @@
 class AppBase: public AObject {
 public:
     AppBase(APath workingDir = "test_data");
+    static AString getSystemPrompt();
 
     struct Notification {
         AString message;
@@ -99,8 +100,5 @@ private:
     bool mActingProactively = false;
 
     Diary mDiary{"diary"};
-
-    static AString getSystemPrompt();
-
 };
 

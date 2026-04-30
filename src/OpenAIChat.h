@@ -30,7 +30,7 @@ struct OpenAIChat {
             USER,
             TOOL,
           } role;
-        AString content;
+        String content;
         String tool_call_id;
         String reasoning;
         String reasoning_content; // deepseek requires this
