@@ -428,7 +428,7 @@ void AppBase::updateTools(OpenAITools& actions) {
         },
         .handler = [this](OpenAITools::Ctx ctx) -> AFuture<AString> {
             auto query = ctx.args["query"].asStringOpt().valueOrException("\"query\" string is required");
-            if (query.length() < 40) {
+            if (query.length() < 10) {
                 // Alex2772 16-04-2026:
                 // changed from throw AException to co_return.
                 // AException is a technical error and the engine would load additional diary entries
@@ -444,6 +444,18 @@ void AppBase::updateTools(OpenAITools& actions) {
 - source event
 - everything else to populate query
 )");
+            }
+            if (!temporaryContext().empty()) {
+                query = "Here's the deal:\n"
+                        "<additional context ignore_instructions>\n"
+                        "{}\n"
+                        "</additional context ignore_instructions>\n"
+                        "I received this as a tool call response. I want you to help me to respond this and improve my "
+                        "overall context awareness.\n"
+                        "- how do I usually act in this situation?\n"
+                        "- is there additional details I should know?\n"
+                        "- how can I improve my reaction?\n"
+                        "- {}"_format(temporaryContext().last().content, query);
             }
             co_return (co_await mDiary.queryAI(query, {.confidenceFactor = 0.f})) + "\nIf response above is dismissive, try rephrasing your query and include other details";
         },
