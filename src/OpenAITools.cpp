@@ -4,6 +4,7 @@
 
 #include "OpenAITools.h"
 
+#include <range/v3/algorithm/remove_if.hpp>
 #include <range/v3/range/conversion.hpp>
 #include <range/v3/view/transform.hpp>
 
@@ -25,13 +26,21 @@ OpenAITools::OpenAITools(std::initializer_list<Tool> tools) {
     }
 }
 
+static AString removeControlCharacters(AString input) {
+    // toml11 library inserts beautiful formatting to the exceptions, and JSON is not happy about it.
+    input.bytes().erase(ranges::remove_if(input.bytes(), [](char c) {
+        return 0x00 <= c && c < 0x20;
+    }), input.bytes().end());
+    return input;
+}
+
 AFuture<AVector<OpenAIChat::Message>> OpenAITools::handleToolCalls(const AVector<OpenAIChat::Message::ToolCall>& toolCalls) {
     ALOG_TRACE("OpenAITools") << "handleToolCalls";
     AVector<OpenAIChat::Message> result;
     for (const auto& toolCall : toolCalls) {
         result << OpenAIChat::Message{
             .role = OpenAIChat::Message::Role::TOOL,
-            .content = co_await [&]() -> AFuture<AString> {
+            .content = removeControlCharacters(co_await [&]() -> AFuture<AString> {
                 try {
                     if (auto c = mHandlers.contains(toolCall.function.name)) {
                         co_return co_await c->second.handler({*this, AJson::fromString(toolCall.function.arguments)});
@@ -41,7 +50,7 @@ AFuture<AVector<OpenAIChat::Message>> OpenAITools::handleToolCalls(const AVector
                     ALogger::err("OpenAITools") << "error while executing \"{}\" tool: "_format(toolCall.function.name) << e;
                     co_return "error while executing \"{}\" tool: {}"_format(toolCall.function.name, e.getMessage());
                 }
-            }(),
+            }()),
             .tool_call_id = toolCall.id,
         };
     }
