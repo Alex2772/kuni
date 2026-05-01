@@ -87,6 +87,29 @@ The intended effect: over time, this should make the diary behave more like huma
 - similar memories become grouped,
 - the system doesn’t keep re-processing the same raw event forever,
 - sleep creates a sort of memory compression and reflection phase.
+### Working memory
+
+**Def. by cognitive psychology** Working memory is a limited-capacity system that temporarily holds and manipulates
+information for ongoing cognitive tasks — like keeping a phone number in mind before dialing, or tracking a
+conversation's context.
+
+**Solution for Kuni** Working memory is stored in `data/working_memory.md` and emulates the "middle" layer of human
+memory — things that matter for 1–3 days but aren't important enough to be permanently stored in the diary.
+
+On each session start, the working memory file is loaded and injected into the AI's context as
+`<things_to_remember>`. When the context is dumped to the diary (`diaryDumpMessages`), the system asks the LLM
+to produce an updated working memory by:
+
+- Preserving all unfinished tasks, promises, and reminders from the previous working memory.
+- Encouraging to revisit chats in question.
+- Removing completed tasks and items older than 3 days.
+- Adding new important details from the current conversation.
+- Structuring the output with dates and "last updated" timestamps.
+- Preserved between program launches.
+- Always included in the context, so Kuni always remember about them.
+
+The new working memory is then written back to `data/working_memory.md`, overwriting the old one. This allows Kuni
+to remember short-term obligations across restarts and preserving its state (including emotions).
 
 ## Thoughts
 
