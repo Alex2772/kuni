@@ -29,7 +29,13 @@ OpenAITools::OpenAITools(std::initializer_list<Tool> tools) {
 static AString removeControlCharacters(AString input) {
     // toml11 library inserts beautiful formatting to the exceptions, and JSON is not happy about it.
     input.bytes().erase(ranges::remove_if(input.bytes(), [](char c) {
-        return 0x00 <= c && c < 0x20;
+        switch (c) {
+            case '\n':
+            case '\t':
+                return false;
+            default:
+            return 0x00 <= c && c < 0x20;
+        }
     }), input.bytes().end());
     return input;
 }
