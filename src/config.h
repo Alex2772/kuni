@@ -427,6 +427,12 @@ world) in the following format:
         .model = "qwen3.5:9b",
     };
 
+    static const EndpointAndModel ENDPOINT_SPEECH_TO_TEXT {
+        .endpoint = {
+            .baseUrl = "http://localhost:11434/v1/",
+        },
+        .model = "openai/gpt-4o-mini-transcribe"
+    };
 
     static const EndpointAndModel ENDPOINT_SLEEPING {
         .endpoint = {
