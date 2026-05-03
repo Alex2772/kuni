@@ -12,6 +12,7 @@
 
 #include "AUI/Common/AByteBuffer.h"
 #include "AUI/IO/AFileInputStream.h"
+#include "AUI/Curl/ACurl.h"
 #include "AUI/IO/APath.h"
 #include "AUI/Platform/Entry.h"
 #include "AUI/Util/ASharedRaiiHelper.h"
@@ -240,7 +241,9 @@ Use absolute time in your queries.
 )"_format(result, util::formatPastHours())) + result;
                     }
                     result += "<instructions>\n"
-                    "Chat list view is limited. Use #search_chats to search for a specific chat.\n"
+                    "Chat list view is limited. Use #search_chats to search for a specific chat.\n\n"
+                    "You should not use #get_telegram_chats just to check if someone texted you. You'll receive "
+                    "notification if something happened. Use #wait instead.\n"
                     "</instructions>";
                     co_return result;
                 },
@@ -616,17 +619,16 @@ Use absolute time in your queries.
                     try {
                         // comment their dickpic.
                         co_await telegramPostMessage(chatId, "фу какой маленький");
+                        // give them a chance to see the last message, because later we will delete the entire chat.
+                        co_await AThread::asyncSleep(5s);
                     } catch (const AException& e) {}
                     // Block the user from sending new DMs
                     co_await telegram()->sendQueryWithResult(
                         TelegramClient::toPtr(td::td_api::setMessageSenderBlockList(
                             td::td_api::make_object<td::td_api::messageSenderUser>(chatId),
                             td::td_api::make_object<td::td_api::blockListMain>())));
-                    // Remove chat from chat list and delete history
-                    // Alex2772 (Apr 30):
-                    // commented out, too destructive
-                    // co_await telegram()->sendQueryWithResult(
-                    //     TelegramClient::toPtr(td::td_api::deleteChatHistory(chatId, true, true)));
+                    co_await telegram()->sendQueryWithResult(
+                        TelegramClient::toPtr(td::td_api::deleteChatHistory(chatId, true, true)));
                     break;
                 case td::td_api::chatTypeBasicGroup::ID:
                 case td::td_api::chatTypeSupergroup::ID:
@@ -640,7 +642,7 @@ Use absolute time in your queries.
             }
         }
 
-        AFuture<AString> describePhoto(AStringView pathToImage) {
+        AFuture<AString> describePhoto(AStringView pathToImage, AStringView xmlTag = "photo") {
             try
             {
                 if (const auto i = mImages.contains(pathToImage)) {
@@ -668,11 +670,45 @@ Use absolute time in your queries.
                 context += "\n\nDescribe the last photo.";
 
                 auto response = co_await chat.chat(std::move(context));
-                co_return mImages[pathToImage] = "<photo description>\n{}\n</photo>"_format(response.choices.at(0).message.content);
+                co_return mImages[pathToImage] = "<{} description>\n{}\n</{}>"_format(xmlTag, response.choices.at(0).message.content, xmlTag);
             } catch (const AException& e)
             {
                 ALogger::err(LOG_TAG) << "Can't describe photo"  << e;
                 co_return mImages[pathToImage] = "";
+            }
+        }
+
+        AFuture<AString> transcribeAudio(AStringView pathToVoice) {
+            try
+            {
+                AJson payload;
+                payload["model"] = config::ENDPOINT_SPEECH_TO_TEXT.model;
+
+                AFileInputStream stream(pathToVoice);
+                AByteBuffer audio = AByteBuffer::fromStream(stream);
+                AJson inputAudio;
+                inputAudio["data"] = audio.toBase64String();
+                inputAudio["format"] = "ogg";
+                payload["input_audio"] = inputAudio;
+
+                AVector<AString> headers = {
+                    "Authorization: Bearer {}"_format(config::ENDPOINT_SPEECH_TO_TEXT.endpoint.bearerKey),
+                    "Content-Type: application/json"
+                };
+
+                auto response = co_await ACurl::Builder(config::ENDPOINT_SPEECH_TO_TEXT.endpoint.baseUrl + "audio/transcriptions")
+                    .withMethod(ACurl::Method::HTTP_POST)
+                    .withBody(AJson::toString(payload))
+                    .withHeaders(std::move(headers))
+                    .withTimeout(config::REQUEST_TIMEOUT)
+                    .runAsync();
+
+                AJson responseJson = AJson::fromBuffer(response.body);
+                co_return "<voice>\n" + AJson::toString(responseJson["text"]) + "\n</voice>";
+            } catch (const AException& e)
+            {
+                ALogger::err(LOG_TAG) << "Can't transcribe audio"  << e;
+                co_return "";
             }
         }
 
@@ -727,7 +763,7 @@ Use absolute time in your queries.
                   },
                   [&](td::td_api::messageVideoNote&) { out += "[video note]"; },
                   [&](td::td_api::messageVoiceNote& voice) {
-                      out += "[voice message]";
+                    //   out += "[voice message]";
                       if (voice.caption_) {
                           checkForMaliciousPayloads(voice.caption_->text_);
                           out += "\n" + voice.caption_->text_;
@@ -735,10 +771,6 @@ Use absolute time in your queries.
                   },
                   [&](td::td_api::messageSticker& st) {
                       out += "[sticker]";
-                      if (!st.sticker_->emoji_.empty()) {
-                          checkForMaliciousPayloads(st.sticker_->emoji_);
-                          out += " " + st.sticker_->emoji_;
-                      }
                   },
                   [&](td::td_api::messageLocation& loc) {
                       out +=
@@ -907,21 +939,33 @@ Use absolute time in your queries.
                     if (auto targetPhotoIt = ranges::max_element(photo.photo_->sizes_, std::less{},
                                                                  [&](const auto& s) { return s->width_ * s->height_; });
                         targetPhotoIt != photo.photo_->sizes_.end()) {
-                        result += co_await describePhoto(co_await fetchPhoto(targetPhotoIt->get()->photo_));
+                        result += co_await describePhoto(co_await fetchMedia(targetPhotoIt->get()->photo_));
                     }
                 }
 
                 if (msg.content_->get_id() == td::td_api::messageSticker::ID) {
                     auto& sticker = static_cast<td::td_api::messageSticker&>(*msg.content_);
+                    AString xmlTag = "sticker";
+                    if (!sticker.sticker_->emoji_.empty()) {
+                        checkForMaliciousPayloads(sticker.sticker_->emoji_);
+                        xmlTag += " " + sticker.sticker_->emoji_;
+                    }
                     if (sticker.sticker_->sticker_) {
-                        result += co_await describePhoto(co_await fetchPhoto(sticker.sticker_->sticker_));
+                        result += co_await describePhoto(co_await fetchMedia(sticker.sticker_->sticker_), "sticker");
                     }
                 }
 
                 if (msg.content_->get_id() == td::td_api::messageAnimation::ID) {
                     auto& animation = static_cast<td::td_api::messageAnimation&>(*msg.content_);
                     if (animation.animation_->thumbnail_) {
-                        result += co_await describePhoto(co_await fetchPhoto(animation.animation_->thumbnail_->file_));
+                        result += co_await describePhoto(co_await fetchMedia(animation.animation_->thumbnail_->file_), "animation");
+                    }
+                }
+
+                if (msg.content_->get_id() == td::td_api::messageVoiceNote::ID) {
+                    auto& voiceNote = static_cast<td::td_api::messageVoiceNote&>(*msg.content_);
+                    if (voiceNote.voice_note_) {
+                        result += co_await transcribeAudio(co_await fetchMedia(voiceNote.voice_note_->voice_));
                     }
                 }
             }
@@ -932,14 +976,14 @@ Use absolute time in your queries.
             co_return result;
         }
 
-        AFuture<APath> fetchPhoto(td::td_api::object_ptr<td::td_api::file>& photo) {
-            if (!photo->local_ || !photo->local_->is_downloading_completed_) {
-                photo = co_await mTelegram->sendQueryWithResult(
-                    TelegramClient::toPtr(td::td_api::downloadFile(photo->id_, 16, 0, 0, true)));
+        AFuture<APath> fetchMedia(td::td_api::object_ptr<td::td_api::file>& file) {
+            if (!file->local_ || !file->local_->is_downloading_completed_) {
+                file = co_await mTelegram->sendQueryWithResult(
+                    TelegramClient::toPtr(td::td_api::downloadFile(file->id_, 16, 0, 0, true)));
             }
-            AUI_ASSERT(photo->local_ != nullptr);
-            AUI_ASSERT(!photo->local_->path_.empty());
-            co_return photo->local_->path_;
+            AUI_ASSERT(file->local_ != nullptr);
+            AUI_ASSERT(!file->local_->path_.empty());
+            co_return file->local_->path_;
         }
 
         AFuture<AString> llmuiOpenTelegramChat(OpenAITools& tools, int64_t chatId) {
@@ -1231,7 +1275,7 @@ Some channels have reactions enabled. In that case, you can sometimes react with
                             if (shouldRemind) {
                                 bool usePhoto = std::uniform_real_distribution<>(0.0, 1.0)(gRandomEngine) < 0.5;
                                 AString reminderMessage = "Constant texting is too dull for the user!";
-                                
+
                                 if (usePhoto && config::CAPABILITY_TAKE_PHOTO) {
                                     reminderMessage += " Consider sending photos from your gallery or generated by #take_photo tool to make the conversation more lively and engaging!";
                                     throw AException(reminderMessage);
@@ -1447,7 +1491,7 @@ Some channels have reactions enabled. In that case, you can sometimes react with
                         if (chat->photo_ == nullptr) {
                             co_return "<chat_photo chat_name=\"{}\">Chat \"{}\" has no photo.</chat_photo>"_format(chat->title_, chat->title_);
                         }
-                        auto image = co_await describePhoto(co_await fetchPhoto(chat->photo_->big_));
+                        auto image = co_await describePhoto(co_await fetchMedia(chat->photo_->big_));
                         co_return "<chat_photo chat_name=\"{}\">{}</chat_photo>\nThis is avatar photo of \"{}\". When referring to it, let the person know that you are referring to their avatar."_format(chat->title_, image, chat->title_);
                     },
                 },

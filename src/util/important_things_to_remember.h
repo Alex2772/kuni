@@ -10,7 +10,8 @@ AFuture<AString> importantThingsToRemember(AVector<OpenAIChat::Message> context,
     using namespace std::chrono_literals;
 
     AString prompt = "What are important things in timespan {} (3 days) you should remember?\n"_format(formatPastHours(24h * 3));
-
+    prompt += "Do not attempt to make tool_calls or #ask_diary. Your job is to summarize your current tasks and "
+              "revisit tasks from previous session.\n";
     if (!previousWorkingMemory.empty()) {
         prompt += "\nHere is the PREVIOUS <things_to_remember> from the last session. "
                   "You MUST preserve ALL items from it, except:\n"
@@ -44,10 +45,17 @@ AFuture<AString> importantThingsToRemember(AVector<OpenAIChat::Message> context,
         .role = OpenAIChat::Message::Role::USER,
         .content = std::move(prompt),
     };
-    co_return (co_await OpenAIChat {
-        .systemPrompt = AppBase::getSystemPrompt(),
-        .config = config::ENDPOINT_MAIN
-    }.chat(std::move(context))).choices.at(0).message.content;
+    for (;;) {
+        auto content = (co_await OpenAIChat {
+            .systemPrompt = AppBase::getSystemPrompt(),
+            .config = config::ENDPOINT_MAIN
+        }.chat(context)).choices.at(0).message.content;
+        if (content.contains("tool_calls") || content.contains("ask_diary")) {
+            // deepseek bug - attempts to use DSML to make a call to ask_diary.
+            continue;
+        }
+        co_return content;
+    }
 
 }
 }

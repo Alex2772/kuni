@@ -401,7 +401,11 @@ AFuture<> AppBase::diaryDumpMessages() {
             .freeformBody = std::move(take),
         });
     }
-    AFileOutputStream(WORKING_MEMORY_PATH) << co_await importantThingsToRemember;
+    {
+        // do it in separate lines: first, we wait for LLM response, second, we overwrite file (destructive operation).
+        auto workingMemoryMd = co_await importantThingsToRemember;
+        AFileOutputStream(WORKING_MEMORY_PATH) << workingMemoryMd;
+    }
     mTemporaryContext.clear();
 }
 
@@ -441,7 +445,18 @@ void AppBase::updateTools(OpenAITools& actions) {
     ALOG_TRACE(LOG_TAG) << "updateTools";
     actions.insert({
         .name = "ask_diary",
-        .description = "Consult with Kuni's main knowledge database (subagent). Use this to retrieve additional pages from diary. USE THIS PROACTIVELY — especially when someone shares personal news, asks about past events, or mentions people/activities you might know about.\n\nExamples of when to call:\n- User says \"I wrote a song today\" → query: \"[sender name] said they wrote a song today. What do I know about them and songs? Do they participate in a band? Which songs do they write? What music do they listen to?\"\n- User asks \"what songs am I writing?\" → query: \"What songs does [sender name] write? What do I know about their musical activities?\"\n- User says \"I'm going to the gym\" → query: \"Does [sender name] go to the gym? Any related habits or routines?\"",
+        .description = "Consult with Kuni's main knowledge database (subagent). Use this to retrieve additional "
+            "pages from diary. USE THIS PROACTIVELY — especially when someone shares personal news, asks about past "
+            "events, or mentions people/activities you might know about.\n\n"
+            "Examples of when to call:\n"
+            "- User says \"I wrote a song today\" → query: \"[sender name] said they wrote a song today. What do I "
+            "  know about them and songs? Do they participate in a band? Which songs do they write? What music do they "
+            "  listen to?\"\n"
+            "- User asks \"what songs am I writing?\" → query: \"What songs does [sender name] write? What do I know "
+            "  about their musical activities?\"\n- User says \"I'm going to the gym\" → query: \"Does [sender name] go "
+            "  to the gym? Any related habits or routines?\"\n"
+            "- You want to ask them a question - check yourself with #ask_diary first\n"
+        ,
         .parameters = {
             .properties =
                 {

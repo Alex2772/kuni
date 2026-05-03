@@ -4,6 +4,7 @@
 
 #include <chrono>
 #include "populate_from_diary_ai_if_needed.h"
+#include "AUI/Logging/ALogger.h"
 
 #include <range/v3/algorithm/any_of.hpp>
 
@@ -14,6 +15,7 @@ AString util::formatPastHours(std::chrono::hours pastHours) {
 }
 
 AFuture<AString> util::populateFromDiaryAIIfNeeded(const AVector<OpenAIChat::Message>& temporaryContext, Diary& diary, AStringView tag, AStringView prompt) {
+    ALOG_TRACE("populateFromDiaryAIIfNeeded") << "tag=" << tag;
     auto xmlTag = "<populated tag=\"{}\"/>"_format(tag);
     if (ranges::any_of(temporaryContext, [&](const auto& m) { return m.content.contains(xmlTag); })) {
         co_return ""; // no retrieval needed, as we did this already.

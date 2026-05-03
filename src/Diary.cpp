@@ -106,6 +106,7 @@ AFuture<AVector<Diary::EntryExAndRelatedness>> Diary::query(const std::valarray<
 }
 
 AFuture<double> Diary::entryIsRelated(const std::valarray<double>& context, EntryEx& entry, QueryOpts opts) {
+    ALOG_TRACE(LOG_TAG) << "entryIsRelated: " << entry.id;
     if (entry.freeformBody.empty()) {
         co_return 0.0;
     }
@@ -125,6 +126,7 @@ AFuture<double> Diary::entryIsRelated(const std::valarray<double>& context, Entr
 }
 
 std::list<Diary::EntryEx> Diary::parse(AVector<Entry> diary) {
+    ALOG_TRACE(LOG_TAG) << "Diary::parse";
     // parse
     // ---
     // { ... }
@@ -151,6 +153,7 @@ std::list<Diary::EntryEx> Diary::parse(AVector<Entry> diary) {
 }
 
 void Diary::unload(std::list<EntryEx>::const_iterator it) {
+    ALOG_TRACE(LOG_TAG) << "Diary::unload: " << it->id;
     save(*it);
     mCachedDiary->erase(it);
 }
@@ -162,6 +165,7 @@ struct SleepingConsolidationMeta {
 AJSON_FIELDS(SleepingConsolidationMeta, AJSON_FIELDS_ENTRY(confidence))
 
 AFuture<> Diary::sleepingConsolidation() {
+    ALOG_TRACE(LOG_TAG) << "sleepingConsolidation";
     // emulates human sleeping behavior against diary.
 
     static std::default_random_engine re(std::time(nullptr));
@@ -322,7 +326,7 @@ AFuture<> Diary::sleepingConsolidation() {
 }
 
 AFuture<AString> Diary::queryAI(const AString& query, QueryOpts opts) {
-    ALOG_DEBUG("Diary") << "queryAI query=\"" << query << "\"";
+    ALOG_DEBUG(LOG_TAG) << "queryAI query=\"" << query << "\"";
     ASet<AString> includedIds;
     OpenAITools tools {
         OpenAITools::Tool {
@@ -352,6 +356,11 @@ AFuture<AString> Diary::queryAI(const AString& query, QueryOpts opts) {
                     if (includedIds.contains(i.entry->id)) {
                         continue;
                     }
+
+                    i.entry->metadata.score += (i.relatedness - 0.5f) * 2.f;
+                    i.entry->incrementUsageCount();
+                    save(*i.entry);
+
                     includedIds << i.entry->id;
                     formattedResponse += R"(<memory_piece relatedness="{}">
 {}

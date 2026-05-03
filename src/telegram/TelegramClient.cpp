@@ -138,7 +138,9 @@ void TelegramClient::commonHandler(td::tl::unique_ptr<td::td_api::Object> object
                         [this](td::td_api::authorizationStateClosed& u) {
                             getThread()->enqueue([this, self = shared_from_this()] { initClientManager(); });
                         },
-                        StubHandler{},
+                        [this](auto& v) {
+                            ALogger::info(LOG_TAG) << "Stub: " << td::td_api::to_string(v);
+                        },
                     });
             },
 
