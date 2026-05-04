@@ -409,7 +409,7 @@ Use absolute time in your queries.
                 }();
                 AString preview;
                 if (chat->last_message_) {
-                    preview = co_await extractSenderName(*chat->last_message_);
+                    preview = co_await extractSenderName(*chat->last_message_->sender_id_);
                     preview += ": ";
                     preview += extractMessageTypeAndText(*chat->last_message_);
                     preview.replaceAll("\n", " ");
@@ -445,7 +445,7 @@ Use absolute time in your queries.
             }();
             AString preview;
             if (chat->last_message_) {
-                preview = co_await extractSenderName(*chat->last_message_);
+                preview = co_await extractSenderName(*chat->last_message_->sender_id_);
                 preview += ": ";
                 preview += extractMessageTypeAndText(*chat->last_message_);
                 preview.replaceAll("\n", " ");
@@ -823,13 +823,13 @@ Use absolute time in your queries.
                 });
             return out;
         }
-        AFuture<AString> extractSenderName(td::td_api::message& msg) {
+        AFuture<AString> extractSenderName(td::td_api::MessageSender& sender) {
             int64_t senderId {};
             td::td_api::downcast_call(
-                *msg.sender_id_,
+                sender,
                 aui::lambda_overloaded {
-                  [&](td::td_api::messageSenderUser& user) { senderId = user.user_id_; },
-                  [&](td::td_api::messageSenderChat& chat) { senderId = chat.chat_id_; },
+                  [&](const td::td_api::messageSenderUser& user) { senderId = user.user_id_; },
+                  [&](const td::td_api::messageSenderChat& chat) { senderId = chat.chat_id_; },
                 });
             AString senderName;
             if (senderId == mTelegram->myId()) {
@@ -862,7 +862,7 @@ Use absolute time in your queries.
 
         AFuture<AString> llmuiFormatChatHistoryMessage(td::td_api::message& msg, const td::td_api::chat& chat,
                                                        AStringView xmlTag = "message") {
-            AString senderName = co_await extractSenderName(msg);
+            AString senderName = co_await extractSenderName(*msg.sender_id_);
             AString formattedXmlTag = "{} message_id=\"{}\" date=\"{}\""_format(xmlTag, msg.id_, std::chrono::time_point<std::chrono::system_clock, std::chrono::seconds>(std::chrono::seconds(msg.date_)));
             int64_t senderId {};
             td::td_api::downcast_call(
@@ -921,6 +921,52 @@ Use absolute time in your queries.
             } else {
                 if (!senderName.empty()) {
                     formattedXmlTag += " sender=\"{}\""_format(senderName);
+                }
+            }
+            if (msg.interaction_info_) {
+                if (msg.interaction_info_->reactions_) {
+                    AString reactionsAttr;
+                    for (auto& reaction : msg.interaction_info_->reactions_->reactions_) {
+                        AString emoji;
+                        td::td_api::downcast_call(*reaction->type_, aui::lambda_overloaded {
+                            [&](const td::td_api::reactionTypeEmoji& v) {
+                                emoji += v.emoji_;
+                            },
+                            [](const td::td_api::reactionTypePaid& v) {
+                                // don't care
+                            },
+                            [](const td::td_api::reactionTypeCustomEmoji& v) {
+                                // don't care
+                            },
+                        });
+                        if (emoji.empty()) {
+                            continue;
+                        }
+                        if (!reactionsAttr.empty()) {
+                            reactionsAttr += ";";
+                        }
+                        reactionsAttr += "({} "_format(emoji);
+                        AUI_DEFER { reactionsAttr += ")"; };
+                        if (reaction->total_count_ > 3) {
+                            // if reactions above 3, format as emoji + react counts, just like regular telegram clients
+                            // do.
+                            reactionsAttr += "{}"_format(emoji, reaction->total_count_);
+                            continue;
+                        }
+                        reactionsAttr += " by ";
+                        bool first = true;
+                        for (auto& sender : reaction->recent_sender_ids_) {
+                            if (first) {
+                                first = false;
+                            } else {
+                                reactionsAttr += ", ";
+                            }
+                            reactionsAttr += co_await extractSenderName(*sender);
+                        }
+                    }
+                    if (!reactionsAttr.empty()) {
+                        formattedXmlTag += " reactions=\"{}\""_format(reactionsAttr);
+                    }
                 }
             }
 
