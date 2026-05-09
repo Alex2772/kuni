@@ -75,7 +75,12 @@ TEST(OpenAIChatIntegration, Basic) {
     AAsyncHolder async;
     async << []() -> AFuture<> {
         auto session = _new<OpenAIChatImpl>();
-        auto response = (co_await session->chat({ .systemPrompt = SYSTEM_PROMPT }, "Answer SHORTLY. What time is it? Do not make up information; if you don't have access to a tool, report it.")).choices.at(0).message.content;
+        auto response = (co_await session->chat({ .systemPrompt = SYSTEM_PROMPT }, {
+                {
+                    .role = IOpenAIChat::Message::Role::USER,
+                    .content = "Answer SHORTLY. What time is it? Do not make up information; if you don't have access to a tool, report it."
+                },
+        })).choices.at(0).message.content;
         EXPECT_TRUE(response.contains("content") ||
                     response.contains("information") || response.contains("cannot") ||
                     response.contains("provide") || response.contains("time"))

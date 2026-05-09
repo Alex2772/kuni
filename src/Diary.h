@@ -28,6 +28,7 @@
  */
 class Diary {
 public:
+    virtual ~Diary() = default;
     /**
      * @brief Simple representation of a diary entry.
      *
@@ -226,7 +227,7 @@ public:
      */
     AFuture<> sleepingConsolidation();
 
-    AFuture<AString> queryAI(const AString& query, QueryOpts opts);
+    virtual AFuture<AString> queryAI(const AString& query, QueryOpts opts);
 
     [[nodiscard]] _<IOpenAIChat> openAI() const noexcept { return mInit.openAI; }
 

@@ -55,14 +55,6 @@ AJSON_FIELDS(StreamingResponse::Choice,
     AJSON_FIELDS_ENTRY(delta)
     )
 
-AFuture<IOpenAIChat::Response> OpenAIChatImpl::chat(Params params, AString message) const {
-    ALOG_TRACE(LOG_TAG) << "chat(" << message << ")";
-    return chat(std::move(params), {
-        {Message::Role::USER, std::move(message)},
-    });
-}
-
-
 AString IOpenAIChat::embedImage(AImageView image) {
     ALOG_TRACE(LOG_TAG) << "embedImage";
     AByteBuffer jpg;

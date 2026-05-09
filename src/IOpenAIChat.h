@@ -108,7 +108,6 @@ struct IOpenAIChat {
         AFuture<> completed;
     };
 
-    virtual AFuture<Response> chat(Params params, AString message) const = 0;
     virtual AFuture<Response> chat(Params params, AVector<Message> messages) const = 0;
     virtual _<StreamingResponse> chatStreaming(Params params, AVector<Message> messages) const = 0;
 

@@ -644,7 +644,7 @@ Use absolute time in your queries.
                     .systemPrompt = config::PHOTO_TO_TEXT_PROMPT,
                     .config = config::ENDPOINT_PHOTO_TO_TEXT,
                     .seed = 1,
-                }, std::move(context));
+                }, { { .role = IOpenAIChat::Message::Role::USER, .content = std::move(context) }});
                 co_return mImages[pathToImage] = "<{} description>\n{}\n</{}>"_format(xmlTag, response.choices.at(0).message.content, xmlTag);
             } catch (const AException& e)
             {

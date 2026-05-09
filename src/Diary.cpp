@@ -274,7 +274,7 @@ AFuture<> Diary::sleepingConsolidation() {
                 response = co_await openAI()->chat({
                 .systemPrompt = config::SLEEP_CONSOLIDATOR_PROMPT,
                 .config = config::ENDPOINT_SLEEPING,
-            }, body);
+            }, { { .role = IOpenAIChat::Message::Role::USER, .content = body }});
             } catch (const AException& e) {
                 ALogger::err("Diary") << "sleepingConsolidation can't chat " << e;
                 goto naxyi;
