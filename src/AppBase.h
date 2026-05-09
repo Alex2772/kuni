@@ -4,11 +4,16 @@
 #include "AUI/Thread/AAsyncHolder.h"
 #include "AUI/Thread/AEventLoop.h"
 #include "Diary.h"
+#include "IOpenAIChat.h"
 #include "OpenAITools.h"
 
 class AppBase: public AObject {
 public:
-    AppBase(APath workingDir = "test_data");
+    struct Init {
+        APath workingDir = "test_data";
+        _<IOpenAIChat> openAI;
+    };
+    AppBase(Init init);
     static AString getSystemPrompt();
 
     struct Notification {
@@ -35,7 +40,7 @@ public:
 
     void actProactively();
 
-    [[nodiscard]] const AVector<OpenAIChat::Message>& temporaryContext() const { return mTemporaryContext; }
+    [[nodiscard]] const AVector<IOpenAIChat::Message>& temporaryContext() const { return mTemporaryContext; }
 
     [[nodiscard]] Diary& diary() { return mDiary; }
 
@@ -70,7 +75,7 @@ protected:
      */
     void removeNotifications(const AString& substring);
 
-    AVector<OpenAIChat::Message> mTemporaryContext {};
+    AVector<IOpenAIChat::Message> mTemporaryContext {};
 
 
     /**
@@ -88,7 +93,13 @@ protected:
     [[nodiscard]]
     AString takeDiaryEntry(const Diary::EntryExAndRelatedness& i);
 
+    [[nodiscard]]
+    const _<IOpenAIChat>& openAI() const noexcept {
+        return mInit.openAI;
+    }
+
 private:
+    const Init mInit;
     std::deque<Notification> mNotifications;
     AFuture<> mNotificationsSignal;
     _<ATimer> mWakeupTimer;
@@ -99,6 +110,6 @@ private:
      */
     bool mActingProactively = false;
 
-    Diary mDiary{"diary"};
+    Diary mDiary;
 };
 

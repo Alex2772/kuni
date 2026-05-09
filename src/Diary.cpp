@@ -10,7 +10,7 @@
 #include "AUI/Logging/ALogger.h"
 #include "AUI/Thread/AThreadPool.h"
 #include "AUI/Util/kAUI.h"
-#include "OpenAIChat.h"
+#include "IOpenAIChat.h"
 #include "util/cosine_similarity.h"
 
 #include <range/v3/algorithm/sort.hpp>
@@ -24,10 +24,9 @@ using namespace std::chrono_literals;
 
 static constexpr auto LOG_TAG = "Diary";
 
-Diary::Diary(APath diaryDir)
-    : mDiaryDir(std::move(diaryDir)) {
-    ALOG_TRACE(LOG_TAG) << "Diary::Diary: " << diaryDir;
-    mDiaryDir.makeDirs();
+Diary::Diary(Init init): mInit(std::move(init)) {
+    ALOG_TRACE(LOG_TAG) << "Diary::Diary: " << mInit.diaryDir;
+    mInit.diaryDir.makeDirs();
 }
 
 AVector<Diary::Entry> Diary::read(const APath& diaryDir) {
@@ -48,7 +47,7 @@ AVector<Diary::Entry> Diary::read(const APath& diaryDir) {
 
 void Diary::save(const Entry& entry) {
     ALOG_TRACE(LOG_TAG) << "Diary::save: " << entry.id;
-    AFileOutputStream(mDiaryDir / (entry.id + ".md")) << entry.text;
+    AFileOutputStream(mInit.diaryDir / (entry.id + ".md")) << entry.text;
 }
 
 void Diary::save(const EntryEx& entry) {
@@ -114,7 +113,7 @@ AFuture<double> Diary::entryIsRelated(const std::valarray<double>& context, Entr
     }
     if (entry.metadata.embedding.size() != context.size()) {
         try {
-            entry.metadata.embedding = co_await OpenAIChat{.config = config::ENDPOINT_EMBEDDING}.embedding(
+            entry.metadata.embedding = co_await openAI()->embedding({ .config = config::ENDPOINT_EMBEDDING },
                 entry.freeformBody.replaceAll("\t", "  "));
             save(entry);
         } catch (const AException&) {
@@ -173,7 +172,7 @@ AFuture<> Diary::sleepingConsolidation() {
     static std::default_random_engine re(std::time(nullptr));
     // reload();
     for (;;) {
-        mCachedDiary = parse(read(mDiaryDir))
+        mCachedDiary = parse(read(mInit.diaryDir))
             | ranges::to_vector
             | ranges::action::sort([](const EntryEx& a, const EntryEx& b) {
                 return a.id > b.id; // recent first, old last
@@ -228,7 +227,7 @@ AFuture<> Diary::sleepingConsolidation() {
                 return asValue;
             }();
             if (target.metadata.embedding.size() == 0) {
-                target.metadata.embedding = co_await OpenAIChat{.config = config::ENDPOINT_EMBEDDING}.embedding(target.freeformBody);
+                target.metadata.embedding = co_await openAI()->embedding({ .config = config::ENDPOINT_EMBEDDING }, target.freeformBody);
             }
             tryAgain:
             AVector<EntryExAndRelatedness> results;
@@ -270,15 +269,15 @@ AFuture<> Diary::sleepingConsolidation() {
             ALOG_DEBUG("Diary") << "Prompt: " << body;
 
             naxyi:
-            OpenAIChat chat { .systemPrompt = config::SLEEP_CONSOLIDATOR_PROMPT, .config = config::ENDPOINT_SLEEPING };
-
-            tryAgain2:
-            OpenAIChat::Response response;
+            IOpenAIChat::Response response;
             try {
-                response = co_await chat.chat(body);
+                response = co_await openAI()->chat({
+                .systemPrompt = config::SLEEP_CONSOLIDATOR_PROMPT,
+                .config = config::ENDPOINT_SLEEPING,
+            }, body);
             } catch (const AException& e) {
                 ALogger::err("Diary") << "sleepingConsolidation can't chat " << e;
-                goto tryAgain2;
+                goto naxyi;
             }
 
             try {
@@ -316,7 +315,7 @@ AFuture<> Diary::sleepingConsolidation() {
 	    // since we have written refined diary entries, we don't need
 	    // old ones.
 	    for (const auto& id : idsToRemove) {
-		auto file = mDiaryDir / "{}.md"_format(id);
+		auto file = mInit.diaryDir / "{}.md"_format(id);
 		if (file.isRegularFileExists()) {
 		    file.removeFile();
 		}
@@ -346,7 +345,7 @@ AFuture<AString> Diary::queryAI(const AString& query, QueryOpts opts) {
             },
             .handler = [this, opts, &includedIds](OpenAITools::Ctx ctx) -> AFuture<AString> {
                 auto cue = ctx.args["text"].asStringOpt().valueOrException("text is required string");
-                auto diaryResponse = co_await this->query(co_await OpenAIChat{.config = config::ENDPOINT_EMBEDDING}.embedding(cue), opts);
+                auto diaryResponse = co_await this->query(co_await openAI()->embedding({ .config = config::ENDPOINT_EMBEDDING }, cue), opts);
                 AString formattedResponse;
                 ALOG_DEBUG("Diary") << "queryAI cue=\"" << cue << "\" found=" << (diaryResponse | ranges::view::transform([&](const EntryExAndRelatedness& e) -> AString {
                     if (includedIds.contains(e.entry->id)) {
@@ -379,8 +378,19 @@ AFuture<AString> Diary::queryAI(const AString& query, QueryOpts opts) {
             },
         },
     };
-    OpenAIChat chat {
-        .systemPrompt = R"(
+
+    AVector<IOpenAIChat::Message> messages = {
+        IOpenAIChat::Message {
+            .role = IOpenAIChat::Message::Role::USER,
+            .content = "<character>\n{}\n</character>\n\n{}"_format(AppBase::getSystemPrompt(), query),
+        },
+    };
+
+    bool toolCallHappened = false;
+
+    for (;;) {
+        auto botAnswer = (co_await openAI()->chat({
+            .systemPrompt = R"(
 You are a database searcher and summarizer.
 
 The user asks you a question. Your job is to retrieve data solely from #query tool. Your job is to output data that
@@ -393,26 +403,14 @@ Do not alter facts.
 
 Do not make up facts. Rely exclusively on provided context.
 )",
-        .tools = tools.asJson(),
-    };
-
-    AVector<OpenAIChat::Message> messages = {
-        OpenAIChat::Message {
-            .role = OpenAIChat::Message::Role::USER,
-            .content = "<character>\n{}\n</character>\n\n{}"_format(AppBase::getSystemPrompt(), query),
-        },
-    };
-
-    bool toolCallHappened = false;
-
-    for (;;) {
-        auto botAnswer = (co_await chat.chat(messages)).choices.at(0).message;
+            .tools = tools.asJson(),
+        }, messages)).choices.at(0).message;
         messages << botAnswer;
         if (botAnswer.tool_calls.empty()) {
             if (!toolCallHappened) {
                 ALogger::warn("Diary") << "queryAI: no tool call happened, pointing that out to the LLM and trying again";
-                messages << OpenAIChat::Message {
-                    .role = OpenAIChat::Message::Role::USER,
+                messages << IOpenAIChat::Message {
+                    .role = IOpenAIChat::Message::Role::USER,
                     .content = "you must perform at least one call to #query",
                 };
                 continue;

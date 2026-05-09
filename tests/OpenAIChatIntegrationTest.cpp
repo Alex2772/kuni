@@ -1,4 +1,5 @@
-#include "OpenAIChat.h"
+#include "IOpenAIChat.h"
+#include "OpenAIChatImpl.h"
 #include <gmock/gmock.h>
 
 #include "common.h"
@@ -73,8 +74,8 @@ TEST(OpenAIChatIntegration, Basic) {
     IEventLoop::Handle h(&loop);
     AAsyncHolder async;
     async << []() -> AFuture<> {
-        OpenAIChat session{ .systemPrompt = SYSTEM_PROMPT };
-        auto response = (co_await session.chat("Answer SHORTLY. What time is it? Do not make up information; if you don't have access to a tool, report it.")).choices.at(0).message.content;
+        auto session = _new<OpenAIChatImpl>();
+        auto response = (co_await session->chat({ .systemPrompt = SYSTEM_PROMPT }, "Answer SHORTLY. What time is it? Do not make up information; if you don't have access to a tool, report it.")).choices.at(0).message.content;
         EXPECT_TRUE(response.contains("content") ||
                     response.contains("information") || response.contains("cannot") ||
                     response.contains("provide") || response.contains("time"))
@@ -95,11 +96,12 @@ TEST(OpenAIChatIntegration, BasicStreaming) {
         GTEST_NONFATAL_FAILURE_("caught exception");
     });
     async << []() -> AFuture<> {
-        OpenAIChat session{ .systemPrompt = SYSTEM_PROMPT, .config = config::ENDPOINT_CHEAP_LLM };
-        auto streaming = session.chatStreaming({ {OpenAIChat::Message::Role::USER, "Answer SHORTLY. What time is it? Do not make up information; if you don't have access to a tool, report it."} });;
+        auto session = _new<OpenAIChatImpl>();
+        IOpenAIChat::Params params{ .systemPrompt = SYSTEM_PROMPT, .config = config::ENDPOINT_CHEAP_LLM };
+        auto streaming = session->chatStreaming(params, { {IOpenAIChat::Message::Role::USER, "Answer SHORTLY. What time is it? Do not make up information; if you don't have access to a tool, report it."} });;
         size_t callTimes = 0;
-        AObject::connect(streaming->response.changed, AObject::GENERIC_OBSERVER, [&callTimes, prevContent = _new<AString>()](const OpenAIChat::Response& m) {
-            EXPECT_EQ(m.choices.at(0).message.role, OpenAIChat::Message::Role::ASSISTANT);
+        AObject::connect(streaming->response.changed, AObject::GENERIC_OBSERVER, [&callTimes, prevContent = _new<AString>()](const IOpenAIChat::Response& m) {
+            EXPECT_EQ(m.choices.at(0).message.role, IOpenAIChat::Message::Role::ASSISTANT);
             if (!prevContent->empty()) {
                 EXPECT_TRUE(m.choices.at(0).message.content.startsWith(*prevContent)) << "Streaming response should contain previous content: " << m.choices.at(0).message.content;
             }
@@ -141,25 +143,22 @@ TEST(OpenAIChatIntegration, ToolUsage) {
             }
         };
 
-        OpenAIChat session{
-            .systemPrompt = SYSTEM_PROMPT,
-            .config = config::ENDPOINT_CHEAP_LLM,
-            .tools = tools.asJson(),
-        };
+        auto session = _new<OpenAIChatImpl>();
+        IOpenAIChat::Params params{ .systemPrompt = SYSTEM_PROMPT, .config = config::ENDPOINT_CHEAP_LLM, .tools = tools.asJson() };
 
-        AVector<OpenAIChat::Message> messages = {
+        AVector<IOpenAIChat::Message> messages = {
             {
-                .role = OpenAIChat::Message::Role::USER,
+                .role = IOpenAIChat::Message::Role::USER,
                 .content = "Answer SHORTLY. What time is it?"
             }
         };
-        auto response = co_await session.chat(messages);
+        auto response = co_await session->chat(params, messages);
         EXPECT_FALSE(response.choices.empty());
         EXPECT_FALSE(response.choices[0].message.tool_calls.empty());
         messages << response.choices[0].message;
         messages << co_await tools.handleToolCalls(response.choices[0].message.tool_calls);
 
-        response = co_await session.chat(messages);
+        response = co_await session->chat(params, messages);
         EXPECT_FALSE(response.choices.empty());
         EXPECT_TRUE(response.choices[0].message.content.contains("12:00"));
     }();
@@ -196,19 +195,16 @@ TEST(OpenAIChatIntegration, BasicStreamingToolCalls) {
             }
         };
 
-        AVector<OpenAIChat::Message> messages{
-            {OpenAIChat::Message::Role::USER, "Answer SHORTLY. What time is it? Do not make up information; if you don't have access to a tool, report it."}
+        AVector<IOpenAIChat::Message> messages{
+            {IOpenAIChat::Message::Role::USER, "Answer SHORTLY. What time is it? Do not make up information; if you don't have access to a tool, report it."}
         };
-        OpenAIChat session {
-            .systemPrompt = SYSTEM_PROMPT,
-            .config = config::ENDPOINT_CHEAP_LLM,
-            .tools = tools.asJson(),
-        };
+        auto session = _new<OpenAIChatImpl>();
+        IOpenAIChat::Params params{ .systemPrompt = SYSTEM_PROMPT, .config = config::ENDPOINT_CHEAP_LLM, .tools = tools.asJson() };
         toolCalls:
-        auto streaming = session.chatStreaming(messages);
+        auto streaming = session->chatStreaming(params, messages);
         size_t callTimes = 0;
-        AObject::connect(streaming->response.changed, AObject::GENERIC_OBSERVER, [&callTimes, prevContent = _new<AString>()](const OpenAIChat::Response& m) {
-            EXPECT_EQ(m.choices.at(0).message.role, OpenAIChat::Message::Role::ASSISTANT);
+        AObject::connect(streaming->response.changed, AObject::GENERIC_OBSERVER, [&callTimes, prevContent = _new<AString>()](const IOpenAIChat::Response& m) {
+            EXPECT_EQ(m.choices.at(0).message.role, IOpenAIChat::Message::Role::ASSISTANT);
             if (!prevContent->empty()) {
                 EXPECT_TRUE(m.choices.at(0).message.content.startsWith(*prevContent)) << "Streaming response should contain previous content: " << m.choices.at(0).message.content;
             }
@@ -237,19 +233,16 @@ TEST(OpenAIChatIntegration, ImageRecognition) {
     IEventLoop::Handle h(&loop);
     AAsyncHolder async;
     async << []() -> AFuture<> {
-        OpenAIChat session{
-            .systemPrompt = SYSTEM_PROMPT,
-            .config = config::ENDPOINT_PHOTO_TO_TEXT,
-            .seed = 3,
-        };
+        auto session = _new<OpenAIChatImpl>();
+        IOpenAIChat::Params params{ .systemPrompt = SYSTEM_PROMPT, .config = config::ENDPOINT_PHOTO_TO_TEXT, .seed = 3 };
 
-        AVector<OpenAIChat::Message> messages = {
+        AVector<IOpenAIChat::Message> messages = {
             {
-                .role = OpenAIChat::Message::Role::USER,
-                .content = "{}\nWhat is it?"_format(OpenAIChat::embedImage(*AImage::fromFile(TEST_DATA / "sussybaka.jpg") )),
+                .role = IOpenAIChat::Message::Role::USER,
+                .content = "{}\nWhat is it?"_format(IOpenAIChat::embedImage(*AImage::fromFile(TEST_DATA / "sussybaka.jpg") )),
             },
         };
-        auto response = co_await session.chat(messages);
+        auto response = co_await session->chat(params, messages);
         EXPECT_FALSE(response.choices.empty());
         auto content = response.choices[0].message.content.lowercase();
         ALogger::info("ImageRecognition") << "LLM response: " << content;
@@ -273,29 +266,27 @@ TEST(OpenAIChatIntegration, ToolAttachments) {
                 .name = "open_attachment",
                 .description = "Retrieves attachment.",
                 .handler = [](OpenAITools::Ctx json) -> AFuture<AString> {
-                    co_return OpenAIChat::embedImage(*AImage::fromFile(TEST_DATA / "sussybaka.jpg") );
+                    co_return IOpenAIChat::embedImage(*AImage::fromFile(TEST_DATA / "sussybaka.jpg") );
                 },
             }
         };
 
-        OpenAIChat session{
-            .systemPrompt = SYSTEM_PROMPT,
-            .tools = tools.asJson(),
-        };
+        auto session = _new<OpenAIChatImpl>();
+        IOpenAIChat::Params params{ .systemPrompt = SYSTEM_PROMPT, .tools = tools.asJson() };
 
-        AVector<OpenAIChat::Message> messages = {
+        AVector<IOpenAIChat::Message> messages = {
             {
-                .role = OpenAIChat::Message::Role::USER,
+                .role = IOpenAIChat::Message::Role::USER,
                 .content = "Please #open_attachment and describe what is it."
             }
         };
-        auto response = co_await session.chat(messages);
+        auto response = co_await session->chat(params, messages);
         EXPECT_FALSE(response.choices.empty());
         EXPECT_FALSE(response.choices[0].message.tool_calls.empty());
         messages << response.choices[0].message;
         messages << co_await tools.handleToolCalls(response.choices[0].message.tool_calls);
 
-        response = co_await session.chat(messages);
+        response = co_await session->chat(params, messages);
         EXPECT_FALSE(response.choices.empty());
         auto content = response.choices[0].message.content.lowercase();
         EXPECT_TRUE(content.contains("cat")) << "\"cat\" should be mentioned: " << content;
@@ -315,10 +306,10 @@ TEST(OpenAIChatIntegration, Embeddings) {
     IEventLoop::Handle h(&loop);
     AAsyncHolder async;
     async << []() -> AFuture<> {
-        OpenAIChat session{.config = config::ENDPOINT_EMBEDDING};
-        auto arcWarden = co_await session.embedding("Arc Warden");
-        auto dota = co_await session.embedding("Dota");
-        auto fart = co_await session.embedding("fart");
+        auto session = _new<OpenAIChatImpl>();
+        auto arcWarden = co_await session->embedding({ .config = config::ENDPOINT_EMBEDDING }, "Arc Warden");
+        auto dota = co_await session->embedding({ .config = config::ENDPOINT_EMBEDDING }, "Dota");
+        auto fart = co_await session->embedding({ .config = config::ENDPOINT_EMBEDDING }, "fart");
         auto isDota = util::cosine_similarity(arcWarden, dota);
         auto isFart = util::cosine_similarity(arcWarden, fart);
         EXPECT_GT(isDota, isFart) << "Arc Warden should be Dota hero";
@@ -381,5 +372,5 @@ TEST(OpenAIChatIntegration, ParseResponse) {
   }
 }
 )";
-    aui::from_json<OpenAIChat::Response>(AJson::fromString(R));
+    aui::from_json<IOpenAIChat::Response>(AJson::fromString(R));
 }

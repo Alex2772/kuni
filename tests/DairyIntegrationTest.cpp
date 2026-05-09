@@ -2,7 +2,8 @@
 #include <range/v3/algorithm/any_of.hpp>
 
 #include "AppBase.h"
-#include "OpenAIChat.h"
+#include "IOpenAIChat.h"
+#include "OpenAIChatImpl.h"
 
 #include "AppBase.h"
 #include "common.h"
@@ -122,7 +123,7 @@ Guess which hero I was playing :)
 TEST(DiaryIntegration, Query1) {
     APath("test_data").removeFileRecursive();
     populateUnrelatedDiaryEntries();
-    Diary diary("test_data");
+    Diary diary({.diaryDir = "test_data", .openAI = _new<OpenAIChatImpl>() });
     diary.save({
         .id = "1",
         .text = "John has brown eyes and black hair",
@@ -143,12 +144,13 @@ TEST(DiaryIntegration, Query1) {
 
     diary.reload();
     async << [&]() -> AFuture<> {
+        auto chat = _new<OpenAIChatImpl>();
         {
-            auto result = co_await diary.query(co_await OpenAIChat{.config = config::ENDPOINT_EMBEDDING}.embedding("crypto"), {});
+            auto result = co_await diary.query(co_await chat->embedding({ .config = config::ENDPOINT_EMBEDDING }, "crypto"), {});
             EXPECT_TRUE(result.first().entry->freeformBody.contains("btc"));
         }
         {
-            auto result = co_await diary.query(co_await OpenAIChat{.config = config::ENDPOINT_EMBEDDING}.embedding("John"), {});
+            auto result = co_await diary.query(co_await chat->embedding({ .config = config::ENDPOINT_EMBEDDING }, "John"), {});
             EXPECT_TRUE(result.last().entry->freeformBody.contains("btc"));
         }
     }();
@@ -171,7 +173,7 @@ TEST(DiaryIntegration, AskDiary) {
 
     AString result;
     async << [](AString& result) -> AFuture<> {
-        Diary diary("test_data/diary");
+        Diary diary({.diaryDir = "test_data", .openAI = _new<OpenAIChatImpl>() });
         result = co_await diary.queryAI("which quote of hamster from overwatch Alex is referring to?", {});
     }(result);
 
@@ -373,7 +375,7 @@ TEST(DiaryIntegration, ConversationNoFollowUp) {
 
 TEST(DiaryIntegration, Merge) {
     APath("test_data").removeFileRecursive();
-    Diary diary("test_data");
+    Diary diary({.diaryDir = "test_data", .openAI = _new<OpenAIChatImpl>() });
     diary.save({
         .id = "1",
         .text = "John appearance: has brown eyes and black hair",
@@ -405,7 +407,7 @@ TEST(DiaryIntegration, Merge) {
 
 TEST(DiaryIntegration, Split) {
     APath("test_data").removeFileRecursive();
-    Diary diary("test_data");
+    Diary diary({.diaryDir = "test_data", .openAI = _new<OpenAIChatImpl>() });
     diary.save({
         .id = "1",
         .text = "John appearance: has brown eyes and black hair. I think he is beautiful.",

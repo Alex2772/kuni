@@ -11,7 +11,8 @@
 #include <range/v3/view/filter.hpp>
 #include <range/v3/view/reverse.hpp>
 
-#include "OpenAIChat.h"
+#include "IOpenAIChat.h"
+#include "OpenAIChatImpl.h"
 #include "AUI/Image/png/PngImageLoader.h"
 #include "AUI/IO/AFileInputStream.h"
 
@@ -51,10 +52,10 @@ AFuture<ImageGenerator::GalleryImage> ImageGenerator::generate(AString descripti
             {
                 ALogger::info(LOG_TAG) << "Iteration " << trialIndex << " with prompt:\npositive=" << currentPrompt.positive << "\n\nnegative=" << currentPrompt.negative;
 
-                StableDiffusionClient::Txt2ImgResponse response;
+                IStableDiffusionClient::Txt2ImgResponse response;
                 try
                 {
-                    response = co_await mSdClient.txt2img({
+                    response = co_await mSdClient->txt2img({
                         .prompt = currentPrompt.positive,
                         .negative_prompt = currentPrompt.negative,
                         .steps =  30,
@@ -142,8 +143,8 @@ AFuture<> ImageGenerator::engineerPrompt(PromptPair& out, const AString& descrip
     for (const auto& word : LOL_WHAT) {
         safeDescription.replaceAll(word, "");
     }
-    OpenAIChat chat = mChatClient;
-    chat.systemPrompt = R"(
+    auto params = mChatParams;
+    params.systemPrompt = R"(
 You are an expert Stable Diffusion prompt engineer.
 Your task is to transform a freeform description into a high-quality, descriptive Stable Diffusion prompt.
 You must also integrate the provided character appearance details.
@@ -214,14 +215,14 @@ Negative prompt is what to avoid in the image.
     )";
 
         message += "\nGenerate SD prompt:";
-        return AVector<OpenAIChat::Message>{
-            OpenAIChat::Message{
-                .role = OpenAIChat::Message::Role::USER,
+        return AVector<IOpenAIChat::Message>{
+            IOpenAIChat::Message{
+                .role = IOpenAIChat::Message::Role::USER,
                 .content = message,
             }
         };
     }();
-    auto response = co_await chat.chat(messages);
+    auto response = co_await mOpenAI->chat(params, messages);
     naxyi:
     if (response.choices.empty()) {
         throw AException("OpenAI returned no choices for initial prompt engineering");
@@ -241,12 +242,11 @@ Negative prompt is what to avoid in the image.
             if (messages.size() > 3) {
                 throw AException("adjusted {} prompt is too long."_format(name));
             }
-            messages << OpenAIChat::Message{
-                .role = OpenAIChat::Message::Role::USER,
+            messages << IOpenAIChat::Message{
+                .role = IOpenAIChat::Message::Role::USER,
                 .content = "Adjusted {} prompt is too long. Shorten it to 50 words or less.; restructure or adjust word (weights:1.5) instead"_format(name)
             };
-            response = co_await chat.chat(messages);
-            ALogger::warn(LOG_TAG) << "Adjusted {} prompt is too long. Shortening..."_format(name);
+            response = co_await mOpenAI->chat(params, messages);
             goto naxyi;
         }
     }
@@ -264,9 +264,10 @@ Negative prompt is what to avoid in the image.
 
 AFuture<ImageGenerator::AssessmentResult> ImageGenerator::assessImage(const AImage& image, const AString& description) {
     ALOG_TRACE(LOG_TAG) << "assessImage description=" << description;
-    OpenAIChat chat = mChatClient;
-    // Note: mChatClient.config should ideally be a vision-capable model.
-    chat.systemPrompt = R"(
+    auto chat = _new<OpenAIChatImpl>();
+    auto params = mChatParams;
+    // Note: mChatParams.config should ideally be a vision-capable model.
+    params.systemPrompt = R"(
 You are an extremely strict image critic and Stable Diffusion quality gate.
 
 You will be shown an image generated from a user description and a character appearance prompt.
@@ -305,15 +306,15 @@ Output your assessment in JSON format with the following fields:
 
 {}
 )";
-    chat.systemPrompt = chat.systemPrompt.format(description);
+    params.systemPrompt = params.systemPrompt.format(description);
 
-    AVector<OpenAIChat::Message> messages = {
-        OpenAIChat::Message{
-            .role = OpenAIChat::Message::Role::USER,
-            .content = "Assess this image: " + OpenAIChat::embedImage(image)
+    AVector<IOpenAIChat::Message> messages = {
+        IOpenAIChat::Message{
+            .role = IOpenAIChat::Message::Role::USER,
+            .content = "Assess this image: " + IOpenAIChat::embedImage(image)
         }
     };
-    auto response = co_await chat.chat(messages);
+    auto response = co_await chat->chat(params, messages);
 
     if (response.choices.empty()) {
         throw AException("OpenAI returned no choices for image assessment");

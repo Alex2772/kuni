@@ -1,5 +1,7 @@
 #include "WebSearch.h"
 
+#include "IOpenAIChat.h"
+#include "OpenAIChatImpl.h"
 #include "OpenAITools.h"
 #include "AUI/Json/Conversion.h"
 #include "AUI/Curl/ACurl.h"
@@ -43,7 +45,7 @@ AFuture<AVector<web::Result>> web::search(AString query, int maxResults) {
     co_return aui::from_json<AVector<Result>>(response["results"]);
 }
 
-AFuture<AString> web::searchAI(AString query) {
+AFuture<AString> web::searchAI(const IOpenAIChat& openAI, AString query) {
     ALOG_TRACE(LOG_TAG) << "web::searchAI: " << query;
     OpenAITools tools {
         OpenAITools::Tool {
@@ -77,7 +79,7 @@ AFuture<AString> web::searchAI(AString query) {
             },
         },
     };
-    OpenAIChat chat {
+    IOpenAIChat::Params chatParams{
         .systemPrompt = R"(
 You are a internet researcher.
 
@@ -96,9 +98,9 @@ Do not make up facts. Rely exclusively on provided context.
         .tools = tools.asJson(),
     };
 
-    AVector<OpenAIChat::Message> messages = {
-        OpenAIChat::Message {
-            .role = OpenAIChat::Message::Role::USER,
+    AVector<IOpenAIChat::Message> messages = {
+        IOpenAIChat::Message {
+            .role = IOpenAIChat::Message::Role::USER,
             .content = query,
         },
     };
@@ -106,13 +108,13 @@ Do not make up facts. Rely exclusively on provided context.
     bool toolCallHappened = false;
 
     for (;;) {
-        auto botAnswer = (co_await chat.chat(messages)).choices.at(0).message;
+        auto botAnswer = (co_await openAI.chat(chatParams, messages)).choices.at(0).message;
         messages << botAnswer;
         if (botAnswer.tool_calls.empty()) {
             if (!toolCallHappened) {
                 ALogger::warn(LOG_TAG) << "searchAI: no tool call happened, pointing that out to the LLM and trying again";
-                messages << OpenAIChat::Message {
-                    .role = OpenAIChat::Message::Role::USER,
+                messages << IOpenAIChat::Message {
+                    .role = IOpenAIChat::Message::Role::USER,
                     .content = "you must perform at least one call to #query",
                 };
                 continue;

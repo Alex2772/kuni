@@ -2,14 +2,14 @@
 #include "AUI/Common/AString.h"
 #include "AUI/Common/AVector.h"
 #include "AUI/Json/AJson.h"
-#include "OpenAIChat.h"
+#include "IOpenAIChat.h"
 
 
 struct OpenAITools {
     struct Ctx {
         OpenAITools& tools;
         AJson args;
-        const AVector<OpenAIChat::Message::ToolCall>& allToolCalls;
+        const AVector<IOpenAIChat::Message::ToolCall>& allToolCalls;
     };
     using Handler = std::function<AFuture<AString>(Ctx ctx)>;
 
@@ -33,7 +33,7 @@ struct OpenAITools {
 
     OpenAITools(std::initializer_list<Tool> tools);
 
-    AFuture<AVector<OpenAIChat::Message>> handleToolCalls(const AVector<OpenAIChat::Message::ToolCall>& toolCalls);
+    AFuture<AVector<IOpenAIChat::Message>> handleToolCalls(const AVector<IOpenAIChat::Message::ToolCall>& toolCalls);
 
     AJson asJson() const;
 

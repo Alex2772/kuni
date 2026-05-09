@@ -5,6 +5,8 @@
 #include "DiaryEmbedding.h"
 
 #include "Diary.h"
+#include "IOpenAIChat.h"
+#include "OpenAIChatImpl.h"
 
 #include <Diary.h>
 #include <range/v3/view/enumerate.hpp>
@@ -21,13 +23,16 @@
 #include "AUI/View/AText.h"
 #include "AUI/View/ATextArea.h"
 
+#include <Diary.h>
+
 using namespace declarative;
 
 namespace {
 
     struct State: AObject {
+        _<IOpenAIChat> chat = _new<OpenAIChatImpl>();
         AProperty<AString> query;
-        AProperty<Diary> diary{APath("data/diary")};
+        AProperty<Diary> diary = Diary::Init { .diaryDir = APath("data/diary"), .openAI = chat };
         AProperty<AVector<Diary::EntryExAndRelatedness>> queriedEntries;
         AProperty<std::valarray<double>> queryEmbedding;
         AProperty<bool> isLoading = false;
@@ -54,7 +59,7 @@ namespace {
                 }
                 return true;
             };
-            queryEmbedding.raw = co_await OpenAIChat{.config = config::ENDPOINT_EMBEDDING}.embedding(query);
+            queryEmbedding.raw = co_await chat->embedding({ .config = config::ENDPOINT_EMBEDDING }, query);
             queryEmbedding.notify();
             queriedEntries = co_await diary.raw.query(queryEmbedding, { .confidenceFactor = 0.f, .filter = filter });
         }

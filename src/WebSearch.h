@@ -1,4 +1,5 @@
 #pragma once
+#include "IOpenAIChat.h"
 #include "AUI/Common/AString.h"
 #include "AUI/Thread/AFuture.h"
 
@@ -22,5 +23,5 @@ struct Result {
 };
 
 AFuture<AVector<Result>> search(AString query, int maxResult = 0);
-AFuture<AString> searchAI(AString query);
+AFuture<AString> searchAI(const IOpenAIChat& openAI, AString query);
 }   // namespace web

@@ -2,7 +2,7 @@
 // Created by alex2772 on 2/27/26.
 //
 
-#include "OpenAIChat.h"
+#include "OpenAIChatImpl.h"
 
 #include <chrono>
 #include <optional>
@@ -35,7 +35,7 @@ struct StreamingResponse {
     int64_t created;
     struct Choice {
         int index{};
-        OpenAIChat::Message delta;
+        IOpenAIChat::Message delta;
     };
     AVector<Choice> choices;
 };
@@ -55,67 +55,15 @@ AJSON_FIELDS(StreamingResponse::Choice,
     AJSON_FIELDS_ENTRY(delta)
     )
 
-AFuture<OpenAIChat::Response> OpenAIChat::chat(AString message) {
+AFuture<IOpenAIChat::Response> OpenAIChatImpl::chat(Params params, AString message) const {
     ALOG_TRACE(LOG_TAG) << "chat(" << message << ")";
-    return chat({
+    return chat(std::move(params), {
         {Message::Role::USER, std::move(message)},
     });
 }
 
-template<>
-struct AJsonConv<AVector<OpenAIChat::Message>> {
-    static AJson toJson(const AVector<OpenAIChat::Message>& v) {
-        AJson::Array result;
-        for (const auto& message: v) {
-            // reverse engineered from vscode copilot plugin
-            if (message.content.contains("</{}>"_format(OpenAIChat::EMBEDDING_TAG))) {
-                auto content = std::string_view(message.content);
-                auto append = [&](const OpenAIChat::Message& msg) {
-                    if (msg.content.empty()) {
-                        return;
-                    }
-                    result << aui::to_json(msg);
-                };
-                for (;;) {
-                    auto tagPos = content.find("<{}>"_format(OpenAIChat::EMBEDDING_TAG));
-                    append(OpenAIChat::Message{
-                        .role = message.role,
-                        .content = content.substr(0, tagPos),
-                    });
-                    if (tagPos == std::string::npos) {
-                        break;
-                    }
-                    content = content.substr(tagPos);
-                    content = content.substr(content.find(">") + 1);
-                    auto body = content.substr(0, content.find("</{}>"_format(OpenAIChat::EMBEDDING_TAG)));
-                    append(OpenAIChat::Message{
-                        .role = message.role,
-                        .content = "<attachments>",
-                    });
-                    result << AJson::Object{
-                        {"role", aui::to_json(message.role)},
-                        {"content",
-                         AJson::Array{
-                             AJson::Object{{"type", "image_url"}, {"image_url", body}},
-                         }},
-                    };
-                    append(OpenAIChat::Message{
-                        .role = message.role,
-                        .content = "</attachments>",
-                    });
-                    content = content.substr(body.length());
-                    content = content.substr(content.find(">") + 1);
-                }
-                continue;
-            }
-            result << aui::to_json(message);
-        }
-        return result;
-    }
-};
 
-
-AString OpenAIChat::embedImage(AImageView image) {
+AString IOpenAIChat::embedImage(AImageView image) {
     ALOG_TRACE(LOG_TAG) << "embedImage";
     AByteBuffer jpg;
     auto resized = image.resizedLinearDownscale({672, 672});
@@ -124,30 +72,31 @@ AString OpenAIChat::embedImage(AImageView image) {
     return "<{}>data:image/jpg;base64,{}</{}>"_format(EMBEDDING_TAG, jpg.toBase64String(), EMBEDDING_TAG);
 }
 
-AJson OpenAIChat::makeQueryString(AVector<OpenAIChat::Message> messages) {
+
+AJson OpenAIChatImpl::makeQueryString(Params params, AVector<IOpenAIChat::Message> messages) {
     ALOG_TRACE(LOG_TAG) << "makeQueryString";
     AJson json {
         {
           "messages",
           aui::to_json(messages),
         },
-        { "max_tokens", maxOutputTokens },   // hopefully helps with stuck prediction (infinite reasoning)
+        { "max_tokens", params.maxOutputTokens },   // hopefully helps with stuck prediction (infinite reasoning)
         { "stream", false },
         { "use_context", false },
         { "include_sources", true },
-        { "model", config.model },
-        { "tools", tools },
+        { "model", params.config.model },
+        { "tools", params.tools },
         { "temperature", config::TEMPERATURE },
     };
-    if (seed) {
-        json["seed"] = *seed;
+    if (params.seed) {
+        json["seed"] = *params.seed;
     }
     return json;
 }
 
-AFuture<OpenAIChat::Response> OpenAIChat::chat(AVector<Message> messages) {
-    messages.insert(messages.begin(), {Message::Role::SYSTEM_PROMPT, systemPrompt});
-    AString query = AJson::toString(makeQueryString(messages));
+AFuture<IOpenAIChat::Response> OpenAIChatImpl::chat(Params params, AVector<Message> messages) const {
+    messages.insert(messages.begin(), {Message::Role::SYSTEM_PROMPT, params.systemPrompt});
+    AString query = AJson::toString(makeQueryString(params, messages));
     AFileOutputStream("last_query.json") << query.toStdString();
     const auto logsDir = APath("logs");
     logsDir.makeDirs();
@@ -156,11 +105,11 @@ AFuture<OpenAIChat::Response> OpenAIChat::chat(AVector<Message> messages) {
 
     ALOG_TRACE(LOG_TAG) << "Query: " << query;
     AVector<AString> headers = {"Content-Type: application/json"};
-    if (!config.endpoint.bearerKey.empty()) {
-        headers << "Authorization: Bearer {}"_format(config.endpoint.bearerKey);
+    if (!params.config.endpoint.bearerKey.empty()) {
+        headers << "Authorization: Bearer {}"_format(params.config.endpoint.bearerKey);
     }
     tryAgain:
-    auto response = AJson::fromBuffer((co_await ACurl::Builder(config.endpoint.baseUrl + "chat/completions")
+    auto response = AJson::fromBuffer((co_await ACurl::Builder(params.config.endpoint.baseUrl + "chat/completions")
                                            .withMethod(ACurl::Method::HTTP_POST)
                                            .withTimeout(config::REQUEST_TIMEOUT)
                                            .withHeaders(headers)
@@ -188,10 +137,10 @@ AFuture<OpenAIChat::Response> OpenAIChat::chat(AVector<Message> messages) {
     // }
     co_return responseResult;
 }
-_<OpenAIChat::StreamingResponse> OpenAIChat::chatStreaming(AVector<Message> messages) {
-    messages.insert(messages.begin(), {Message::Role::SYSTEM_PROMPT, systemPrompt});
+_<IOpenAIChat::StreamingResponse> OpenAIChatImpl::chatStreaming(Params params, AVector<Message> messages) const {
+    messages.insert(messages.begin(), {Message::Role::SYSTEM_PROMPT, params.systemPrompt});
     AString query = [&] {
-        auto json = makeQueryString(messages);
+        auto json = makeQueryString(params, messages);
         json["stream"] = true;
         return AJson::toString(json);
     }();
@@ -203,10 +152,10 @@ _<OpenAIChat::StreamingResponse> OpenAIChat::chatStreaming(AVector<Message> mess
 
     ALOG_TRACE(LOG_TAG) << "QueryStreaming: " << query;
     AVector<AString> headers = {"Content-Type: application/json"};
-    if (!config.endpoint.bearerKey.empty()) {
-        headers << "Authorization: Bearer {}"_format(config.endpoint.bearerKey);
+    if (!params.config.endpoint.bearerKey.empty()) {
+        headers << "Authorization: Bearer {}"_format(params.config.endpoint.bearerKey);
     }
-    auto result = _new<OpenAIChat::StreamingResponse>();
+    auto result = _new<IOpenAIChat::StreamingResponse>();
 
     result->completed = [&]() -> AFuture<> {
         const auto caller = AThread::current();
@@ -248,7 +197,7 @@ _<OpenAIChat::StreamingResponse> OpenAIChat::chatStreaming(AVector<Message> mess
                 jsonTempBuffer.erase(jsonTempBuffer.begin(), at);
             }
         };
-        co_await ACurl::Builder(config.endpoint.baseUrl + "chat/completions")
+        co_await ACurl::Builder(params.config.endpoint.baseUrl + "chat/completions")
                                                .withMethod(ACurl::Method::HTTP_POST)
                                                .withTimeout(config::REQUEST_TIMEOUT)
                                                .withHeaders(std::move(headers))
@@ -276,22 +225,22 @@ _<OpenAIChat::StreamingResponse> OpenAIChat::chatStreaming(AVector<Message> mess
     return result;
 }
 
-AFuture<std::valarray<double>> OpenAIChat::embedding(AString input) {
+AFuture<std::valarray<double>> OpenAIChatImpl::embedding(Params params, AString input) const {
     ALOG_TRACE(LOG_TAG) << "embedding";
     if (input.empty()) {
         input = " ";
     }
     AVector<AString> headers = {"Content-Type: application/json"};
-    if (!config.endpoint.bearerKey.empty()) {
-        headers << "Authorization: Bearer {}"_format(config.endpoint.bearerKey);
+    if (!params.config.endpoint.bearerKey.empty()) {
+        headers << "Authorization: Bearer {}"_format(params.config.endpoint.bearerKey);
     }
     tryAgain:
-    auto response = AJson::fromBuffer((co_await ACurl::Builder(config.endpoint.baseUrl + "embeddings")
+    auto response = AJson::fromBuffer((co_await ACurl::Builder(params.config.endpoint.baseUrl + "embeddings")
                                            .withMethod(ACurl::Method::HTTP_POST)
                                            .withTimeout(config::REQUEST_TIMEOUT)
                                            .withHeaders(headers)
                                            .withBody(AJson::toString(AJson::Object{
-                                               {"model", config.model},
+                                               {"model", params.config.model},
                                                {"input", input},
                                            }))
                                            .runAsync())

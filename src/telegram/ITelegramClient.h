@@ -10,18 +10,15 @@
 #include "AUI/Thread/AAsyncHolder.h"
 #include "AUI/Thread/AFuture.h"
 
-
-class ATimer;
-class TelegramClient: public AObject{
-public:
-    struct StubHandler {
-        void operator()(auto& v) const { ALOG_TRACE("TelegramClient") << "Stub: " << to_string(v); }
-    };
-    TelegramClient();
+/**
+ * @brief Abstract interface for Telegram client operations.
+ */
+struct ITelegramClient {
+    virtual ~ITelegramClient() = default;
 
     using Object = td::td_api::object_ptr<td::td_api::Object>;
 
-    AFuture<Object> sendQuery(td::td_api::object_ptr<td::td_api::Function> f);
+    virtual AFuture<Object> sendQuery(td::td_api::object_ptr<td::td_api::Function> f) = 0;
 
     template<aui::derived_from<td::td_api::Function> F>
     AFuture<td::td_api::object_ptr<typename F::ReturnType::element_type>> sendQueryWithResult(td::td_api::object_ptr<F> f) {
@@ -34,13 +31,11 @@ public:
     }
 
     [[nodiscard]]
-    const AFuture<>& waitForConnection() const noexcept {
-        return mWaitForConnection;
-    }
+    virtual const AFuture<>& waitForConnection() const noexcept = 0;
 
-    [[nodiscard]] int64_t myId() const { return mMyId; }
+    [[nodiscard]] virtual int64_t myId() const = 0;
 
-    std::function<void(Object)> onEvent = [](Object o) { StubHandler{}(o); };
+    std::function<void(Object)> onEvent = [](Object o) {};
 
     template<typename T>
     static td::td_api::object_ptr<T> toPtr(T&& t) {
@@ -48,20 +43,4 @@ public:
     }
 
     emits<> loggedIn;
-
-private:
-    AFuture<> mWaitForConnection;
-    _<ATimer> mTgUpdateTimer;
-    std::unique_ptr<td::ClientManager> mClientManager;
-    td::ClientManager::ClientId mClientId{};
-    AMap<std::uint64_t, std::function<void(Object)>> mHandlers;
-    size_t mQueryCountLastUpdate{};
-    size_t mCurrentQueryId{};
-    int64_t mMyId{};
-
-    void update();
-    void initClientManager();
-
-    void commonHandler(td::tl::unique_ptr<td::td_api::Object> object);
-    void processResponse(td::ClientManager::Response response);
 };

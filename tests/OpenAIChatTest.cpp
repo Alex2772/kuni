@@ -1,4 +1,4 @@
-#include "OpenAIChat.h"
+#include "IOpenAIChat.h"
 #include "OpenAITools.h"
 #include <gmock/gmock.h>
 
@@ -57,7 +57,7 @@ TEST(OpenAIChat, ParseResponseOpenRouter1) {
   }
 }
 )";
-    auto response = aui::from_json<OpenAIChat::Response>(AJson::fromString(R));
+    auto response = aui::from_json<IOpenAIChat::Response>(AJson::fromString(R));
     auto content = response.choices.at(0).message.content;
     content.replaceAll("```json", "");
     content.replaceAll("```", "");
@@ -123,7 +123,7 @@ TEST(OpenAIChat, ParseResponseOpenRouter2) {
     }
 }
 )";
-    auto response = aui::from_json<OpenAIChat::Response>(AJson::fromString(R));
+    auto response = aui::from_json<IOpenAIChat::Response>(AJson::fromString(R));
     AOptional<AJson> args;
     OpenAITools tools {
         {
@@ -166,7 +166,7 @@ TEST(OpenAIChat, ParseResponseOllama1) {
   }
 }
 )";
-    auto response = aui::from_json<OpenAIChat::Response>(AJson::fromString(R));
+    auto response = aui::from_json<IOpenAIChat::Response>(AJson::fromString(R));
     EXPECT_EQ(response.choices.at(0).message.content, "- Title: Telegram chat screenshot.");
     EXPECT_EQ(response.choices.at(0).message.reasoning, "The user wants me to describe the last photo provided.");
     EXPECT_EQ(response.choices.at(0).finish_reason, "stop");
@@ -208,7 +208,7 @@ TEST(OpenAIChat, ParseResponseDeepseek1) {
   "system_fingerprint": "fp_xxx"
 }
 )";
-    auto response = aui::from_json<OpenAIChat::Response>(AJson::fromString(R));
+    auto response = aui::from_json<IOpenAIChat::Response>(AJson::fromString(R));
     EXPECT_EQ(response.id, "chatcmpl-xxx");
     EXPECT_EQ(response.model, "deepseek-v4-flash");
     EXPECT_EQ(response.choices.at(0).message.content, "Ох, кто-то написал аж 3 сообщения! Давай разберёмся ^^");
@@ -221,17 +221,17 @@ TEST(OpenAIChat, ParseResponseDeepseek1) {
 }
 
 // =====================================================================
-// OpenAIChat::Message::operator+= (streaming merge)
+// IOpenAIChat::Message::operator+= (streaming merge)
 // =====================================================================
 
 TEST(OpenAIChat, StreamingMessageMerge) {
-    OpenAIChat::Message base{
-        .role = OpenAIChat::Message::Role::ASSISTANT,
+    IOpenAIChat::Message base{
+        .role = IOpenAIChat::Message::Role::ASSISTANT,
         .content = "Hello",
         .reasoning = "Think",
     };
-    OpenAIChat::Message delta{
-        .role = OpenAIChat::Message::Role::ASSISTANT,
+    IOpenAIChat::Message delta{
+        .role = IOpenAIChat::Message::Role::ASSISTANT,
         .content = " world",
         .reasoning = "ing",
     };
@@ -241,12 +241,12 @@ TEST(OpenAIChat, StreamingMessageMerge) {
 }
 
 TEST(OpenAIChat, StreamingMessageMergeEmptyDelta) {
-    OpenAIChat::Message base{
-        .role = OpenAIChat::Message::Role::ASSISTANT,
+    IOpenAIChat::Message base{
+        .role = IOpenAIChat::Message::Role::ASSISTANT,
         .content = "Hello",
     };
-    OpenAIChat::Message delta{
-        .role = OpenAIChat::Message::Role::ASSISTANT,
+    IOpenAIChat::Message delta{
+        .role = IOpenAIChat::Message::Role::ASSISTANT,
         .content = "",
     };
     base += delta;
@@ -254,11 +254,11 @@ TEST(OpenAIChat, StreamingMessageMergeEmptyDelta) {
 }
 
 TEST(OpenAIChat, StreamingToolCallMerge) {
-    OpenAIChat::Message base;
+    IOpenAIChat::Message base;
     base.tool_calls = {
         { .id = "call_1", .index = 0, .function = { .name = "test", .arguments = "{\"a\"" } }
     };
-    OpenAIChat::Message delta;
+    IOpenAIChat::Message delta;
     delta.tool_calls = {
         { .id = "", .index = 0, .function = { .name = "", .arguments = ": 1}" } }
     };
@@ -268,11 +268,11 @@ TEST(OpenAIChat, StreamingToolCallMerge) {
 }
 
 TEST(OpenAIChat, StreamingToolCallMultipleIndices) {
-    OpenAIChat::Message base;
+    IOpenAIChat::Message base;
     base.tool_calls = {
         { .id = "call_0", .index = 0, .function = { .name = "fn1", .arguments = "{}" } }
     };
-    OpenAIChat::Message delta;
+    IOpenAIChat::Message delta;
     delta.tool_calls = {
         { .id = "call_1", .index = 1, .function = { .name = "fn2", .arguments = "{}" } }
     };
@@ -283,52 +283,52 @@ TEST(OpenAIChat, StreamingToolCallMultipleIndices) {
 }
 
 TEST(OpenAIChat, StreamingMergePreservesRole) {
-    OpenAIChat::Message base{
-        .role = OpenAIChat::Message::Role::ASSISTANT,
+    IOpenAIChat::Message base{
+        .role = IOpenAIChat::Message::Role::ASSISTANT,
         .content = "Hello",
     };
-    OpenAIChat::Message delta{
-        .role = OpenAIChat::Message::Role::USER, // role should be overwritten by delta
+    IOpenAIChat::Message delta{
+        .role = IOpenAIChat::Message::Role::USER, // role should be overwritten by delta
         .content = " world",
     };
     base += delta;
-    EXPECT_EQ(base.role, OpenAIChat::Message::Role::USER);
+    EXPECT_EQ(base.role, IOpenAIChat::Message::Role::USER);
     EXPECT_EQ(base.content, "Hello world");
 }
 
 // =====================================================================
-// OpenAIChat::Message::Role JSON conversion
+// IOpenAIChat::Message::Role JSON conversion
 // =====================================================================
 
 TEST(OpenAIChat, RoleJsonRoundtrip) {
-    auto testRole = [](OpenAIChat::Message::Role role, const char* expected) {
+    auto testRole = [](IOpenAIChat::Message::Role role, const char* expected) {
         auto json = aui::to_json(role);
         EXPECT_EQ(json.asString(), expected);
-        OpenAIChat::Message::Role decoded;
-        AJsonConv<OpenAIChat::Message::Role>::fromJson(json, decoded);
+        IOpenAIChat::Message::Role decoded;
+        AJsonConv<IOpenAIChat::Message::Role>::fromJson(json, decoded);
         EXPECT_EQ(decoded, role);
     };
-    testRole(OpenAIChat::Message::Role::USER, "user");
-    testRole(OpenAIChat::Message::Role::ASSISTANT, "assistant");
-    testRole(OpenAIChat::Message::Role::SYSTEM_PROMPT, "system");
-    testRole(OpenAIChat::Message::Role::TOOL, "tool");
+    testRole(IOpenAIChat::Message::Role::USER, "user");
+    testRole(IOpenAIChat::Message::Role::ASSISTANT, "assistant");
+    testRole(IOpenAIChat::Message::Role::SYSTEM_PROMPT, "system");
+    testRole(IOpenAIChat::Message::Role::TOOL, "tool");
 }
 
 // =====================================================================
-// OpenAIChat::String JSON conversion (null handling)
+// IOpenAIChat::String JSON conversion (null handling)
 // =====================================================================
 
 TEST(OpenAIChat, NullStringConversion) {
     AJson nullJson = AJson{nullptr};
-    OpenAIChat::String out;
-    AJsonConv<OpenAIChat::String>::fromJson(nullJson, out);
+    IOpenAIChat::String out;
+    AJsonConv<IOpenAIChat::String>::fromJson(nullJson, out);
     EXPECT_TRUE(out.empty());
 }
 
 TEST(OpenAIChat, NormalStringConversion) {
     AJson strJson = "hello";
-    OpenAIChat::String out;
-    AJsonConv<OpenAIChat::String>::fromJson(strJson, out);
+    IOpenAIChat::String out;
+    AJsonConv<IOpenAIChat::String>::fromJson(strJson, out);
     EXPECT_EQ(out, "hello");
 }
 
@@ -400,15 +400,15 @@ TEST(OpenAITools, ToJsonNoParameters) {
 }
 
 // =====================================================================
-// OpenAIChat::Message serialization to JSON (without embedding tags)
+// IOpenAIChat::Message serialization to JSON (without embedding tags)
 // =====================================================================
 
 TEST(OpenAIChat, MessageToJsonSimple) {
-    OpenAIChat::Message msg{
-        .role = OpenAIChat::Message::Role::USER,
+    IOpenAIChat::Message msg{
+        .role = IOpenAIChat::Message::Role::USER,
         .content = "plain text message",
     };
-    auto json = aui::to_json(AVector<OpenAIChat::Message>{msg});
+    auto json = aui::to_json(AVector<IOpenAIChat::Message>{msg});
     ASSERT_TRUE(json.isArray());
     ASSERT_EQ(json.asArray().size(), 1);
     EXPECT_EQ(json[0]["role"].asString(), "user");
@@ -416,12 +416,12 @@ TEST(OpenAIChat, MessageToJsonSimple) {
 }
 
 TEST(OpenAIChat, MessageToJsonAssistantWithReasoning) {
-    OpenAIChat::Message msg{
-        .role = OpenAIChat::Message::Role::ASSISTANT,
+    IOpenAIChat::Message msg{
+        .role = IOpenAIChat::Message::Role::ASSISTANT,
         .content = "response",
         .reasoning = "thinking process",
     };
-    auto json = aui::to_json(AVector<OpenAIChat::Message>{msg});
+    auto json = aui::to_json(AVector<IOpenAIChat::Message>{msg});
     ASSERT_TRUE(json.isArray());
     ASSERT_EQ(json.asArray().size(), 1);
     EXPECT_EQ(json[0]["role"].asString(), "assistant");
@@ -430,8 +430,8 @@ TEST(OpenAIChat, MessageToJsonAssistantWithReasoning) {
 }
 
 TEST(OpenAIChat, MessageToJsonToolCall) {
-    OpenAIChat::Message msg{
-        .role = OpenAIChat::Message::Role::ASSISTANT,
+    IOpenAIChat::Message msg{
+        .role = IOpenAIChat::Message::Role::ASSISTANT,
         .content = "",
         .tool_calls = {
             {
@@ -442,7 +442,7 @@ TEST(OpenAIChat, MessageToJsonToolCall) {
             }
         },
     };
-    auto json = aui::to_json(AVector<OpenAIChat::Message>{msg});
+    auto json = aui::to_json(AVector<IOpenAIChat::Message>{msg});
     ASSERT_TRUE(json.isArray());
     ASSERT_EQ(json.asArray().size(), 1);
     EXPECT_EQ(json[0]["role"].asString(), "assistant");

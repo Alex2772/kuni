@@ -3,15 +3,15 @@
 
 #include "AUI/Thread/AAsyncHolder.h"
 #include "AUI/Thread/AEventLoop.h"
-#include "telegram/TelegramClient.h"
+#include "telegram/TelegramClientImpl.h"
 
 
 TEST(TelegramIntegration, PostMessage) {
     AEventLoop loop;
     IEventLoop::Handle h(&loop);
-    auto telegram = _new<TelegramClient>();
+    auto telegram = _new<TelegramClientImpl>();
     AThread::processMessages();
-    [](_<TelegramClient> telegram, AEventLoop& loop) -> AFuture<> {
+    [](_<ITelegramClient> telegram, AEventLoop& loop) -> AFuture<> {
         try {
             co_await telegram->waitForConnection();
             auto result = co_await telegram->sendQueryWithResult([&] {

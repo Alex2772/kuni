@@ -2,7 +2,7 @@
 // Created by alex2772 on 3/2/26.
 //
 
-#include "TelegramClient.h"
+#include "TelegramClientImpl.h"
 
 #include "AUI/Common/ATimer.h"
 #include "AUI/Util/kAUI.h"
@@ -15,8 +15,8 @@ namespace {
 } // namespace
 
 
-TelegramClient::TelegramClient() : mTgUpdateTimer(_new<ATimer>(1s)) {
-    ALOG_TRACE(LOG_TAG) << "TelegramClient::TelegramClient";
+TelegramClientImpl::TelegramClientImpl() : mTgUpdateTimer(_new<ATimer>(1s)) {
+    ALOG_TRACE(LOG_TAG) << "TelegramClientImpl::TelegramClientImpl";
     setSlotsCallsOnlyOnMyThread(true);
 
     td::ClientManager::execute(td::td_api::make_object<td::td_api::setLogVerbosityLevel>(1));
@@ -26,24 +26,22 @@ TelegramClient::TelegramClient() : mTgUpdateTimer(_new<ATimer>(1s)) {
     mTgUpdateTimer->start();
 }
 
-AFuture<TelegramClient::Object> TelegramClient::sendQuery(td::td_api::object_ptr<td::td_api::Function> f) {
+AFuture<ITelegramClient::Object> TelegramClientImpl::sendQuery(td::td_api::object_ptr<td::td_api::Function> f) {
     ALOG_TRACE(LOG_TAG) << "sendQuery";
     if (mQueryCountLastUpdate++ >= 5) {
         // Telegram is strict about using 3rdparty telegram clients. For this reason, we have to ensure that we wouldn't
         // trigger their security leading to ban of the account.
-        //
-        // If the application starts to SPAM with queries, we simply crash it.
         co_await AThread::asyncSleep(1s);
     }
 
     auto query_id = ++mCurrentQueryId;
-    AFuture<TelegramClient::Object> result;
+    AFuture<ITelegramClient::Object> result;
     mHandlers.emplace(query_id, [result](Object object) { result.supplyValue(std::move(object)); });
     mClientManager->send(mClientId, query_id, std::move(f));
     co_return co_await result;
 }
 
-void TelegramClient::initClientManager() {
+void TelegramClientImpl::initClientManager() {
     ALOG_TRACE(LOG_TAG) << "initClientManager";
     mClientManager = std::make_unique<td::ClientManager>();
     mClientId = mClientManager->create_client_id();
@@ -58,7 +56,7 @@ void TelegramClient::initClientManager() {
         });
 }
 
-void TelegramClient::update() {
+void TelegramClientImpl::update() {
     ALOG_TRACE(LOG_TAG) << "update";
     mQueryCountLastUpdate = 0;
     for (;;) {
@@ -70,7 +68,7 @@ void TelegramClient::update() {
     }
 }
 
-void TelegramClient::processResponse(td::ClientManager::Response response) {
+void TelegramClientImpl::processResponse(td::ClientManager::Response response) {
     ALOG_TRACE(LOG_TAG) << "processResponse";
     if (!response.object) {
         return;
@@ -86,7 +84,7 @@ void TelegramClient::processResponse(td::ClientManager::Response response) {
     commonHandler(std::move(response.object));
 }
 
-void TelegramClient::commonHandler(td::tl::unique_ptr<td::td_api::Object> object) {
+void TelegramClientImpl::commonHandler(td::tl::unique_ptr<td::td_api::Object> object) {
     ALOG_TRACE(LOG_TAG) << "commonHandler";
     td::td_api::downcast_call(
         *object,

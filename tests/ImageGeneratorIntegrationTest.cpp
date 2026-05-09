@@ -1,4 +1,6 @@
 #include "ImageGenerator.h"
+#include "StableDiffusionClientImpl.h"
+#include "OpenAIChatImpl.h"
 #include "common.h"
 
 #include <gmock/gmock.h>
@@ -14,10 +16,13 @@ TEST(ImageGeneratorIntegration, Generate)
     AAsyncHolder async;
 
     async << []() -> AFuture<> {
-        StableDiffusionClient sdClient{ .endpoint = config::ENDPOINT_SD };
-        OpenAIChat chatClient{ .config = config::ENDPOINT_PHOTO_TO_TEXT };
+        auto sdClient = _new<StableDiffusionClientImpl>();
+        sdClient->endpoint = config::ENDPOINT_SD;
+        IOpenAIChat::Params chatParams{
+            .config = config::ENDPOINT_PHOTO_TO_TEXT,
+        };
 
-        ImageGenerator generator(sdClient, chatClient);
+        ImageGenerator generator(std::move(sdClient), _new<OpenAIChatImpl>(), std::move(chatParams));
 
         try {
             auto image = (co_await generator.generate("Kuni makes a selfie")).image;

@@ -1,4 +1,4 @@
-#include "StableDiffusionClient.h"
+#include "StableDiffusionClientImpl.h"
 #include "common.h"
 
 #include <gmock/gmock.h>
@@ -19,10 +19,11 @@ TEST(StableDiffusionIntegrationClient, Txt2Img)
     AAsyncHolder async;
 
     async << []() -> AFuture<> {
-        StableDiffusionClient client{ .endpoint = config::ENDPOINT_SD };
+        auto client = _new<StableDiffusionClientImpl>();
+        client->endpoint = config::ENDPOINT_SD;
 
         try {
-            auto response = co_await client.txt2img({
+            auto response = co_await client->txt2img({
                 .prompt = "Anime girl cat ears shoulder-length dark_blue hair messy strands blue eyes small nose cute fangs. Shoulders and chest are bare. Floating particles in the air.",
                 .steps = 5, // small number for test
                 .width = 512,

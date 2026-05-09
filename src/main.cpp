@@ -21,7 +21,10 @@
 #include "ImageGenerator.h"
 #include "VoiceGenerator.h"
 #include "AUI/Image/jpg/JpgImageLoader.h"
-#include "telegram/TelegramClient.h"
+#include "telegram/ITelegramClient.h"
+#include "telegram/TelegramClientImpl.h"
+#include "StableDiffusionClientImpl.h"
+#include "OpenAIChatImpl.h"
 #include "ui/debug/KuniDebugWindow.h"
 #include "util/populate_from_diary_ai_if_needed.h"
 #include "util/secrets.h"
@@ -45,7 +48,7 @@ namespace {
 
     class App : public AppBase {
     public:
-        App(_<TelegramClient> telegram): AppBase("data"), mTelegram(std::move(telegram)) {
+        App(_<ITelegramClient> telegram): AppBase({.workingDir = "data", .openAI = _new<OpenAIChatImpl>()}), mTelegram(std::move(telegram)) {
             ALOG_TRACE(LOG_TAG) << "App::App";
             mTelegram->onEvent = [this](td::td_api::object_ptr<td::td_api::Object> event) {
                 td::td_api::downcast_call(*event,
@@ -53,7 +56,7 @@ namespace {
             };
         }
 
-        [[nodiscard]] _<TelegramClient> telegram() const { return mTelegram; }
+        [[nodiscard]] _<ITelegramClient> telegram() const { return mTelegram; }
 
 
     protected:
@@ -81,13 +84,13 @@ namespace {
                         content->width_ = photo->get()->width();
                         content->height_ = photo->get()->height();
                         JpgImageLoader::save(AFileOutputStream("temp.jpg"), **photo);
-                        content->photo_ = TelegramClient::toPtr(td::td_api::inputFileLocal("temp.jpg"));
+                        content->photo_ = ITelegramClient::toPtr(td::td_api::inputFileLocal("temp.jpg"));
                         return content;
                     }
 
                     if (audioPath) {
                         auto content = td::td_api::make_object<td::td_api::inputMessageVoiceNote>();
-                        content->voice_note_ = TelegramClient::toPtr(td::td_api::inputFileLocal(audioPath->absolute().toStdString()));
+                        content->voice_note_ = ITelegramClient::toPtr(td::td_api::inputFileLocal(audioPath->absolute().toStdString()));
                         // content->album_cover_thumbnail_ = nullptr;
                         content->duration_ = 0;
                         // content->title_ = audioPath->filename();
@@ -111,7 +114,7 @@ namespace {
                     return content;
                 }();
                 if (replyTo != 0) {
-                    msg->reply_to_ = TelegramClient::toPtr(td::td_api::inputMessageReplyToMessage(replyTo, nullptr, 0));
+                    msg->reply_to_ = ITelegramClient::toPtr(td::td_api::inputMessageReplyToMessage(replyTo, nullptr, 0));
                 }
                 return msg;
             }());
@@ -147,7 +150,7 @@ namespace {
                         },
                     .handler = [this](OpenAITools::Ctx ctx) -> AFuture<AString> {
                         auto photoDesc = ctx.args["photo_desc"].asStringOpt().valueOrException("photo_desc is required");
-                        auto galleryImage = co_await ImageGenerator{StableDiffusionClient{}, OpenAIChat{.config = config::ENDPOINT_PHOTO_TO_TEXT }}.generate(photoDesc);
+                        auto galleryImage = co_await ImageGenerator{_new<StableDiffusionClientImpl>(), openAI(), IOpenAIChat::Params{}}.generate(photoDesc);
                         auto description = co_await describePhoto(galleryImage.path);
 
                         co_return "{}\n\nFilename: {}\n"
@@ -296,8 +299,8 @@ Use absolute time in your queries.
                         query = query.substr(1);
                     }
 
-                    auto queryResult = co_await telegram()->sendQueryWithResult(TelegramClient::toPtr(td::td_api::searchChatsOnServer(query, 50)));
-                    auto usernameQueryResult = co_await telegram()->sendQueryWithResult(TelegramClient::toPtr(td::td_api::searchPublicChat(query)));
+                    auto queryResult = co_await telegram()->sendQueryWithResult(ITelegramClient::toPtr(td::td_api::searchChatsOnServer(query, 50)));
+                    auto usernameQueryResult = co_await telegram()->sendQueryWithResult(ITelegramClient::toPtr(td::td_api::searchPublicChat(query)));
 
                     if (queryResult->chat_ids_.empty() && !usernameQueryResult->id_) {
                         co_return "No chats found satisfying your query.";
@@ -360,7 +363,7 @@ Use absolute time in your queries.
         }
 
     private:
-        _<TelegramClient> mTelegram;
+        _<ITelegramClient> mTelegram;
 
         [[nodiscard]]
         AFuture<> llmuiFormatChatList(AString& result, std::span<td::td_api::object_ptr<td::td_api::chat>> chats) {
@@ -437,7 +440,7 @@ Use absolute time in your queries.
         AFuture<AVector<td::td_api::object_ptr<td::td_api::chat>>> chatIdsToChats(std::span<td::td_api::int53> ids) {
             auto chats =
                 ids | ranges::view::transform([&](td::td_api::int53 chatId) {
-                    return telegram()->sendQueryWithResult(TelegramClient::toPtr(td::td_api::getChat(chatId)));
+                    return telegram()->sendQueryWithResult(ITelegramClient::toPtr(td::td_api::getChat(chatId)));
                 }) |
                 ranges::to_vector;
             AVector<td::td_api::object_ptr<td::td_api::chat>> result;
@@ -449,12 +452,12 @@ Use absolute time in your queries.
         }
 
         AFuture<td::td_api::object_ptr<td::td_api::chat>> chatIdToChat(td::td_api::int53 id) {
-            co_return co_await telegram()->sendQueryWithResult(TelegramClient::toPtr(td::td_api::getChat(id)));;
+            co_return co_await telegram()->sendQueryWithResult(ITelegramClient::toPtr(td::td_api::getChat(id)));;
         }
 
         AFuture<AVector<td::td_api::object_ptr<td::td_api::chat>>> getChats() {
-            auto chatList = co_await telegram()->sendQueryWithResult(TelegramClient::toPtr(
-                td::td_api::getChats(TelegramClient::toPtr(td::td_api::chatListMain()), 50)));
+            auto chatList = co_await telegram()->sendQueryWithResult(ITelegramClient::toPtr(
+                td::td_api::getChats(ITelegramClient::toPtr(td::td_api::chatListMain()), 50)));
             co_return co_await chatIdsToChats(chatList->chat_ids_);
         }
 
@@ -475,7 +478,7 @@ Use absolute time in your queries.
         }
 
         AFuture<> handleTelegramEvent(auto u) {
-            TelegramClient::StubHandler{}(u);
+            TelegramClientImpl::StubHandler{}(u);
             co_return;
         }
 
@@ -557,8 +560,8 @@ Use absolute time in your queries.
         }
 
         void setOnline(bool online = true) {
-            mTelegram->sendQuery(TelegramClient::toPtr(
-                td::td_api::setOption("online", TelegramClient::toPtr(td::td_api::optionValueBoolean(online)))));
+            mTelegram->sendQuery(ITelegramClient::toPtr(
+                td::td_api::setOption("online", ITelegramClient::toPtr(td::td_api::optionValueBoolean(online)))));
         }
 
         /**
@@ -570,7 +573,7 @@ Use absolute time in your queries.
          * If a violation is caused, the string is replaced with "malicious".
          */
         void checkForMaliciousPayloads(std::string& string) const {
-            if (AStringView(string).contains(OpenAIChat::EMBEDDING_TAG)) {
+            if (AStringView(string).contains(IOpenAIChat::EMBEDDING_TAG)) {
                 goto naxyi;
             }
             return;
@@ -585,7 +588,7 @@ Use absolute time in your queries.
         [[nodiscard]]
         AFuture<> removeAndBanChat(int64_t chatId) {
             auto chat = co_await telegram()->sendQueryWithResult(
-                TelegramClient::toPtr(td::td_api::getChat(chatId)));
+                ITelegramClient::toPtr(td::td_api::getChat(chatId)));
 
             switch (chat->type_->get_id()) {
                 case td::td_api::chatTypePrivate::ID:
@@ -597,18 +600,18 @@ Use absolute time in your queries.
                     } catch (const AException& e) {}
                     // Block the user from sending new DMs
                     co_await telegram()->sendQueryWithResult(
-                        TelegramClient::toPtr(td::td_api::setMessageSenderBlockList(
+                        ITelegramClient::toPtr(td::td_api::setMessageSenderBlockList(
                             td::td_api::make_object<td::td_api::messageSenderUser>(chatId),
                             td::td_api::make_object<td::td_api::blockListMain>())));
                     co_await telegram()->sendQueryWithResult(
-                        TelegramClient::toPtr(td::td_api::deleteChatHistory(chatId, true, true)));
+                        ITelegramClient::toPtr(td::td_api::deleteChatHistory(chatId, true, true)));
                     break;
                 case td::td_api::chatTypeBasicGroup::ID:
                 case td::td_api::chatTypeSupergroup::ID:
                     // leaveChat: Removes the current user from chat members. Private and secret
                     // chats can't be left using this method.
                     co_await telegram()->sendQueryWithResult(
-                        TelegramClient::toPtr(td::td_api::leaveChat(chatId)));
+                        ITelegramClient::toPtr(td::td_api::leaveChat(chatId)));
                     break;
                 default:
                     break;
@@ -621,16 +624,7 @@ Use absolute time in your queries.
                 if (const auto i = mImages.contains(pathToImage)) {
                     co_return i->second;
                 }
-                OpenAIChat chat {
-                    .systemPrompt = config::PHOTO_TO_TEXT_PROMPT,
-                    .config = config::ENDPOINT_PHOTO_TO_TEXT,
 
-                    // hardcode the seed for img-to-text.
-                    // since LLM is asked to preserve image descriptions verbatim, this would hopefully help it to recognize
-                    // same or similar pictures during lifetime.
-                    // also this helps with caching on the server side.
-                    .seed = 1,
-                };
                 AString context = "<context>\n";
                 for (const auto& i : temporaryContext()) {
                     context += "<context_item>\n";
@@ -643,10 +637,14 @@ Use absolute time in your queries.
                 if (image == nullptr) {
                     co_return mImages[pathToImage] = "This media type is not supported";
                 }
-                context += OpenAIChat::embedImage(*image);
+                context += IOpenAIChat::embedImage(*image);
                 context += "\n\nDescribe the last photo.";
 
-                auto response = co_await chat.chat(std::move(context));
+                auto response = co_await openAI()->chat({
+                    .systemPrompt = config::PHOTO_TO_TEXT_PROMPT,
+                    .config = config::ENDPOINT_PHOTO_TO_TEXT,
+                    .seed = 1,
+                }, std::move(context));
                 co_return mImages[pathToImage] = "<{} description>\n{}\n</{}>"_format(xmlTag, response.choices.at(0).message.content, xmlTag);
             } catch (const AException& e)
             {
@@ -814,7 +812,7 @@ Use absolute time in your queries.
             } else if (senderId != 0) {
                 try {
                     auto sender =
-                        co_await mTelegram->sendQueryWithResult(TelegramClient::toPtr(td::td_api::getUser(senderId)));
+                        co_await mTelegram->sendQueryWithResult(ITelegramClient::toPtr(td::td_api::getUser(senderId)));
                     senderName = sender->td::td_api::user::first_name_ + " " + sender->td::td_api::user::last_name_;
                     if (sender->td::td_api::user::usernames_) {
                         if (!sender->td::td_api::user::usernames_->active_usernames_.empty()) {
@@ -826,7 +824,7 @@ Use absolute time in your queries.
                 if (senderName.empty()) {
                     try {
                         auto sender = co_await mTelegram->sendQueryWithResult(
-                            TelegramClient::toPtr(td::td_api::getChat(senderId)));
+                            ITelegramClient::toPtr(td::td_api::getChat(senderId)));
                         senderName = sender->td::td_api::chat::title_;
                     } catch (const AException&) {
                     }
@@ -887,7 +885,7 @@ Use absolute time in your queries.
                 }();
                 if (forwardedFromChatId != 0) {
                     try {
-                        formattedXmlTag += (co_await mTelegram->sendQueryWithResult(TelegramClient::toPtr(td::td_api::getChat(forwardedFromChatId))))->title_;
+                        formattedXmlTag += (co_await mTelegram->sendQueryWithResult(ITelegramClient::toPtr(td::td_api::getChat(forwardedFromChatId))))->title_;
                     } catch (const AException& e) {}
                 }
                 formattedXmlTag += "\"";
@@ -953,7 +951,7 @@ Use absolute time in your queries.
                     auto reply =
                         td::td_api::move_object_as<td::td_api::messageReplyToMessage>(std::move(msg.reply_to_));
                     auto replyToMsg = co_await mTelegram->sendQueryWithResult(
-                        TelegramClient::toPtr(td::td_api::getMessage(msg.chat_id_, reply->message_id_)));
+                        ITelegramClient::toPtr(td::td_api::getMessage(msg.chat_id_, reply->message_id_)));
                     result += co_await llmuiFormatChatHistoryMessage(*replyToMsg, chat, "reply_to");
                 }
 
@@ -1002,7 +1000,7 @@ Use absolute time in your queries.
         AFuture<APath> fetchMedia(td::td_api::object_ptr<td::td_api::file>& file) {
             if (!file->local_ || !file->local_->is_downloading_completed_) {
                 file = co_await mTelegram->sendQueryWithResult(
-                    TelegramClient::toPtr(td::td_api::downloadFile(file->id_, 16, 0, 0, true)));
+                    ITelegramClient::toPtr(td::td_api::downloadFile(file->id_, 16, 0, 0, true)));
             }
             AUI_ASSERT(file->local_ != nullptr);
             AUI_ASSERT(!file->local_->path_.empty());
@@ -1020,13 +1018,13 @@ Use absolute time in your queries.
             
             co_await telegram()->waitForConnection();
             setOnline();
-            mTelegram->sendQuery(TelegramClient::toPtr(td::td_api::openChat(chatId)));
+            mTelegram->sendQuery(ITelegramClient::toPtr(td::td_api::openChat(chatId)));
             removeNotifications("<notification chat_id=\"{}\">\n"_format(chatId));
-            auto chat = aui::ptr::manage_shared((co_await mTelegram->sendQueryWithResult(TelegramClient::toPtr(td::td_api::getChat(chatId)))).release(), [this, self = shared_from_this()](td::td_api::chat* chat) {
+            auto chat = aui::ptr::manage_shared((co_await mTelegram->sendQueryWithResult(ITelegramClient::toPtr(td::td_api::getChat(chatId)))).release(), [this, self = shared_from_this()](td::td_api::chat* chat) {
                 try {
                     setOnline(false);
-                    mTelegram->sendQuery(TelegramClient::toPtr(td::td_api::sendChatAction(chat->id_, {}, {}, nullptr)));
-                    mTelegram->sendQuery(TelegramClient::toPtr(td::td_api::closeChat(chat->id_)));
+                    mTelegram->sendQuery(ITelegramClient::toPtr(td::td_api::sendChatAction(chat->id_, {}, {}, nullptr)));
+                    mTelegram->sendQuery(ITelegramClient::toPtr(td::td_api::closeChat(chat->id_)));
                 } catch (...) {}
                 delete chat;
             });
@@ -1038,7 +1036,7 @@ Use absolute time in your queries.
                 int64_t fromMessage = 0;
                 for (;;) {
                     auto response =
-                        co_await mTelegram->sendQueryWithResult(TelegramClient::toPtr(td::td_api::getChatHistory(
+                        co_await mTelegram->sendQueryWithResult(ITelegramClient::toPtr(td::td_api::getChatHistory(
                             chatId, fromMessage, 0, 5,
                             false)));
                     if (response->messages_.empty()) {
@@ -1134,12 +1132,12 @@ Use absolute time in your queries.
                 }
 
                 mTelegram->sendQuery(
-                    TelegramClient::toPtr(td::td_api::viewMessages(chatId, std::move(readMessages), nullptr, false)));
+                    ITelegramClient::toPtr(td::td_api::viewMessages(chatId, std::move(readMessages), nullptr, false)));
 
 
                 // address specifically read messages.
                 // this helps switching between unrelated contexts.
-                chatEmbedding = co_await OpenAIChat{.config = config::ENDPOINT_EMBEDDING}.embedding(result);
+                chatEmbedding = co_await openAI()->embedding({ .config = config::ENDPOINT_EMBEDDING }, result);
                 // Alex2772 (18-04-2026):
                 //
                 // Replaced embedding search with util::populateFromDiaryAIIfNeeded
@@ -1274,9 +1272,9 @@ Some channels have reactions enabled. In that case, you can sometimes react with
                         }
 
                         auto isTyping = _new<std::atomic_bool>(true);
-                        auto typingCoro = [](_<TelegramClient> telegram, int64_t chatId, _<std::atomic_bool> isTyping) -> AFuture<> {
+                        auto typingCoro = [](_<ITelegramClient> telegram, int64_t chatId, _<std::atomic_bool> isTyping) -> AFuture<> {
                             while (isTyping->load()) {
-                                telegram->sendQuery(TelegramClient::toPtr(td::td_api::sendChatAction(chatId, {}, {}, TelegramClient::toPtr(td::td_api::chatActionTyping()))));
+                                telegram->sendQuery(ITelegramClient::toPtr(td::td_api::sendChatAction(chatId, {}, {}, ITelegramClient::toPtr(td::td_api::chatActionTyping()))));
                                 co_await AThread::asyncSleep(500ms);
                             }
                         }(telegram(), chat->id_, isTyping);
@@ -1297,6 +1295,18 @@ Some channels have reactions enabled. In that case, you can sometimes react with
                         }
                         if (!photoFilename.empty() && !audioFilename.empty()) {
                             co_return "Error: cannot attach both photo and audio in a single message";
+                        }
+                        const bool messageContainsCode = message.contains("```");
+                        if (!messageContainsCode && ranges::count_if(ctx.allToolCalls, [](const IOpenAIChat::Message::ToolCall& tc) {
+                            return tc.function.name == "send_telegram_message";
+                        }) == 1) {
+                            if (glm::clamp((message.length() - 15.f) / 100.f) * 0.5f > std::uniform_real_distribution(0.f, 1.f)(gRandomEngine)) {
+                                co_return "Error: you must split your response into small separate messages.\n"
+                                    "Example:\n"
+                                    "- ахахаххаа\n"
+                                    "- ты смешной\n"
+                                    "- научишь также?\n";
+                            }
                         }
 
                         if (photoFilename.empty() && audioFilename.empty()) {
@@ -1339,7 +1349,7 @@ Some channels have reactions enabled. In that case, you can sometimes react with
                         // dirty fix: skip similarity checks if a photo was attached: llm's comment on photo is not much
                         // important
                         if (!message.empty() && photoFilename.empty()) {
-                            auto target = co_await OpenAIChat{.config = config::ENDPOINT_EMBEDDING}.embedding(message);
+                            auto target = co_await openAI()->embedding({ .config = config::ENDPOINT_EMBEDDING }, message);
                             static AMap<AString, std::valarray<double>> embeddings;
                             double maxSimilarity = 0.0;
                             double avgSimilarity = 0.0;
@@ -1371,7 +1381,7 @@ Some channels have reactions enabled. In that case, you can sometimes react with
                                 auto text = extractMessageTypeAndText(*i);
                                 auto& embedding = embeddings[text];
                                 if (embedding.size() != target.size()) {
-                                    embedding = co_await OpenAIChat{.config = config::ENDPOINT_EMBEDDING}.embedding(text);
+                                    embedding = co_await openAI()->embedding({ .config = config::ENDPOINT_EMBEDDING }, text);
                                 }
                                 const auto similiarity = util::cosine_similarity(target, embedding);
                                 avgSimilarity += similiarity;
@@ -1397,7 +1407,7 @@ Some channels have reactions enabled. In that case, you can sometimes react with
                                         // this way LLM has no clue what did it sent; maybe more creative
                                         // however it might go in infinite loop; this is why we have alternative
                                         // path with throwing an exception
-                                        co_return "<{} />"_format(OpenAIChat::EMBEDDING_TAG);
+                                        co_return "<{} />"_format(IOpenAIChat::EMBEDDING_TAG);
                                     }
 
                                     // If LLM generates a follow-up that repeats meaning of its previous responses,
@@ -1491,7 +1501,7 @@ Some channels have reactions enabled. In that case, you can sometimes react with
                         // to one tick).
                         // however, if something goes wrong, this is reported as an exception to LLM and it will know
                         // that a technical issue appeared during sending the message (i.e., LLMs bot was banned)
-                        if (message.contains("\n") && !message.contains("```")) {
+                        if (message.contains("\n") && !messageContainsCode) {
                             // despite the prompt, stupid af LLM still often sends big unnatural messages.
                             // we will split manually.
 
@@ -1607,10 +1617,10 @@ AUI_ENTRY {
     }
 
     using namespace std::chrono_literals;
-    auto telegram = _new<TelegramClient>();
+    auto telegram = _new<TelegramClientImpl>();
 
     AAsyncHolder async;
-    async << [](_<TelegramClient> telegram) -> AFuture<> {
+    async << [](_<ITelegramClient> telegram) -> AFuture<> {
         ALogger::info(LOG_TAG) << "Waiting for Telegram network...";
         co_await telegram->waitForConnection();
         ALogger::info(LOG_TAG) << "Connected to Telegram";

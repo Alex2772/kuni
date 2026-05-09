@@ -504,7 +504,7 @@ avoid missing details!
 
 Avoid plagiarism and copying your prior diary pages! Share your recent details!
 
-Time window: last 24–48h.
+Time window: last 48h.
 
 You are learning. In order to learn, you need to save information to the diary so you can reference it in the future.
 

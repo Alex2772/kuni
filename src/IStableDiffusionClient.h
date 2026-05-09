@@ -2,13 +2,17 @@
 #include "config.h"
 #include "AUI/Common/AString.h"
 #include "AUI/Common/AVector.h"
+#include "AUI/Common/AMap.h"
 #include "AUI/Json/AJson.h"
 #include "AUI/Thread/AFuture.h"
 #include "AUI/Image/AImage.h"
 #include "Endpoint.h"
 
-struct StableDiffusionClient {
-    Endpoint endpoint = config::ENDPOINT_SD;
+/**
+ * @brief Abstract interface for Stable Diffusion image generation.
+ */
+struct IStableDiffusionClient {
+    virtual ~IStableDiffusionClient() = default;
 
     struct Txt2ImgRequest {
         AString prompt;
@@ -44,5 +48,5 @@ struct StableDiffusionClient {
         AJson info;
     };
 
-    AFuture<Txt2ImgResponse> txt2img(const Txt2ImgRequest& request);
+    virtual AFuture<Txt2ImgResponse> txt2img(const Txt2ImgRequest& request) = 0;
 };

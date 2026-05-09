@@ -4,7 +4,7 @@
 #include "AUI/Thread/AAsyncHolder.h"
 #include "AUI/Thread/AEventLoop.h"
 #include "AUI/Util/kAUI.h"
-#include "OpenAIChat.h"
+#include "IOpenAIChat.h"
 #include "util/cosine_similarity.h"
 
 #include <chrono>
@@ -127,15 +127,23 @@ public:
 
         auto operator<=>(const EntryExAndRelatedness&) const = default;
     };
+
+    struct Init {
+       /**
+        * @param diaryDir Path to the directory that stores the markdown
+        *                 files.  The directory is created if it does not
+        *                 already exist.
+        */
+        APath diaryDir;
+
+        _<IOpenAIChat> openAI;
+    };
     
     /**
      * @brief Construct a new Diary object.
      *
-     * @param diaryDir Path to the directory that stores the markdown
-     *                 files.  The directory is created if it does not
-     *                 already exist.
      */
-    Diary(APath diaryDir);
+    Diary(Init init);
 
     /**
      * @brief Persist a simple entry to disk.
@@ -220,12 +228,15 @@ public:
 
     AFuture<AString> queryAI(const AString& query, QueryOpts opts);
 
+    [[nodiscard]] _<IOpenAIChat> openAI() const noexcept { return mInit.openAI; }
+
 private:
+    const Init mInit;
+
     /**
      * @brief Path to the directory containing the markdown files.
      */
 
-    APath mDiaryDir;
     /**
      * @brief Holds asynchronous tasks for the diary.
      */
@@ -234,7 +245,7 @@ private:
     /**
      * @brief Lazily cached list of parsed diary entries.
      */
-    aui::lazy<std::list<EntryEx>> mCachedDiary = [this] { return parse(read(mDiaryDir)); };
+    aui::lazy<std::list<EntryEx>> mCachedDiary = [this] { return parse(read(mInit.diaryDir)); };
 
 
     /**

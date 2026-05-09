@@ -1,6 +1,8 @@
 #pragma once
 #include "AUI/IO/APath.h"
 #include "AppBase.h"
+#include "OpenAIChatImpl.h"
+
 #include <gmock/gmock.h>
 
 static const auto TEST_DATA = APath(__FILE__).parent() / "data";
@@ -8,7 +10,9 @@ static const auto TEST_DATA = APath(__FILE__).parent() / "data";
 
 class AppMock : public AppBase {
 public:
-    AppMock() {
+    AppMock(): AppBase({
+        .openAI = _new<OpenAIChatImpl>(),
+    }) {
     }
 
     MOCK_METHOD(void, telegramPostMessage, (const AString& message), ());

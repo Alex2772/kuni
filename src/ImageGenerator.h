@@ -2,18 +2,18 @@
 #include "AUI/Common/AString.h"
 #include "AUI/Thread/AFuture.h"
 #include "AUI/Image/AImage.h"
-#include "StableDiffusionClient.h"
-#include "OpenAIChat.h"
+#include "IStableDiffusionClient.h"
+#include "IOpenAIChat.h"
 
 /**
  * ImageGenerator is responsible for generating high-quality images based on freeform descriptions.
- * It uses a StableDiffusionClient for image generation and an OpenAIChat (with vision) for
+ * It uses a StableDiffusionClient for image generation and an IOpenAIChat (with vision) for
  * prompt engineering and iterative image assessment.
  */
 class ImageGenerator {
 public:
-    ImageGenerator(StableDiffusionClient sdClient, OpenAIChat chatClient)
-        : mSdClient(std::move(sdClient)), mChatClient(std::move(chatClient)) {}
+    ImageGenerator(_<IStableDiffusionClient> sdClient, _<IOpenAIChat> openAI, IOpenAIChat::Params chatParams)
+        : mSdClient(std::move(sdClient)), mOpenAI(std::move(openAI)), mChatParams(std::move(chatParams)) {}
 
     struct GalleryImage {
         _<AImage> image;
@@ -22,15 +22,16 @@ public:
 
     /**
      * Generates an image from a description.
-     * Uses OpenAIChat to transform the description into an SD-optimized prompt,
+     * Uses IOpenAIChat to transform the description into an SD-optimized prompt,
      * pulls character details from KuniCharacter, and iteratively refines the prompt
      * based on vision-based assessment of the generated images.
      */
     AFuture<GalleryImage> generate(AString description);
 
 private:
-    StableDiffusionClient mSdClient;
-    OpenAIChat mChatClient;
+    _<IStableDiffusionClient> mSdClient;
+    _<IOpenAIChat> mOpenAI;
+    IOpenAIChat::Params mChatParams;
 
     struct PromptPair {
         AString positive;

@@ -1,7 +1,7 @@
 #pragma once
 
 #include "Diary.h"
-#include "OpenAIChat.h"
+#include "IOpenAIChat.h"
 
 #include <AUI/Common/AStringView.h>
 #include <AUI/Thread/AFuture.h>
@@ -41,6 +41,6 @@ AString formatPastHours(std::chrono::hours pastHours = std::chrono::hours(48));
  * This overall improves per-chat awareness of Kuni, enables multiple chat management capabilities, keep reminders and
  * promises in place.
  */
-AFuture<AString> populateFromDiaryAIIfNeeded(const AVector<OpenAIChat::Message>& temporaryContext, Diary& diary, AStringView tag, AStringView prompt);
+AFuture<AString> populateFromDiaryAIIfNeeded(const AVector<IOpenAIChat::Message>& temporaryContext, Diary& diary, AStringView tag, AStringView prompt);
 
 }   // namespace util

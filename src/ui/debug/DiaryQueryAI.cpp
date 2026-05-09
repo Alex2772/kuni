@@ -19,7 +19,9 @@
 #include "DiaryQueryAI.h"
 
 #include <Diary.h>
-#include <OpenAIChat.h>
+#include <Diary.h>
+#include <IOpenAIChat.h>
+#include <OpenAIChatImpl.h>
 #include <OpenAITools.h>
 
 using namespace declarative;
@@ -54,23 +56,23 @@ _<AView> spoiler(_<AView> content,
     };
 }
 
-_<AView> messageView(const AVector<OpenAIChat::Message>& allMessages,
-                     const OpenAIChat::Message& msg) {
+_<AView> messageView(const AVector<IOpenAIChat::Message>& allMessages,
+                     const IOpenAIChat::Message& msg) {
     const auto bg =
-        msg.role == OpenAIChat::Message::Role::USER
+        msg.role == IOpenAIChat::Message::Role::USER
             ? AStylesheet::getOsThemeColor()
             : AColor::WHITE;
     const auto gradient =
-        msg.role == OpenAIChat::Message::Role::USER
+        msg.role == IOpenAIChat::Message::Role::USER
             ? BackgroundGradient(bg.lighter(0.3f), bg.darker(0.2f), 147_deg)
             : BackgroundGradient(bg, bg, 0_deg);
-    if (msg.role == OpenAIChat::Message::Role::TOOL) {
+    if (msg.role == IOpenAIChat::Message::Role::TOOL) {
         return _new<AView>() AUI_OVERRIDE_STYLE { Margin { -4_dp } };
     }
     return Vertical {
         Horizontal {
           SpacerFixed { 32_dp } AUI_OVERRIDE_STYLE {
-              msg.role == OpenAIChat::Message::Role::USER
+              msg.role == IOpenAIChat::Message::Role::USER
                   ? Visibility::VISIBLE
                   : Visibility::GONE,
           },
@@ -90,7 +92,7 @@ _<AView> messageView(const AVector<OpenAIChat::Message>& allMessages,
               Padding { 8_dp },
           },
           SpacerFixed { 32_dp } AUI_OVERRIDE_STYLE{
-              msg.role != OpenAIChat::Message::Role::USER
+              msg.role != IOpenAIChat::Message::Role::USER
                   ? Visibility::VISIBLE
                   : Visibility::GONE },
         },
@@ -117,16 +119,17 @@ _<AView> messageView(const AVector<OpenAIChat::Message>& allMessages,
     };
 }
 struct State {
+    _<IOpenAIChat> openAI = _new<OpenAIChatImpl>();
     AAsyncHolder async;
-    AProperty<AVector<OpenAIChat::Message>> messages;
+    AProperty<AVector<IOpenAIChat::Message>> messages;
     AProperty<AString> query = "who is alex2772?";
-    AProperty<_<OpenAIChat::StreamingResponse>> lastStreaming;
-    Diary diary { "data/diary" };
+    AProperty<_<IOpenAIChat::StreamingResponse>> lastStreaming;
+    Diary diary = Diary::Init{ .diaryDir = "data/diary", .openAI = openAI };
 
     AFuture<> search(Diary::QueryOpts opts = {}) {
         messages.writeScope()->clear();
-        messages << OpenAIChat::Message {
-            .role = OpenAIChat::Message::Role::USER, .content = std::move(query.raw)
+        messages << IOpenAIChat::Message {
+            .role = IOpenAIChat::Message::Role::USER, .content = std::move(query.raw)
         };
         query.notify();
 
@@ -150,9 +153,7 @@ struct State {
                 },
                 .handler = [this, opts, &includedIds](OpenAITools::Ctx ctx) -> AFuture<AString> {
                     auto cue = ctx.args["text"].asStringOpt().valueOrException("text is required string");
-                    auto diaryResponse = co_await diary.query(co_await OpenAIChat{
-                        .config = config::ENDPOINT_EMBEDDING,
-                    }.embedding(cue), opts);
+                    auto diaryResponse = co_await diary.query(co_await openAI->embedding({ .config = config::ENDPOINT_EMBEDDING }, cue), opts);
                     AString formattedResponse;
                     ALOG_DEBUG("Diary")
                         << "queryAI cue=\""
@@ -190,7 +191,7 @@ struct State {
                 },
             },
         };
-        OpenAIChat chat {
+        IOpenAIChat::Params chatParams{
             .systemPrompt = R"(
 You are a database searcher and summarizer.
 
@@ -209,14 +210,13 @@ Do not alter facts.
 
 Do not make up facts. Rely exclusively on provided context.
     )",
-            // .config = config::ENDPOINT_SLEEPING,
             .tools = tools.asJson(),
         };
 
         bool toolCallHappened = false;
 
         for (;;) {
-            auto streaming = chat.chatStreaming(messages);
+            auto streaming = openAI->chatStreaming(chatParams, messages);
             lastStreaming = streaming;
             co_await streaming->completed;
             const auto& botAnswer = streaming->response->choices.at(0).message;
@@ -228,8 +228,8 @@ Do not make up facts. Rely exclusively on provided context.
                         << "queryAI: no tool call happened, pointing that out "
                            "to the LLM and trying "
                            "again";
-                    messages << OpenAIChat::Message {
-                        .role = OpenAIChat::Message::Role::USER,
+                    messages << IOpenAIChat::Message {
+                        .role = IOpenAIChat::Message::Role::USER,
                         .content = "you must perform at least one call to #query",
                     };
                     continue;

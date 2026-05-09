@@ -1,4 +1,4 @@
-#include "StableDiffusionClient.h"
+#include "StableDiffusionClientImpl.h"
 #include "AUI/Curl/ACurl.h"
 #include "AUI/Json/Conversion.h"
 #include "AUI/Logging/ALogger.h"
@@ -9,7 +9,7 @@
 
 static constexpr auto LOG_TAG = "StableDiffusionClient";
 
-AJSON_FIELDS(StableDiffusionClient::Txt2ImgRequest,
+AJSON_FIELDS(IStableDiffusionClient::Txt2ImgRequest,
              AJSON_FIELDS_ENTRY(prompt)
              AJSON_FIELDS_ENTRY(negative_prompt)
              AJSON_FIELDS_ENTRY(styles)
@@ -35,7 +35,7 @@ AJSON_FIELDS(StableDiffusionClient::Txt2ImgRequest,
              AJSON_FIELDS_ENTRY(hr_second_pass_steps)
              AJSON_FIELDS_ENTRY(denoising_strength))
 
-AFuture<StableDiffusionClient::Txt2ImgResponse> StableDiffusionClient::txt2img(const Txt2ImgRequest& request) {
+AFuture<IStableDiffusionClient::Txt2ImgResponse> StableDiffusionClientImpl::txt2img(const Txt2ImgRequest& request) {
     ALOG_TRACE(LOG_TAG) << "txt2img";
     auto query = AJson::toString(aui::to_json(request));
     ALOG_TRACE(LOG_TAG) << "Query: " << query;
@@ -55,7 +55,7 @@ AFuture<StableDiffusionClient::Txt2ImgResponse> StableDiffusionClient::txt2img(c
     auto response = AJson::fromBuffer(responseBody);
 
     ALOG_TRACE(LOG_TAG) << "Response: " << AJson::toString(response);
-    StableDiffusionClient::Txt2ImgResponse res;
+    StableDiffusionClientImpl::Txt2ImgResponse res;
     res.images = response["images"].asArray() | ranges::views::transform([](const AJson& v) { return AImage::fromBuffer(AByteBuffer::fromBase64String(v.asString())); }) | ranges::to_vector;
     res.info = response["info"];
     co_return res;

@@ -3,10 +3,11 @@
 #include "populate_from_diary_ai_if_needed.h"
 
 #include <AppBase.h>
-#include <OpenAIChat.h>
+#include <IOpenAIChat.h>
+#include <OpenAIChatImpl.h>
 
 namespace util {
-AFuture<AString> importantThingsToRemember(AVector<OpenAIChat::Message> context, AStringView previousWorkingMemory) {
+AFuture<AString> importantThingsToRemember(const IOpenAIChat& openAI, AVector<IOpenAIChat::Message> context, AStringView previousWorkingMemory) {
     using namespace std::chrono_literals;
 
     AString prompt = "What are important things in timespan {} (3 days) you should remember?\n"_format(formatPastHours(24h * 3));
@@ -48,15 +49,15 @@ AFuture<AString> importantThingsToRemember(AVector<OpenAIChat::Message> context,
               "- Обещала скинуть рецепт пасты Коду — последнее обновление: Apr 27\n"
               "- Проверить статус заказа на Ozon — последнее обновление: Apr 25\n";
 
-    context << OpenAIChat::Message {
-        .role = OpenAIChat::Message::Role::USER,
+    context << IOpenAIChat::Message {
+        .role = IOpenAIChat::Message::Role::USER,
         .content = std::move(prompt),
     };
     for (;;) {
-        auto content = (co_await OpenAIChat {
+        auto content = (co_await openAI.chat({
             .systemPrompt = AppBase::getSystemPrompt(),
-            .config = config::ENDPOINT_MAIN
-        }.chat(context)).choices.at(0).message.content;
+            .config = config::ENDPOINT_MAIN,
+        }, context)).choices.at(0).message.content;
         if (content.contains("tool_calls") || content.contains("ask_diary")) {
             // deepseek bug - attempts to use DSML to make a call to ask_diary.
             continue;
