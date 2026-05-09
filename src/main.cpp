@@ -459,7 +459,9 @@ on them.
 Some channels have reactions enabled. In that case, you can sometimes react with #react_with_emoji to express your feelings about a message, but you can't send a full reply.
 </instructions>
 )"_format(chat->title_);
-                        tools = {};
+                        tools = OpenAITools{
+                            tools::reactWithEmoji(telegram(), chat),
+                        };
                         co_return result; // no tools for channels
                     }
                 }
