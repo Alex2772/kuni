@@ -264,7 +264,6 @@ Negative prompt is what to avoid in the image.
 
 AFuture<ImageGenerator::AssessmentResult> ImageGenerator::assessImage(const AImage& image, const AString& description) {
     ALOG_TRACE(LOG_TAG) << "assessImage description=" << description;
-    auto chat = _new<OpenAIChatImpl>();
     auto params = mChatParams;
     // Note: mChatParams.config should ideally be a vision-capable model.
     params.systemPrompt = R"(
@@ -314,7 +313,7 @@ Output your assessment in JSON format with the following fields:
             .content = "Assess this image: " + IOpenAIChat::embedImage(image)
         }
     };
-    auto response = co_await chat->chat(params, messages);
+    auto response = co_await mOpenAI->chat(params, messages);
 
     if (response.choices.empty()) {
         throw AException("OpenAI returned no choices for image assessment");
