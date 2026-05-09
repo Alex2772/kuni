@@ -52,7 +52,7 @@ TEST(AskGoogleTest, HandlerMissingQueryThrows) {
 // ===========================================================================
 // askGoogle – Handler: successful execution
 // ===========================================================================
-TEST(AskGoogleTest, HandlerSuccess) {
+TEST(AskGoogleTest, HandlerSuccessIntegration) {
     auto openAI = _new<OpenAIMock>();
     auto tool = tools::askGoogle(openAI);
 
