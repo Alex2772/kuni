@@ -64,7 +64,7 @@ OpenAITools::Tool tools::sendTelegramMessage(
                     chatEmbedding = std::move(chatEmbedding),
                     messagesInRow = _new<int>(0),
                     messages = std::move(messages),
-                    async = _new<AAsyncHolder>{}
+                    async = _new<AAsyncHolder>()
                     ](OpenAITools::Ctx ctx) -> AFuture<AString> {
             if (*messagesInRow > 10) {
                 // stupid AI can't recognize it spams messages despite the warning
