@@ -63,7 +63,8 @@ OpenAITools::Tool tools::sendTelegramMessage(
                     chat = std::move(chat),
                     chatEmbedding = std::move(chatEmbedding),
                     messagesInRow = _new<int>(0),
-                    messages = std::move(messages)
+                    messages = std::move(messages),
+                    async = _new<AAsyncHolder>{}
                     ](OpenAITools::Ctx ctx) -> AFuture<AString> {
             if (*messagesInRow > 10) {
                 // stupid AI can't recognize it spams messages despite the warning
@@ -71,7 +72,7 @@ OpenAITools::Tool tools::sendTelegramMessage(
             }
 
             auto isTyping = _new<std::atomic_bool>(true);
-            auto typingCoro = [](_weak<ITelegramClient> telegram, int64_t chatId, _<std::atomic_bool> isTyping) -> AFuture<> {
+            async << [](_weak<ITelegramClient> telegram, int64_t chatId, _<std::atomic_bool> isTyping) -> AFuture<> {
                 while (isTyping->load()) {
                     auto tg = telegram.lock();
                     if (tg == nullptr) {
@@ -79,8 +80,7 @@ OpenAITools::Tool tools::sendTelegramMessage(
                         break;
                     }
                     tg->sendQuery(ITelegramClient::toPtr(td::td_api::sendChatAction(chatId, {}, {}, ITelegramClient::toPtr(td::td_api::chatActionTyping()))));
-                    // co_await AThread::asyncSleep(500ms);
-                    break; // test
+                    co_await AThread::asyncSleep(500ms);
                 }
             }(telegram, chat->id_, isTyping);
             AUI_DEFER { isTyping->store(false); };
