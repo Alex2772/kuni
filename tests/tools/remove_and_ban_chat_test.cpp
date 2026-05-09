@@ -9,6 +9,7 @@
 
 #include <gmock/gmock.h>
 
+namespace {
 // ---------------------------------------------------------------------------
 // Mock ITelegramClient
 // ---------------------------------------------------------------------------
@@ -27,6 +28,7 @@ public:
         ON_CALL(*this, myId).WillByDefault(testing::Return(0));
     }
 };
+}
 
 // ===========================================================================
 // removeAndBanChat – PAPIK_CHAT_ID returns "Failed"

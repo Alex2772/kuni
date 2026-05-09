@@ -8,6 +8,7 @@
 
 #include <gmock/gmock.h>
 
+namespace {
 // ---------------------------------------------------------------------------
 // Mock IOpenAIChat
 // ---------------------------------------------------------------------------
@@ -28,6 +29,7 @@ class StableDiffusionMock : public IStableDiffusionClient {
 public:
     MOCK_METHOD(AFuture<Txt2ImgResponse>, txt2img, (const Txt2ImgRequest& request), (override));
 };
+}
 
 // ===========================================================================
 // takePhoto – Missing photo_desc throws

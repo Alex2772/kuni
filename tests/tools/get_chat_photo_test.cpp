@@ -10,6 +10,7 @@
 
 #include <gmock/gmock.h>
 
+namespace {
 // ---------------------------------------------------------------------------
 // Mock ITelegramClient
 // ---------------------------------------------------------------------------
@@ -18,11 +19,11 @@ public:
     MOCK_METHOD(AFuture<Object>, sendQuery, (td::td_api::object_ptr<td::td_api::Function> f), (override));
     MOCK_METHOD(const AFuture<>&, waitForConnection, (), (const, noexcept, override));
     MOCK_METHOD(int64_t, myId, (), (const, override));
+    AFuture<> ready;
 
     TelegramMock() {
-        ON_CALL(*this, waitForConnection).WillByDefault([]() -> const AFuture<>& {
-            static AFuture<> ready;
-            ready.supplyValue();
+        ready.supplyValue();
+        ON_CALL(*this, waitForConnection).WillByDefault([this]() -> const AFuture<>& {
             return ready;
         });
         ON_CALL(*this, myId).WillByDefault(testing::Return(0));
@@ -41,6 +42,7 @@ public:
     }
     MOCK_METHOD(AFuture<std::valarray<double>>, embedding, (Params params, AString input), (const, override));
 };
+}
 
 // ---------------------------------------------------------------------------
 // Helper: create mock chat objects

@@ -27,6 +27,9 @@ struct ITelegramClient {
             auto error = td::move_tl_object_as<td::td_api::error>(std::move(object));
             throw AException(error->message_);
         }
+        if constexpr (requires { F::ReturnType::element_type::ID; }) {
+            AUI_ASSERT(object->get_id() == F::ReturnType::element_type::ID);
+        }
         co_return td::move_tl_object_as<typename F::ReturnType::element_type>(std::move(object));
     }
 

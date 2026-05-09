@@ -14,6 +14,7 @@
 
 using namespace testing;
 
+namespace {
 // ---------------------------------------------------------------------------
 // Mock Diary
 // ---------------------------------------------------------------------------
@@ -27,6 +28,7 @@ public:
 
     MOCK_METHOD(AFuture<AString>, queryAI, (const AString& query, QueryOpts opts), (override));
 };
+}
 
 // ===========================================================================
 // askDiary – Handler: success case

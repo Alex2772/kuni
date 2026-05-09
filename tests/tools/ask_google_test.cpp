@@ -13,6 +13,7 @@
 
 using namespace testing;
 
+namespace {
 // ---------------------------------------------------------------------------
 // Mock IOpenAIChat
 // ---------------------------------------------------------------------------
@@ -25,7 +26,7 @@ public:
     }
     MOCK_METHOD(AFuture<std::valarray<double>>, embedding, (Params params, AString input), (const, override));
 };
-
+}
 
 // ===========================================================================
 // askGoogle – Handler: missing query throws

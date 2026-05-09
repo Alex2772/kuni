@@ -59,24 +59,24 @@ OpenAITools::Tool tools::sendTelegramMessage(
                 .required = {},
             },
         .handler = [telegram = std::move(telegram),
-                      openAI = std::move(openAI),
-                      chat = std::move(chat),
-                      chatEmbedding = std::move(chatEmbedding),
-                      messagesInRow = _new<int>(0),
-                      messages = std::move(messages)
-                      ](OpenAITools::Ctx ctx) -> AFuture<AString> {
+                    openAI = std::move(openAI),
+                    chat = std::move(chat),
+                    chatEmbedding = std::move(chatEmbedding),
+                    messagesInRow = _new<int>(0),
+                    messages = std::move(messages)
+                    ](OpenAITools::Ctx ctx) -> AFuture<AString> {
             if (*messagesInRow > 10) {
                 // stupid AI can't recognize it spams messages despite the warning
                 throw AException("Too many messages in a row. Don't spam!");
             }
 
             auto isTyping = _new<std::atomic_bool>(true);
-            auto typingCoro = [](_<ITelegramClient> telegram, int64_t chatId, _<std::atomic_bool> isTyping) -> AFuture<> {
+            auto typingCoro = [](ITelegramClient& telegram, int64_t chatId, _<std::atomic_bool> isTyping) -> AFuture<> {
                 while (isTyping->load()) {
-                    telegram->sendQuery(ITelegramClient::toPtr(td::td_api::sendChatAction(chatId, {}, {}, ITelegramClient::toPtr(td::td_api::chatActionTyping()))));
+                    telegram.sendQuery(ITelegramClient::toPtr(td::td_api::sendChatAction(chatId, {}, {}, ITelegramClient::toPtr(td::td_api::chatActionTyping()))));
                     co_await AThread::asyncSleep(500ms);
                 }
-            }(telegram, chat->id_, isTyping);
+            }(*telegram, chat->id_, isTyping);
             AUI_DEFER { isTyping->store(false); };
 
             if (ctx.args.contains("chat_id")) {
@@ -108,6 +108,7 @@ OpenAITools::Tool tools::sendTelegramMessage(
                 }
             }
 
+#ifndef AUI_TESTS_MODULE
             if (photoFilename.empty() && audioFilename.empty()) {
                 bool shouldRemind = std::uniform_real_distribution<>(0.0, 1.0)(gRandomEngine) < config::TOOL_REMINDER_CHANCE;
                 if (shouldRemind) {
@@ -123,6 +124,34 @@ OpenAITools::Tool tools::sendTelegramMessage(
                         throw AException(reminderMessage);
                     }
                 }
+            }
+#endif
+
+            // handle photo_filename
+            AOptional<_<AImage>> photo;
+            if (!photoFilename.empty()) {
+                if (photoFilename.contains("/")) {
+                    throw AException("Invalid photo filename: \"{}\". Filename must not contain \"/\". ");
+                }
+                if (photoFilename.contains("..")) {
+                    throw AException("Invalid photo filename: \"{}\". Filename must not contain \"..\". ");
+                }
+                photo = AImage::fromBuffer(AByteBuffer::fromStream(AFileInputStream(APath("data") / "gallery" / photoFilename)));
+            }
+
+            AOptional<APath> audioPath;
+            if (!audioFilename.empty()) {
+                if (audioFilename.contains("/")) {
+                    throw AException("Invalid audio filename: \"{}\". Filename must not contain \"/\". ");
+                }
+                if (audioFilename.contains("..")) {
+                    throw AException("Invalid audio filename: \"{}\". Filename must not contain \"..\". ");
+                }
+                APath candidatePath = APath("data") / "voice_messages" / audioFilename;
+                if (!candidatePath.isRegularFileExists()) {
+                    throw AException("Audio file not found: {}"_format(candidatePath.absolute()));
+                }
+                audioPath = candidatePath;
             }
 
             // Alex2772 (Apr 23 2026):
@@ -225,33 +254,6 @@ OpenAITools::Tool tools::sendTelegramMessage(
                 embeddings.emplace(message, std::move(target));
             }
 
-
-            // handle photo_filename
-            AOptional<_<AImage>> photo;
-            if (!photoFilename.empty()) {
-                if (photoFilename.contains("/")) {
-                    throw AException("Invalid photo filename: \"{}\". Filename must not contain \"/\". ");
-                }
-                if (photoFilename.contains("..")) {
-                    throw AException("Invalid photo filename: \"{}\". Filename must not contain \"..\". ");
-                }
-                photo = AImage::fromBuffer(AByteBuffer::fromStream(AFileInputStream(APath("data") / "gallery" / photoFilename)));
-            }
-
-            AOptional<APath> audioPath;
-            if (!audioFilename.empty()) {
-                if (audioFilename.contains("/")) {
-                    throw AException("Invalid audio filename: \"{}\". Filename must not contain \"/\". ");
-                }
-                if (audioFilename.contains("..")) {
-                    throw AException("Invalid audio filename: \"{}\". Filename must not contain \"..\". ");
-                }
-                APath candidatePath = APath("data") / "voice_messages" / audioFilename;
-                if (!candidatePath.isRegularFileExists()) {
-                    throw AException("Audio file not found: {}"_format(candidatePath.absolute()));
-                }
-                audioPath = candidatePath;
-            }
 
             auto simulateTypingDelay = [](size_t messageLength) {
                 // random wait. You definitely don't want to receive 4 large messages in 1 sec right?
