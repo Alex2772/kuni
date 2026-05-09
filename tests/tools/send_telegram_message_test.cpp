@@ -319,10 +319,6 @@ TEST(SendTelegramMessageTest, ReplyToExistingMessage) {
 // sendTelegramMessage – Too many messages in a row throws
 // ===========================================================================
 TEST(SendTelegramMessageTest, TooManyMessagesInRowThrows) {
-    if (std::getenv("CI")) {
-        GTEST_SKIP() << "This test crashes on CI i dont know why";
-    }
-
     auto telegram = _new<TelegramMock>();
     auto openAI = _new<OpenAIMock>();
     auto chat = makeChat("Test Chat");

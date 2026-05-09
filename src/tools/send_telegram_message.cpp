@@ -71,12 +71,17 @@ OpenAITools::Tool tools::sendTelegramMessage(
             }
 
             auto isTyping = _new<std::atomic_bool>(true);
-            auto typingCoro = [](ITelegramClient& telegram, int64_t chatId, _<std::atomic_bool> isTyping) -> AFuture<> {
+            auto typingCoro = [](_weak<ITelegramClient> telegram, int64_t chatId, _<std::atomic_bool> isTyping) -> AFuture<> {
                 while (isTyping->load()) {
-                    telegram.sendQuery(ITelegramClient::toPtr(td::td_api::sendChatAction(chatId, {}, {}, ITelegramClient::toPtr(td::td_api::chatActionTyping()))));
+                    auto tg = telegram.lock();
+                    if (tg == nullptr) {
+                        // we don't want to prolong lifetime of telegram (mostly because of unit tests)
+                        break;
+                    }
+                    tg->sendQuery(ITelegramClient::toPtr(td::td_api::sendChatAction(chatId, {}, {}, ITelegramClient::toPtr(td::td_api::chatActionTyping()))));
                     co_await AThread::asyncSleep(500ms);
                 }
-            }(*telegram, chat->id_, isTyping);
+            }(telegram, chat->id_, isTyping);
             AUI_DEFER { isTyping->store(false); };
 
             if (ctx.args.contains("chat_id")) {
