@@ -79,7 +79,8 @@ OpenAITools::Tool tools::sendTelegramMessage(
                         break;
                     }
                     tg->sendQuery(ITelegramClient::toPtr(td::td_api::sendChatAction(chatId, {}, {}, ITelegramClient::toPtr(td::td_api::chatActionTyping()))));
-                    co_await AThread::asyncSleep(500ms);
+                    // co_await AThread::asyncSleep(500ms);
+                    break; // test
                 }
             }(telegram, chat->id_, isTyping);
             AUI_DEFER { isTyping->store(false); };
