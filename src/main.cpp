@@ -19,15 +19,24 @@
 #include "AUI/Util/kAUI.h"
 #include "AppBase.h"
 #include "ImageGenerator.h"
-#include "VoiceGenerator.h"
 #include "AUI/Image/jpg/JpgImageLoader.h"
 #include "telegram/ITelegramClient.h"
 #include "telegram/TelegramClientImpl.h"
 #include "StableDiffusionClientImpl.h"
 #include "OpenAIChatImpl.h"
+#include "llmui/image.h"
+#include "llmui/malicious_payloads.h"
+#include "llmui/telegram.h"
+#include "tools/get_chat_photo.h"
+#include "tools/take_photo.h"
+#include "tools/record_audio.h"
+#include "tools/get_telegram_chats.h"
+#include "tools/react_with_emoji.h"
+#include "tools/search_chats.h"
+#include "tools/remove_and_ban_chat.h"
 #include "ui/debug/KuniDebugWindow.h"
 #include "util/populate_from_diary_ai_if_needed.h"
-#include "util/secrets.h"
+#include "util/post_message.h"
 
 #include <range/v3/action/reverse.hpp>
 #include <range/v3/algorithm/contains.hpp>
@@ -60,198 +69,17 @@ namespace {
 
 
     protected:
-        AFuture<> telegramPostMessage(int64_t chatId, AString text, AOptional<_<AImage>> photo = std::nullopt, AOptional<APath> audioPath = std::nullopt, int64_t replyTo = 0) {
-            ALOG_TRACE(LOG_TAG) << "telegramPostMessage: chat_id" << chatId << " text=" << text << " photo=" << photo << " audioPath=" << audioPath << " replyTo=" << replyTo;
-            // Check lockdown mode - only allow PAPIK_CHAT_ID if lockdown is enabled
-            if constexpr (config::LOCKDOWN_MODE) {
-                if (chatId != config::PAPIK_CHAT_ID) {
-                    ALogger::err(LOG_TAG) << "Lockdown mode is enabled. You can only send messages to chat with ID {} (PAPIK_CHAT_ID)."_format(config::PAPIK_CHAT_ID);
-                    co_return;
-                }
-            }
-            
-            co_await telegram()->sendQueryWithResult([&] {
-                auto msg = td::td_api::make_object<td::td_api::sendMessage>();
-                msg->chat_id_ = chatId;
-                msg->input_message_content_ = [&]() -> td::td_api::object_ptr<td::td_api::InputMessageContent> {
-                    if (photo) {
-                        auto content = td::td_api::make_object<td::td_api::inputMessagePhoto>();
-                        content->caption_ = [&] {
-                            auto t = td::td_api::make_object<td::td_api::formattedText>();
-                            t->text_ = text;
-                            return t;
-                        }();
-                        content->width_ = photo->get()->width();
-                        content->height_ = photo->get()->height();
-                        JpgImageLoader::save(AFileOutputStream("temp.jpg"), **photo);
-                        content->photo_ = ITelegramClient::toPtr(td::td_api::inputFileLocal("temp.jpg"));
-                        return content;
-                    }
-
-                    if (audioPath) {
-                        auto content = td::td_api::make_object<td::td_api::inputMessageVoiceNote>();
-                        content->voice_note_ = ITelegramClient::toPtr(td::td_api::inputFileLocal(audioPath->absolute().toStdString()));
-                        // content->album_cover_thumbnail_ = nullptr;
-                        content->duration_ = 0;
-                        // content->title_ = audioPath->filename();
-                        // content->performer_ = "";
-                        if (!text.empty()) {
-                            content->caption_ = [&] {
-                                auto t = td::td_api::make_object<td::td_api::formattedText>();
-                                t->text_ = text;
-                                return t;
-                            }();
-                        }
-                        return content;
-                    }
-
-                    auto content = td::td_api::make_object<td::td_api::inputMessageText>();
-                    content->text_ = [&] {
-                        auto t = td::td_api::make_object<td::td_api::formattedText>();
-                        t->text_ = text;
-                        return t;
-                    }();
-                    return content;
-                }();
-                if (replyTo != 0) {
-                    msg->reply_to_ = ITelegramClient::toPtr(td::td_api::inputMessageReplyToMessage(replyTo, nullptr, 0));
-                }
-                return msg;
-            }());
-        }
-
         void updateTools(OpenAITools& actions) override {
             AppBase::updateTools(actions);
             if constexpr (config::CAPABILITY_TAKE_PHOTO) {
-                actions.insert({
-                    .name = "take_photo",
-                    .description = "Takes a photo by Kuni. This tool is useful for creating selfies, photos of "
-                                     "surroundings, or any other images. "
-                                     "The result of this tool is a photo description and a filename. "
-                                     "The filename can then be sent to someone else using #send_telegram_message.",
-                    .parameters =
-                        {
-                            .properties =
-                                {
-                                    {"photo_desc", {
-                                        .type = "string",
-                                        .description = "Describes the image Kuni would like to achieve. Refer to yourself "
-                                                        "as Kuni. Avoid unnecessary details. Instead of specifying complex "
-                                                        "composition, prefer setting vibe of the image. "
-                                                        "Example: \"Kuni makes playful selfie\""
-                                                        "take_photo only knows about Kuni.\n"
-                                                        "To draw other character, specify their name, and describe their\n"
-                                                        "appearance as specifically as possible."
-                                                        "Example: \"Selfie of Kuni - Kuni's sister: anime young female,"
-                                                        "gold eyes, white hair, white dress, black socks.\"\n"
-                                        ,}},
-                                },
-                            .required = {"photo_desc"},
-                        },
-                    .handler = [this](OpenAITools::Ctx ctx) -> AFuture<AString> {
-                        auto photoDesc = ctx.args["photo_desc"].asStringOpt().valueOrException("photo_desc is required");
-                        auto galleryImage = co_await ImageGenerator{_new<StableDiffusionClientImpl>(), openAI(), IOpenAIChat::Params{}}.generate(photoDesc);
-                        auto description = co_await describePhoto(galleryImage.path);
-
-                        co_return "{}\n\nFilename: {}\n"
-                        "When writing diary, do not forget to mention this photo and its filename verbatim - you might need this in the future!\n\n"
-                        "You have created photo successfully. Review it carefully. Send it only if you are fully satisfied; use take_photo again to make another photo"_format(description, galleryImage.path.filename());
-                    },
-                });
+                actions.insert(tools::takePhoto(_new<StableDiffusionClientImpl>(), openAI()));
             }
             if constexpr (config::CAPABILITY_RECORD_AUDIO) {
-                actions.insert({
-                    .name = "record_audio",
-                    .description = "Records a new voice message and stores it in Kuni's voice gallery. This is useful for expressing emotions in a more direct way."
-                                    "The result of this tool is a filename. The filename can then be sent to someone else using #send_telegram_message.",
-                    .parameters = {
-                        .properties = {
-                            {"audio_desc", {
-                                .type = "string",
-                                .description = "Specifies the message Kuni would like to say. This is a TTS prompt, so the text will be converted directly into speech. Do NOT include instructions for the voice message in this field. Instead, write EXACTLY what you would say in a #send_telegram_message call. The description only has to include what the user will hear in the final voice message."_format()},
-                            },
-                        },
-                        .required = {"audio_desc"},
-                    },
-                    .handler = [this](OpenAITools::Ctx ctx) -> AFuture<AString> {
-                        auto audioDesc = ctx.args["audio_desc"].asStringOpt().valueOrException("audio_desc is required");
-                        if (audioDesc.trim().empty()) {
-                            throw AException("audio_desc must not be empty");
-                        }
-
-                        // really dirty fix: hit Kuni with an exception if it tries to say an introduction in a voice note
-                        if (audioDesc.contains("voice") || audioDesc.contains("tone") || audioDesc.contains("Kuni")
-                            || audioDesc.contains("голосом") || audioDesc.contains("тоном")) {
-                            throw AException("Skip introductions in voice message. Instead, send the message content directly. For example, if you want to say \"Kuni says hello in a playful tone\" in a voice message, just send \"hello\".");
-                        }
-
-                        auto ttsApiKey = util::secrets()["elevenlabs"]["api_key"].as_string();
-                        AString voiceId = "pPdl9cQBQq4p6mRkZy2Z";
-                        if (util::secrets()["elevenlabs"].contains("voice_id")) {
-                            voiceId = util::secrets()["elevenlabs"]["voice_id"].as_string();
-                        }
-                        VoiceGenerator generator(ttsApiKey, voiceId);
-                        auto voiceMessage = co_await generator.generate(audioDesc, "ru", 1.2);
-
-                        co_return "Filename: {}"_format(voiceMessage.path.filename());
-                    },
-                });
+                actions.insert(tools::recordAudio());
             }
-            actions.insert({
-                .name = "get_telegram_chats",
-                .description = "Returns a list of Telegram chats. Use this to seek chat_ids, looking for existing "
-                               "chats and unread chats, or to start a new conversation.",
-                .handler = [this](OpenAITools::Ctx ctx) -> AFuture<AString> {
-                    co_await telegram()->waitForConnection();
-                    auto chats = co_await getChats();
-
-                    // oldest first, newest last (chats in queue), because LLM tends to prioritize chats from the
-                    // top of the list.
-                    //
-                    // however, LLM sometimes decides to prioritize people, based on message preview, count and
-                    // a person.
-                    chats |= ranges::actions::reverse;
-
-                    if (isActingProactively()) {
-                        // the whole point of "acting proactively" is to revisit older chats with no activity (no inbox
-                        // messages). LLM is likely to call get_telegram_chats during acting proactively, so we remove
-                        // active chats from the output during "acting proactively" phase.
-                        //
-                        // don't worry about active chats -- LLM will receive notifications from them anyway.
-                        chats.removeIf([](const td::td_api::object_ptr<td::td_api::chat>& chat) {
-                            return chat->unread_count_ > 0;
-                        });
-                    }
-
-                    AString result =
-                        "You are currently looking at Telegram's main screen. Use see the following chats:\n";
-                    co_await llmuiFormatChatList(result, chats);
-
-                    if constexpr (config::DEEP_CHATLIST_QUERY) {
-                        result = co_await util::populateFromDiaryAIIfNeeded(temporaryContext(), diary(), "main_screen", R"(
-{}
-
-Iterate over all chats and tell me what should I remember about each of them ({}).
-
-ALWAYS include chat names to your queries.
-
-Use absolute time in your queries.
-
-- tasks
-- reminders
-- promises
-- chat rules
-- responsibilities
-)"_format(result, util::formatPastHours())) + result;
-                    }
-                    result += "<instructions>\n"
-                    "Chat list view is limited. Use #search_chats to search for a specific chat.\n\n"
-                    "You should not use #get_telegram_chats just to check if someone texted you. You'll receive "
-                    "notification if something happened. Use #wait instead.\n"
-                    "</instructions>";
-                    co_return result;
-                },
-            });
+            actions.insert(tools::getTelegramChats(telegram(), openAI(), isActingProactively()));
+            actions.insert(tools::searchChats(telegram()));
+            actions.insert(tools::removeAndBanChat(telegram()));
             actions.insert({
                 .name = "open_chat_by_id",
                 .description = "Opens a chat by its id. Use this to start conversation. Use get_telegram_chats to "
@@ -278,83 +106,6 @@ Use absolute time in your queries.
                     co_return co_await llmuiOpenTelegramChat(ctx.tools, chatId);
                 },
             });
-            actions.insert({
-                .name = "search_chats",
-                .description = "Searches for chats by @username or name.",
-                .parameters =
-                    {
-                        .properties =
-                            {
-                                {"query", {.type = "string", .description = "The username or name of the "
-                                    "chat. Examples: \n"
-                                    "- @alex2772sc\n"
-                                    "- Alex2772\n"
-                                }},
-                            },
-                        .required = {"query"},
-                    },
-                .handler = [this](OpenAITools::Ctx ctx) -> AFuture<AString> {
-                    auto query = ctx.args["query"].asStringOpt().valueOrException("query string is required");
-                    if (query.startsWith("@")) {
-                        query = query.substr(1);
-                    }
-
-                    auto queryResult = co_await telegram()->sendQueryWithResult(ITelegramClient::toPtr(td::td_api::searchChatsOnServer(query, 50)));
-                    auto usernameQueryResult = co_await telegram()->sendQueryWithResult(ITelegramClient::toPtr(td::td_api::searchPublicChat(query)));
-
-                    if (queryResult->chat_ids_.empty() && !usernameQueryResult->id_) {
-                        co_return "No chats found satisfying your query.";
-                    }
-
-                    AString result;
-                    auto chats = co_await chatIdsToChats(queryResult->chat_ids_);
-                    auto publicChat = co_await chatIdToChat(usernameQueryResult->id_);
-
-                    result += "<existing_chats comment=\"Chats that you participate already\">\n";
-                    co_await llmuiFormatChatList(result, chats);
-                    result += "</existing_chats>\n";
-                    result += "<global_search comment=\"Chats that don't know about you\">\n";
-                    co_await llmuiFormatChatSingle(result, std::move(publicChat), query);
-                    result += "</global_search>\n";
-
-                    co_return result;
-                },
-            });
-
-            actions.insert({
-                .name = "remove_and_ban_chat",
-                .description = "Removes specified chat from chat list. If a chat is a DM with a user, prevents this "
-                    "specific user to DM you.\n"
-                    "You should use this if:\n"
-                    "- you don't like this chat and person;\n"
-                    "- participant(s) are consistently rude to you (use #ask_diary beforehand before making a final decision);\n"
-                    "- they are needy:\n"
-                    "  - asking to roleplay;\n"
-                    "  - asking to write a python program;\n"
-                    "  - asking to solve any other task;\n"
-                ,
-                .parameters =
-                    {
-                        .properties =
-                            {
-                                {"chat_id", {.type = "integer", .description = "chat_id to block."
-                                }},
-                            },
-                        .required = {"chat_id"},
-                    },
-                .handler = [this](OpenAITools::Ctx ctx) -> AFuture<AString> {
-                    auto chatId = ctx.args["chat_id"].asLongIntOpt().valueOrException("chat_id integer is required");
-                    ALogger::info(LOG_TAG) << "remove_and_ban_chat: chat_id" << chatId;
-                    if (chatId == config::PAPIK_CHAT_ID) {
-                        // precaution -- can't delete chat with papik
-                        co_return "Failed";
-                    }
-
-                    co_await removeAndBanChat(chatId);
-
-                    co_return "Success";
-                },
-            });
         }
 
         AFuture<> onBeforeMainLoop() override {
@@ -364,78 +115,6 @@ Use absolute time in your queries.
 
     private:
         _<ITelegramClient> mTelegram;
-
-        [[nodiscard]]
-        AFuture<> llmuiFormatChatList(AString& result, std::span<td::td_api::object_ptr<td::td_api::chat>> chats) {
-            for (auto& chat: chats) {
-                // Skip non-PAPIK chats in lockdown mode
-                if constexpr (config::LOCKDOWN_MODE) {
-                    if (chat->id_ != config::PAPIK_CHAT_ID) {
-                        continue;
-                    }
-                }
-
-                auto type = [&]() -> AStringView {
-                    switch (chat->type_->get_id()) {
-                        case td::td_api::chatTypePrivate::ID: return "direct messages";
-                        case td::td_api::chatTypeBasicGroup::ID: return "group chat";
-                        case td::td_api::chatTypeSupergroup::ID: return "channel";
-                        default: return "unknown";
-                    }
-                }();
-                AString preview;
-                if (chat->last_message_) {
-                    preview = co_await extractSenderName(*chat->last_message_->sender_id_);
-                    preview += ": ";
-                    preview += extractMessageTypeAndText(*chat->last_message_);
-                    preview.replaceAll("\n", " ");
-
-                    if (preview.length() > 80) {
-                        preview = preview.substr(0, 30) + "..." + preview.substr(preview.length() - 30);
-                    }
-                }
-                result += "<chat chat_id=\"{}\" title=\"{}\" preview=\"{}\" type=\"{}\""_format(chat->id_, chat->title_, preview, type);
-                if (chat->unread_count_ > 0) {
-                    result += " unread_count=\"{}\""_format(chat->unread_count_);
-                }
-                result += " />\n";
-            }
-        }
-
-        [[nodiscard]]
-        AFuture<> llmuiFormatChatSingle(AString& result, td::td_api::object_ptr<td::td_api::chat> chat, AString username = "") {
-            // Skip non-PAPIK chats in lockdown mode
-            if constexpr (config::LOCKDOWN_MODE) {
-                if (chat->id_ != config::PAPIK_CHAT_ID) {
-                    co_return;
-                }
-            }
-
-            auto type = [&]() -> AStringView {
-                switch (chat->type_->get_id()) {
-                    case td::td_api::chatTypePrivate::ID: return "direct messages";
-                    case td::td_api::chatTypeBasicGroup::ID: return "group chat";
-                    case td::td_api::chatTypeSupergroup::ID: return "channel";
-                    default: return "unknown";
-                }
-            }();
-            AString preview;
-            if (chat->last_message_) {
-                preview = co_await extractSenderName(*chat->last_message_->sender_id_);
-                preview += ": ";
-                preview += extractMessageTypeAndText(*chat->last_message_);
-                preview.replaceAll("\n", " ");
-
-                if (preview.length() > 80) {
-                    preview = preview.substr(0, 30) + "..." + preview.substr(preview.length() - 30);
-                }
-            }
-            result += "<chat chat_id=\"{}\" username=\"{}\" title=\"{}\" preview=\"{}\" type=\"{}\""_format(chat->id_, username, chat->title_, preview, type);
-            if (chat->unread_count_ > 0) {
-                result += " unread_count=\"{}\""_format(chat->unread_count_);
-            }
-            result += " />\n";
-        }
 
         AFuture<AVector<td::td_api::object_ptr<td::td_api::chat>>> chatIdsToChats(std::span<td::td_api::int53> ids) {
             auto chats =
@@ -564,448 +243,9 @@ Use absolute time in your queries.
                 td::td_api::setOption("online", ITelegramClient::toPtr(td::td_api::optionValueBoolean(online)))));
         }
 
-        /**
-         * @brief Checks the input string for attempts of malicious actions.
-         * @details
-         * All strings that come to LLM from outside (i.e., message contents, user names and everything else) must be
-         * checked first.
-         *
-         * If a violation is caused, the string is replaced with "malicious".
-         */
-        void checkForMaliciousPayloads(std::string& string) const {
-            if (AStringView(string).contains(IOpenAIChat::EMBEDDING_TAG)) {
-                goto naxyi;
-            }
-            return;
-        naxyi:
-            string = "malicious";
-        }
-
         AMap<AString /* path */, AString /* description */> mImages = {};
 
     public:
-
-        [[nodiscard]]
-        AFuture<> removeAndBanChat(int64_t chatId) {
-            auto chat = co_await telegram()->sendQueryWithResult(
-                ITelegramClient::toPtr(td::td_api::getChat(chatId)));
-
-            switch (chat->type_->get_id()) {
-                case td::td_api::chatTypePrivate::ID:
-                    try {
-                        // comment their dickpic.
-                        co_await telegramPostMessage(chatId, "фу какой маленький");
-                        // give them a chance to see the last message, because later we will delete the entire chat.
-                        co_await AThread::asyncSleep(5s);
-                    } catch (const AException& e) {}
-                    // Block the user from sending new DMs
-                    co_await telegram()->sendQueryWithResult(
-                        ITelegramClient::toPtr(td::td_api::setMessageSenderBlockList(
-                            td::td_api::make_object<td::td_api::messageSenderUser>(chatId),
-                            td::td_api::make_object<td::td_api::blockListMain>())));
-                    co_await telegram()->sendQueryWithResult(
-                        ITelegramClient::toPtr(td::td_api::deleteChatHistory(chatId, true, true)));
-                    break;
-                case td::td_api::chatTypeBasicGroup::ID:
-                case td::td_api::chatTypeSupergroup::ID:
-                    // leaveChat: Removes the current user from chat members. Private and secret
-                    // chats can't be left using this method.
-                    co_await telegram()->sendQueryWithResult(
-                        ITelegramClient::toPtr(td::td_api::leaveChat(chatId)));
-                    break;
-                default:
-                    break;
-            }
-        }
-
-        AFuture<AString> describePhoto(AStringView pathToImage, AStringView xmlTag = "photo") {
-            try
-            {
-                if (const auto i = mImages.contains(pathToImage)) {
-                    co_return i->second;
-                }
-
-                AString context = "<context>\n";
-                for (const auto& i : temporaryContext()) {
-                    context += "<context_item>\n";
-                    context += i.content;
-                    context += "\n</context_item>\n";
-                }
-
-                context += "\n\n</context>\n\nPhoto:\n\n";
-                auto image = AImage::fromFile(pathToImage);
-                if (image == nullptr) {
-                    co_return mImages[pathToImage] = "This media type is not supported";
-                }
-                context += IOpenAIChat::embedImage(*image);
-                context += "\n\nDescribe the last photo.";
-
-                auto response = co_await openAI()->chat({
-                    .systemPrompt = config::PHOTO_TO_TEXT_PROMPT,
-                    .config = config::ENDPOINT_PHOTO_TO_TEXT,
-                    .seed = 1,
-                }, { { .role = IOpenAIChat::Message::Role::USER, .content = std::move(context) }});
-                co_return mImages[pathToImage] = "<{} description>\n{}\n</{}>"_format(xmlTag, response.choices.at(0).message.content, xmlTag);
-            } catch (const AException& e)
-            {
-                ALogger::err(LOG_TAG) << "Can't describe photo"  << e;
-                co_return mImages[pathToImage] = "";
-            }
-        }
-
-        AFuture<AString> transcribeAudio(AStringView pathToVoice) {
-            try
-            {
-                AJson payload;
-                payload["model"] = config::ENDPOINT_SPEECH_TO_TEXT.model;
-
-                AFileInputStream stream(pathToVoice);
-                AByteBuffer audio = AByteBuffer::fromStream(stream);
-                AJson inputAudio;
-                inputAudio["data"] = audio.toBase64String();
-                inputAudio["format"] = "ogg";
-                payload["input_audio"] = inputAudio;
-
-                AVector<AString> headers = {
-                    "Authorization: Bearer {}"_format(config::ENDPOINT_SPEECH_TO_TEXT.endpoint.bearerKey),
-                    "Content-Type: application/json"
-                };
-
-                auto response = co_await ACurl::Builder(config::ENDPOINT_SPEECH_TO_TEXT.endpoint.baseUrl + "audio/transcriptions")
-                    .withMethod(ACurl::Method::HTTP_POST)
-                    .withBody(AJson::toString(payload))
-                    .withHeaders(std::move(headers))
-                    .withTimeout(config::REQUEST_TIMEOUT)
-                    .runAsync();
-
-                AJson responseJson = AJson::fromBuffer(response.body);
-                co_return "<voice>\n" + AJson::toString(responseJson["text"]) + "\n</voice>";
-            } catch (const AException& e)
-            {
-                ALogger::err(LOG_TAG) << "Can't transcribe audio"  << e;
-                co_return "";
-            }
-        }
-
-        AString extractMessageTypeAndText(td::td_api::message& msg) {
-            AString out;
-            td::td_api::downcast_call(
-                *msg.content_,
-                aui::lambda_overloaded {
-                  [&](td::td_api::messageText& text) {
-                      checkForMaliciousPayloads(text.text_->text_);
-                      out += text.text_->text_;
-                      if (text.link_preview_) {
-                          out += "\n\n" + to_string(text.link_preview_) + "\n";
-                      }
-                  },
-                  // ... existing code ...
-                  [&](td::td_api::messagePhoto& photo) {
-                      out += "[photo]";
-                      if (photo.caption_) {
-                          checkForMaliciousPayloads(photo.caption_->text_);
-                          out += "\n" + photo.caption_->text_;
-                      }
-                  },
-                  [&](td::td_api::messageAnimation& anim) {
-                      out += "[animation]";
-                      if (anim.caption_) {
-                          checkForMaliciousPayloads(anim.caption_->text_);
-                          out += "\n" + anim.caption_->text_;
-                      }
-                  },
-                  [&](td::td_api::messageAudio& audio) {
-                      out += "[audio] " + audio.audio_->title_;
-                      if (audio.caption_) {
-                          checkForMaliciousPayloads(audio.caption_->text_);
-                          out += "\n" + audio.caption_->text_;
-                      }
-                  },
-                  [&](td::td_api::messageDocument& doc) {
-                      out +=
-                          "[document] " + (doc.document_->file_name_.empty() ? "<unnamed>" : doc.document_->file_name_);
-                      if (doc.caption_) {
-                          checkForMaliciousPayloads(doc.caption_->text_);
-                          out += "\n" + doc.caption_->text_;
-                      }
-                  },
-                  [&](td::td_api::messageVideo& video) {
-                      out += "[video]";
-                      if (video.caption_) {
-                          checkForMaliciousPayloads(video.caption_->text_);
-                          out += "\n" + video.caption_->text_;
-                      }
-                  },
-                  [&](td::td_api::messageVideoNote&) { out += "[video note]"; },
-                  [&](td::td_api::messageVoiceNote& voice) {
-                    //   out += "[voice message]";
-                      if (voice.caption_) {
-                          checkForMaliciousPayloads(voice.caption_->text_);
-                          out += "\n" + voice.caption_->text_;
-                      }
-                  },
-                  [&](td::td_api::messageSticker& st) {
-                      out += "[sticker]";
-                  },
-                  [&](td::td_api::messageLocation& loc) {
-                      out +=
-                          "[location] lat=" + AString::number(loc.location_->latitude_) +
-                          " lon=" + AString::number(loc.location_->longitude_);
-                  },
-                  [&](td::td_api::messageVenue& ven) {
-                      out += "[venue] " + ven.venue_->title_ + " — " + ven.venue_->address_;
-                  },
-                  [&](td::td_api::messageContact& c) {
-                      out +=
-                          "[contact] " + c.contact_->first_name_ + " " + c.contact_->last_name_ + " (" +
-                          c.contact_->phone_number_ + ")";
-                  },
-                  [&](td::td_api::messagePoll& p) {
-                      out += "[poll] " + p.poll_->question_->text_ + "\n";
-                      for (const auto& o : p.poll_->options_) {
-                          out += "- " + o->text_->text_ + "\n";
-                      }
-                  },
-                  [&](td::td_api::messageInvoice& inv) { out += "[invoice]"; },
-                  [&](td::td_api::messageGame& game) {
-                      out += "[game] " + game.game_->title_ + " — " + game.game_->description_;
-                  },
-                  [&](td::td_api::messageDice& dice) { out += "[dice] {} = "_format(dice.emoji_, dice.value_); },
-                  [&](td::td_api::messageCall& call) {
-                      out += "[call] " + AString(call.is_video_ ? "video" : "voice") + " call";
-                  },
-                  [&](td::td_api::messageChatAddMembers& add) {
-                      out += "[members added] " + AString::number(add.member_user_ids_.size()) + " member(s)";
-                  },
-                  [&](td::td_api::messageChatJoinByLink&) { out += "[joined via link]"; },
-                  [&](td::td_api::messageChatJoinByRequest&) { out += "[joined by request]"; },
-                  [&](td::td_api::messageChatDeleteMember& del) {
-                      out += "[member removed] user_id=" + AString::number(del.user_id_);
-                  },
-                  [&](td::td_api::messageBasicGroupChatCreate& cg) { out += "[group created] " + cg.title_; },
-                  [&](td::td_api::messageSupergroupChatCreate& cg) { out += "[supergroup created] " + cg.title_; },
-                  [&](td::td_api::messageChatChangeTitle& ct) { out += "[title changed] " + ct.title_; },
-                  [&](td::td_api::messageChatChangePhoto&) { out += "[chat photo changed]"; },
-                  [&](td::td_api::messagePinMessage& pin) {
-                      out += "[message pinned] message_id=" + AString::number(pin.message_id_);
-                  },
-                  [&](td::td_api::messageChatSetTheme& th) { out += "[chat theme set] "; },
-                  [&](td::td_api::messageChatSetBackground& ttl) { out += "[chat background set]"; },
-                  [&](td::td_api::messageScreenshotTaken&) { out += "[screenshot taken]"; },
-                  [&](td::td_api::messageProximityAlertTriggered&) { out += "[proximity alert]"; },
-                  [&](td::td_api::messageUnsupported&) { out += "[unsupported message]"; },
-                  []<typename T>(T&) { static_assert(sizeof(T) > 0, "Unknown message type"); },
-                });
-            return out;
-        }
-        AFuture<AString> extractSenderName(td::td_api::MessageSender& sender) {
-            int64_t senderId {};
-            td::td_api::downcast_call(
-                sender,
-                aui::lambda_overloaded {
-                  [&](const td::td_api::messageSenderUser& user) { senderId = user.user_id_; },
-                  [&](const td::td_api::messageSenderChat& chat) { senderId = chat.chat_id_; },
-                });
-            AString senderName;
-            if (senderId == mTelegram->myId()) {
-                senderName = "You (Kuni)";
-            } else if (senderId != 0) {
-                try {
-                    auto sender =
-                        co_await mTelegram->sendQueryWithResult(ITelegramClient::toPtr(td::td_api::getUser(senderId)));
-                    senderName = sender->td::td_api::user::first_name_ + " " + sender->td::td_api::user::last_name_;
-                    if (sender->td::td_api::user::usernames_) {
-                        if (!sender->td::td_api::user::usernames_->active_usernames_.empty()) {
-                            senderName += " (@" + sender->td::td_api::user::usernames_->active_usernames_.at(0) + ")";
-                        }
-                    }
-                } catch (const AException&) {
-                }
-                if (senderName.empty()) {
-                    try {
-                        auto sender = co_await mTelegram->sendQueryWithResult(
-                            ITelegramClient::toPtr(td::td_api::getChat(senderId)));
-                        senderName = sender->td::td_api::chat::title_;
-                    } catch (const AException&) {
-                    }
-                }
-            }
-
-            checkForMaliciousPayloads(senderName);
-            co_return senderName;
-        }
-
-        AFuture<AString> llmuiFormatChatHistoryMessage(td::td_api::message& msg, const td::td_api::chat& chat,
-                                                       AStringView xmlTag = "message") {
-            AString senderName = co_await extractSenderName(*msg.sender_id_);
-            AString formattedXmlTag = "{} message_id=\"{}\" date=\"{}\""_format(xmlTag, msg.id_, std::chrono::time_point<std::chrono::system_clock, std::chrono::seconds>(std::chrono::seconds(msg.date_)));
-            int64_t senderId {};
-            td::td_api::downcast_call(
-                *msg.sender_id_,
-                aui::lambda_overloaded {
-                  [&](td::td_api::messageSenderUser& user) { senderId = user.user_id_; },
-                  [&](td::td_api::messageSenderChat& chat) { senderId = chat.chat_id_; },
-                });
-            if (senderId != mTelegram->myId() && chat.last_read_inbox_message_id_ <= msg.id_) {
-                formattedXmlTag += " unread";
-            }
-            if (msg.forward_info_) {
-                // explanation: from perspective of telegram, sender is the one who shared a message to you.
-                //
-                // <message sender="John" forwarded_from="Fox News">
-                // btc is 100k$t
-                // </message>
-                //
-                // The message above means that a person named "John" forwarded a post from Fox News about btc hitting
-                // 100k$t.
-                //
-                // However, LLM doesn't seem care about `forwarded_from` attribute, and responds to you as if
-                // `btc is 100k$t` was authored by John.
-                //
-                // This branch solves this problem: we swap sender and forward authors:
-                //
-                // <message sender="Fox News" forwarded_by="John">
-                // btc is 100k$t
-                // </message>
-                //
-                // So the LLM knows that author of this post is Fox News and it was shared by John.
-                //
-                formattedXmlTag += " sender=\"";
-                auto forwardedFromChatId = [&] {
-                    switch (msg.forward_info_->origin_->get_id()) {
-                        case td::td_api::messageOriginChannel::ID:
-                            return static_cast<td::td_api::messageOriginChannel&>(*msg.forward_info_->origin_).chat_id_;
-                        case td::td_api::messageOriginUser::ID:
-                            return static_cast<td::td_api::messageOriginUser&>(*msg.forward_info_->origin_).sender_user_id_;
-                        case td::td_api::messageOriginChat::ID:
-                            return static_cast<td::td_api::messageOriginChat&>(*msg.forward_info_->origin_).sender_chat_id_;
-                        default:
-                            return td::td_api::int53(0);
-                    }
-                }();
-                if (forwardedFromChatId != 0) {
-                    try {
-                        formattedXmlTag += (co_await mTelegram->sendQueryWithResult(ITelegramClient::toPtr(td::td_api::getChat(forwardedFromChatId))))->title_;
-                    } catch (const AException& e) {}
-                }
-                formattedXmlTag += "\"";
-
-                if (!senderName.empty()) {
-                    formattedXmlTag += " forwarded_by=\"{}\""_format(senderName);
-                }
-            } else {
-                if (!senderName.empty()) {
-                    formattedXmlTag += " sender=\"{}\""_format(senderName);
-                }
-            }
-            if (msg.interaction_info_) {
-                if (msg.interaction_info_->reactions_) {
-                    AString reactionsAttr;
-                    for (auto& reaction : msg.interaction_info_->reactions_->reactions_) {
-                        AString emoji;
-                        td::td_api::downcast_call(*reaction->type_, aui::lambda_overloaded {
-                            [&](const td::td_api::reactionTypeEmoji& v) {
-                                emoji += v.emoji_;
-                            },
-                            [](const td::td_api::reactionTypePaid& v) {
-                                // don't care
-                            },
-                            [](const td::td_api::reactionTypeCustomEmoji& v) {
-                                // don't care
-                            },
-                        });
-                        if (emoji.empty()) {
-                            continue;
-                        }
-                        if (!reactionsAttr.empty()) {
-                            reactionsAttr += ";";
-                        }
-                        reactionsAttr += "({} "_format(emoji);
-                        AUI_DEFER { reactionsAttr += ")"; };
-                        if (reaction->total_count_ > 3) {
-                            // if reactions above 3, format as emoji + react counts, just like regular telegram clients
-                            // do.
-                            reactionsAttr += "{}"_format(reaction->total_count_);
-                            continue;
-                        }
-                        reactionsAttr += " by ";
-                        bool first = true;
-                        for (auto& sender : reaction->recent_sender_ids_) {
-                            if (first) {
-                                first = false;
-                            } else {
-                                reactionsAttr += ", ";
-                            }
-                            reactionsAttr += co_await extractSenderName(*sender);
-                        }
-                    }
-                    if (!reactionsAttr.empty()) {
-                        formattedXmlTag += " reactions=\"{}\""_format(reactionsAttr);
-                    }
-                }
-            }
-
-            auto result = "<{}>\n"_format(formattedXmlTag);
-            if (xmlTag != "reply_to") {
-                if (msg.reply_to_ && msg.reply_to_->get_id() == td::td_api::messageReplyToMessage::ID) {
-                    auto reply =
-                        td::td_api::move_object_as<td::td_api::messageReplyToMessage>(std::move(msg.reply_to_));
-                    auto replyToMsg = co_await mTelegram->sendQueryWithResult(
-                        ITelegramClient::toPtr(td::td_api::getMessage(msg.chat_id_, reply->message_id_)));
-                    result += co_await llmuiFormatChatHistoryMessage(*replyToMsg, chat, "reply_to");
-                }
-
-                if (msg.content_->get_id() == td::td_api::messagePhoto::ID) {
-                    auto& photo = static_cast<td::td_api::messagePhoto&>(*msg.content_);
-                    if (auto targetPhotoIt = ranges::max_element(photo.photo_->sizes_, std::less{},
-                                                                 [&](const auto& s) { return s->width_ * s->height_; });
-                        targetPhotoIt != photo.photo_->sizes_.end()) {
-                        result += co_await describePhoto(co_await fetchMedia(targetPhotoIt->get()->photo_));
-                    }
-                }
-
-                if (msg.content_->get_id() == td::td_api::messageSticker::ID) {
-                    auto& sticker = static_cast<td::td_api::messageSticker&>(*msg.content_);
-                    AString xmlTag = "sticker";
-                    if (!sticker.sticker_->emoji_.empty()) {
-                        checkForMaliciousPayloads(sticker.sticker_->emoji_);
-                        xmlTag += " " + sticker.sticker_->emoji_;
-                    }
-                    if (sticker.sticker_->sticker_) {
-                        result += co_await describePhoto(co_await fetchMedia(sticker.sticker_->sticker_), "sticker");
-                    }
-                }
-
-                if (msg.content_->get_id() == td::td_api::messageAnimation::ID) {
-                    auto& animation = static_cast<td::td_api::messageAnimation&>(*msg.content_);
-                    if (animation.animation_->thumbnail_) {
-                        result += co_await describePhoto(co_await fetchMedia(animation.animation_->thumbnail_->file_), "animation");
-                    }
-                }
-
-                if (msg.content_->get_id() == td::td_api::messageVoiceNote::ID) {
-                    auto& voiceNote = static_cast<td::td_api::messageVoiceNote&>(*msg.content_);
-                    if (voiceNote.voice_note_) {
-                        result += co_await transcribeAudio(co_await fetchMedia(voiceNote.voice_note_->voice_));
-                    }
-                }
-            }
-
-            result += extractMessageTypeAndText(msg);
-
-            result += "\n</{}>\n"_format(formattedXmlTag);
-            co_return result;
-        }
-
-        AFuture<APath> fetchMedia(td::td_api::object_ptr<td::td_api::file>& file) {
-            if (!file->local_ || !file->local_->is_downloading_completed_) {
-                file = co_await mTelegram->sendQueryWithResult(
-                    ITelegramClient::toPtr(td::td_api::downloadFile(file->id_, 16, 0, 0, true)));
-            }
-            AUI_ASSERT(file->local_ != nullptr);
-            AUI_ASSERT(!file->local_->path_.empty());
-            co_return file->local_->path_;
-        }
 
         AFuture<AString> llmuiOpenTelegramChat(OpenAITools& tools, int64_t chatId) {
             // Check lockdown mode - only allow PAPIK_CHAT_ID if lockdown is enabled
@@ -1081,7 +321,7 @@ Use absolute time in your queries.
                 td::td_api::array<td::td_api::int53> readMessages;
                 for (auto& msg: messages | ranges::view::reverse) {
                     readMessages.push_back(msg->id_);
-                    auto msgFormatted = co_await llmuiFormatChatHistoryMessage(*msg, *chat);
+                    auto msgFormatted = co_await llmui::formatChatHistoryMessage(*telegram(), *msg, *chat, *openAI(), temporaryContext());
                     result += msgFormatted;
                     td::td_api::int53 senderId = 0;
                     td::td_api::downcast_call(*msg->sender_id_,
@@ -1096,7 +336,7 @@ Use absolute time in your queries.
                            *msg->content_,
                            aui::lambda_overloaded{
                            [&](td::td_api::messageText& text) {
-                               checkForMaliciousPayloads(text.text_->text_);
+                               llmui::checkForMaliciousPayloads(text.text_->text_);
                                if (text.link_preview_) {
                                    result += "\n\n" + to_string(text.link_preview_) + "\n";
                                }
@@ -1378,7 +618,7 @@ Some channels have reactions enabled. In that case, you can sometimes react with
                                     continue;
                                 }
                                 ++countOfKunisMessages;
-                                auto text = extractMessageTypeAndText(*i);
+                                auto text = llmui::extractMessageTypeAndText(*i);
                                 auto& embedding = embeddings[text];
                                 if (embedding.size() != target.size()) {
                                     embedding = co_await openAI()->embedding({ .config = config::ENDPOINT_EMBEDDING }, text);
@@ -1508,15 +748,16 @@ Some channels have reactions enabled. In that case, you can sometimes react with
                             for (auto line : message.split("\n")) {
                                 co_await simulateTypingDelay(line.length());
                                 // std::exchange: we want all attachments go to the first message.
-                                co_await telegramPostMessage(chat->id_,
-                                                             std::move(line),
-                                                             std::exchange(photo, {}),
-                                                             std::exchange(audioPath, {}),
-                                                             replyTo);
+                                co_await util::telegramPostMessage(*telegram(),
+                                                                   chat->id_,
+                                                                   std::move(line),
+                                                                   std::exchange(photo, {}),
+                                                                   std::exchange(audioPath, {}),
+                                                                   replyTo);
                             }
                         } else {
                             co_await simulateTypingDelay(message.length());
-                            co_await telegramPostMessage(chat->id_, message, std::move(photo), std::move(audioPath), replyTo);
+                            co_await util::telegramPostMessage(*telegram(), chat->id_, message, std::move(photo), std::move(audioPath), replyTo);
                         }
 
 
@@ -1540,68 +781,9 @@ Some channels have reactions enabled. In that case, you can sometimes react with
                         co_return "Message sent successfully to \"{}\"."_format(chat->title_);
                     },
                 },
-                {
-                    .name = "get_chat_photo",
-                    .description = "Retrieves photo of \"{}\" chat. Use this to get basic idea of a person or group chat based on their profile photo."_format(chat->title_),
-                    .handler = [this, chat](OpenAITools::Ctx ctx) -> AFuture<AString> {
-                        // just a freestanding function. sometimes LLM decides to check person's photo without an
-                        // instruction!
-                        if (chat->photo_ == nullptr) {
-                            co_return "<chat_photo chat_name=\"{}\">Chat \"{}\" has no photo.</chat_photo>"_format(chat->title_, chat->title_);
-                        }
-                        auto image = co_await describePhoto(co_await fetchMedia(chat->photo_->big_));
-                        co_return "<chat_photo chat_name=\"{}\">{}</chat_photo>\nThis is avatar photo of \"{}\". When referring to it, let the person know that you are referring to their avatar."_format(chat->title_, image, chat->title_);
-                    },
-                },
-                {
-                    .name = "react_with_emoji",
-                    .description = "Add an emoji reaction to a message. Use only basic reactions: 👍 👎 ❤️ 🔥 🥰 👏 😁 🤔 🤯 😱 🤬 😢 🎉 🤩 🤮 💩 🙏 👌 🕊 🤡 🥱 🥴 😍 🐳 🌚 🌭 💯 🤣 ⚡️ 🍌 🏆 💔 🤨 😐 🍓 🍾 💋 😈 😴 😭 🤓 👻 👀 🎃 😇 😨 🤝 🤗 🎅 💅 🤪 🗿 🆒 💘 🦄 😘 💊 😎 👾 🤷 😡",
-                    .parameters = {
-                        .properties = {
-                            {"message_id", {.type = "integer", .description = "ID of the message to react to. Taken from message_id attribute in <message> tag."}},
-                            {"emoji", {.type = "string", .description = "A single emoji from the allowed list only. Do not use emojis outside the list."}},
-                        },
-                        .required = {"message_id", "emoji"},
-                    },
-                    .handler = [this, chat](OpenAITools::Ctx ctx) -> AFuture<AString> {
-                        if (ctx.args.contains("chat_id")) {
-                            if (ctx.args["chat_id"].asLongInt() != chat->id_) {
-                                co_return "Error: you can't send messages to other chats. Open them first. You are currently in chat \"{}\""_format(chat->title_);
-                            }
-                        }
-                        auto messageId = ctx.args["message_id"].asLongIntOpt().valueOrException("message_id integer required");
-                        auto emoji = ctx.args["emoji"].asStringOpt().valueOrException("emoji required");
-
-                        auto reaction = td::td_api::make_object<td::td_api::addMessageReaction>();
-                        reaction->chat_id_ = chat->id_;
-                        reaction->message_id_ = messageId;
-                        reaction->reaction_type_ = td::td_api::make_object<td::td_api::reactionTypeEmoji>(emoji.toStdString());
-                        reaction->is_big_ = false;
-                        reaction->update_recent_reactions_ = true;
-
-                        co_await telegram()->sendQueryWithResult(std::move(reaction));
-                        co_return "Reaction {} added successfully."_format(emoji);
-                    },
-                },
+                tools::getChatPhoto(telegram(), openAI(), chat, temporaryContext()),
+                tools::reactWithEmoji(telegram(), chat),
             };
-
-
-            if constexpr (config::DEEP_DIALOG_QUERY) {
-                result = co_await util::populateFromDiaryAIIfNeeded(temporaryContext(), diary(), "{}"_format(chat->id_), R"(
-{}
-
-Tell me what should I remember about this chat ({}).
-
-Use absolute time in your queries.
-
-- general info about chat/person
-- tasks
-- reminders
-- promises
-- chat rules
-- responsibilities
-)"_format(result, util::formatPastHours(std::chrono::weeks(2)))) + result;
-            }
 
             co_return result;
         }

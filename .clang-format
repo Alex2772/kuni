@@ -25,6 +25,22 @@ BreakConstructorInitializers: BeforeComma
 # we have some problems with ranges-v3 and AUI's AUI_LET, so keep it disabled
 SortIncludes: Never
 
+# Don't pack parameters onto one line — each parameter on its own line
+BinPackParameters: false
+
+# Don't pack arguments in function calls either
+BinPackArguments: false
+
+# High penalty to discourage keeping excess characters on a line
+PenaltyExcessCharacter: 100
+
+# Don't break after return type — keep return type on the same line as function name
+# (Google style defaults to AlwaysBreakAfterReturnType, which causes the inconsistency)
+AlwaysBreakAfterReturnType: None
+
+# Low penalty for breaking after the return type
+PenaltyReturnTypeOnItsOwnLine: 60
+
 
 ################################################# UI BUILDING ##########################################################
 

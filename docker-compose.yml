@@ -19,6 +19,7 @@ services:
   sd:
     image: universonic/stable-diffusion-webui:full
     command: --medvram --api
+#    command: --lowvram --api # replace with this if your PC is a potato
     restart: always
     ports:
       - "7860:8080/tcp"
