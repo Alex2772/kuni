@@ -28,6 +28,7 @@ public:
 class StableDiffusionMock : public IStableDiffusionClient {
 public:
     MOCK_METHOD(AFuture<Txt2ImgResponse>, txt2img, (const Txt2ImgRequest& request), (override));
+    MOCK_METHOD(AFuture<>, unloadCheckpoint, (), (override));
 };
 }
 

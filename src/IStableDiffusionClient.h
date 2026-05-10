@@ -49,4 +49,5 @@ struct IStableDiffusionClient {
     };
 
     virtual AFuture<Txt2ImgResponse> txt2img(const Txt2ImgRequest& request) = 0;
+    virtual AFuture<> unloadCheckpoint() = 0;
 };

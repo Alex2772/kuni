@@ -9,4 +9,5 @@ struct StableDiffusionClientImpl: IStableDiffusionClient {
     Endpoint endpoint = config::ENDPOINT_SD;
 
     AFuture<Txt2ImgResponse> txt2img(const Txt2ImgRequest& request) override;
+    AFuture<> unloadCheckpoint() override;
 };
