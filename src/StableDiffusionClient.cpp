@@ -60,3 +60,20 @@ AFuture<StableDiffusionClient::Txt2ImgResponse> StableDiffusionClient::txt2img(c
     res.info = response["info"];
     co_return res;
 }
+
+AFuture<> StableDiffusionClient::unloadCheckpoint() {
+    ALOG_TRACE(LOG_TAG) << "unloadCheckpoint";
+
+    AVector<AString> headers = {"Content-Type: application/json"};
+    if (!endpoint.bearerKey.empty()) {
+        headers << "Authorization: Bearer {}"_format(endpoint.bearerKey);
+    }
+
+    co_await ACurl::Builder(endpoint.baseUrl + "sdapi/v1/unload-checkpoint")
+        .withMethod(ACurl::Method::HTTP_POST)
+        .withHeaders(std::move(headers))
+        .withTimeout(config::REQUEST_TIMEOUT)
+        .runAsync();
+
+    co_return;
+}
