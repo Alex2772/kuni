@@ -76,6 +76,13 @@ AFuture<ImageGenerator::GalleryImage> ImageGenerator::generate(AString descripti
                 }
                 auto lastImage = response.images[0];
                 PngImageLoader::save(AFileOutputStream{ "image_generator_tmp.png" }, *lastImage);
+                //Unload SD checkpoint after generation
+                try {
+                    co_await mSdClient.unloadCheckpoint();
+                    ALogger::info(LOG_TAG) << "Checkpoint unloaded from VRAM";
+                } catch (const AException& e) {
+                    ALogger::warn(LOG_TAG) << "Failed to unload checkpoint: " << e;
+                }
 
                 ALogger::info(LOG_TAG) << "Assessing image...";
                 auto assessment = co_await assessImage(*lastImage, descriptionWithAppearance);
