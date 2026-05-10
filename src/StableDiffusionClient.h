@@ -45,4 +45,5 @@ struct StableDiffusionClient {
     };
 
     AFuture<Txt2ImgResponse> txt2img(const Txt2ImgRequest& request);
+    AFuture<> unloadCheckpoint();
 };
