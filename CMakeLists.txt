@@ -26,7 +26,7 @@ endif()
 
 option(BUILD_SHARED_LIBS OFF)
 
-set(AUI_VERSION 651bb3b3363400dc45223c9a5366f83472b3dc65)
+set(AUI_VERSION v8.0.0-rc.23)
 
 # Use AUI.Boot
 include(aui.boot.cmake)

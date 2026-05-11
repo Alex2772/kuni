@@ -5,6 +5,9 @@
 #include <range/v3/algorithm/contains.hpp>
 
 AFuture<bool> util::isAccessibleFromLockdown(ITelegramClient& telegram, int64_t chatId) {
+#ifdef AUI_TESTS_MODULE
+    co_return config::PAPIK_CHAT_ID == chatId;
+#else
     switch (config::LOCKDOWN_MODE) {
         case config::LockdownMode::NONE: {
             co_return true;
@@ -29,4 +32,5 @@ AFuture<bool> util::isAccessibleFromLockdown(ITelegramClient& telegram, int64_t 
             co_return false;
         }
     }
+#endif
 }
