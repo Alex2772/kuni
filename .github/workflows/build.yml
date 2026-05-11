@@ -102,7 +102,7 @@ jobs:
       - name: Run Tests (Linux and macOS)
         if: runner.os != 'Windows'
         working-directory: ${{github.workspace}}/build/bin
-        run: ${{github.workspace}}/build/bin/Tests "--gtest_filter=-*Integration*:SendTelegramMessageTest.*"
+        run: ${{github.workspace}}/build/bin/Tests "--gtest_filter=-*Integration*"
 
       - name: Pack Windows Setup
         if: runner.os == 'Windows'

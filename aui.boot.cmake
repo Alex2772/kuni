@@ -95,10 +95,10 @@ if(CMAKE_SCRIPT_MODE_FILE)
 
         message(STATUS "Cloning example_app into ${CMAKE_CURRENT_SOURCE_DIR} ...")
         execute_process(
-                COMMAND "${_auib_git}" clone https://github.com/aui-framework/example_app .
-                RESULT_VARIABLE _auib_clone_result
-                OUTPUT_QUIET
-                ERROR_VARIABLE _auib_clone_error
+            COMMAND "${_auib_git}" clone https://github.com/aui-framework/example_app .
+            RESULT_VARIABLE _auib_clone_result
+            OUTPUT_QUIET
+            ERROR_VARIABLE _auib_clone_error
         )
         if(NOT _auib_clone_result EQUAL 0)
             message(FATAL_ERROR "Failed to clone example_app: ${_auib_clone_error}")
@@ -909,7 +909,7 @@ function(auib_import AUI_MODULE_NAME URL)
     endif()
 
     # [[BUILD_SPECIFIER]]
-    set(BUILD_SPECIFIER "${TAG_OR_HASH}/${AUI_TARGET_TRIPLET}-${CMAKE_BUILD_TYPE}-${SHARED_OR_STATIC}/${CMAKE_GENERATOR}/${AUIB_IMPORT_CMAKE_ARGS}")
+    set(BUILD_SPECIFIER "${TAG_OR_HASH}/${AUI_TARGET_TRIPLET}-${CMAKE_BUILD_TYPE}-${SHARED_OR_STATIC}/${AUIB_IMPORT_CMAKE_ARGS}")
     string(REPLACE ";" " " BUILD_SPECIFIER "${BUILD_SPECIFIER}")
 
     # convert BUILD_SPECIFIER to hash; on windows msvc path length restricted by 260 chars
@@ -1152,7 +1152,9 @@ function(auib_import AUI_MODULE_NAME URL)
                         AUIB_TRACE_BUILD_SYSTEM
                         AUIB_SKIP_REPOSITORY_WAIT
                         AUIB_CACHE_DIR
+                        CMAKE_C_COMPILER
                         CMAKE_C_FLAGS
+                        CMAKE_CXX_COMPILER
                         CMAKE_CXX_FLAGS
                         CMAKE_GENERATOR_PLATFORM
                         CMAKE_GENERATOR_TOOLSET
