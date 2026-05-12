@@ -2,6 +2,7 @@
 #include <AUI/Json/AJson.h>
 #include <AUI/Logging/ALogger.h>
 
+namespace util {
 // Qwen 3.5 9B bug: outputs integers as scientific notation (e.g. 7.576e+08)
 // AJson::asLongIntOpt() returns nullopt for floats/strings, so we coerce manually.
 inline AOptional<long long> jsonAsLongInt(const AJson& v) {
@@ -20,4 +21,5 @@ inline AOptional<long long> jsonAsLongInt(const AJson& v) {
     }
     ALogger::warn("jsonAsLongInt") << "can't convert JSON value to long long: " << AJson::toString(v);
     return std::nullopt;
+}
 }
