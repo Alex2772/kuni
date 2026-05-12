@@ -96,6 +96,12 @@ namespace {
                         .required = {"chat_id"},
                     },
                 .handler = [this](OpenAITools::Ctx ctx) -> AFuture<AString> {
+                    if (ranges::count_if(ctx.allToolCalls, [](const IOpenAIChat::Message::ToolCall& call) {
+                        return call.function.name == "open_chat_by_id";
+                    }) > 1) {
+                        co_return "You can only call this tool once per turn.";
+                    }
+
                     auto chatId = ctx.args["chat_id"].asLongIntOpt().valueOrException("chat_id integer is required");
                     
                     // Check lockdown mode - only allow PAPIK_CHAT_ID if lockdown is enabled
