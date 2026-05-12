@@ -84,8 +84,8 @@ llmui::formatChatSingle(ITelegramClient& telegram, AString& result, td::td_api::
         preview += extractMessageTypeAndText(*chat.last_message_);
         preview.replaceAll("\n", " ");
 
-        if (preview.length() > 80) {
-            preview = preview.substr(0, 30) + "..." + preview.substr(preview.length() - 30);
+        if (preview.utf8().length() > 80) {
+            preview = preview.utf8().substr(0, 30).str + "..." + preview.utf8().substr(preview.utf8().length() - 30).str;
         }
     }
     result += "<chat chat_id=\"{}\" title=\"{}\" preview=\"{}\" type=\"{}\""_format(
