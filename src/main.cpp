@@ -46,6 +46,8 @@
 #include <range/v3/algorithm/remove_if.hpp>
 #include <range/v3/algorithm/sort.hpp>
 
+#include "json_utils.h"
+
 using namespace std::chrono_literals;
 
 std::default_random_engine gRandomEngine(std::time(nullptr));
@@ -102,7 +104,7 @@ namespace {
                         co_return "You can only call this tool once per turn.";
                     }
 
-                    auto chatId = ctx.args["chat_id"].asLongIntOpt().valueOrException("chat_id integer is required");
+                    auto chatId = jsonAsLongInt(ctx.args["chat_id"]).valueOrException("chat_id integer is required");
                     
                     // Check lockdown mode - only allow PAPIK_CHAT_ID if lockdown is enabled
 
