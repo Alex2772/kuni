@@ -4,6 +4,8 @@
 
 #include "react_with_emoji.h"
 
+#include "../json_utils.h"
+
 OpenAITools::Tool tools::reactWithEmoji(_<ITelegramClient> telegram, _<td::td_api::chat> chat) {
     return {
         .name = "react_with_emoji",
@@ -22,7 +24,7 @@ OpenAITools::Tool tools::reactWithEmoji(_<ITelegramClient> telegram, _<td::td_ap
                     co_return "Error: you can't send messages to other chats. Open them first. You are currently in chat \"{}\""_format(chat->title_);
                 }
             }
-            auto messageId = ctx.args["message_id"].asLongIntOpt().valueOrException("message_id integer required");
+            auto messageId = jsonAsLongInt(ctx.args["message_id"]).valueOrException("message_id integer required");
             auto emoji = ctx.args["emoji"].asStringOpt().valueOrException("emoji required");
 
             auto reaction = td::td_api::make_object<td::td_api::addMessageReaction>();
