@@ -493,6 +493,11 @@ world) in the following format:
     static constexpr auto CHAT_MAX_CHARS_LENGTH = 5000;
 
     static constexpr auto TEMPERATURE = 0.2f; // средняя температура по больнице
+    static constexpr auto TOP_P = 0.85f;
+    static constexpr auto TOP_K = 20;
+    static constexpr auto MIN_P = 0.05f;
+    static constexpr auto PRESENCE_PENALTY = 1.5f;
+    static constexpr auto REPETITION_PENALTY = 1.05f;
 
     static constexpr auto REPEAT_YOURSELF_TRIGGER_AVG = 0.83f; // lower is stricter
     static constexpr auto REPEAT_YOURSELF_TRIGGER_MAX = REPEAT_YOURSELF_TRIGGER_AVG * 0.95f; // lower is stricter
