@@ -14,7 +14,7 @@
 #include <range/v3/algorithm/contains.hpp>
 #include <range/v3/algorithm/count_if.hpp>
 
-#include "../util/json_utils.h"
+#include "util/json_utils.h"
 
 static constexpr auto LOG_TAG = "tools::sendTelegramMessage";
 

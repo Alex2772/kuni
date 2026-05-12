@@ -10,7 +10,7 @@
 
 #include <range/v3/algorithm/contains.hpp>
 
-#include "../util/json_utils.h"
+#include "util/json_utils.h"
 
 using namespace std::chrono_literals;
 

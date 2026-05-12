@@ -4,7 +4,7 @@
 
 #include "react_with_emoji.h"
 
-#include "../util/json_utils.h"
+#include "util/json_utils.h"
 
 OpenAITools::Tool tools::reactWithEmoji(_<ITelegramClient> telegram, _<td::td_api::chat> chat) {
     return {
