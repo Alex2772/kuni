@@ -14,6 +14,8 @@
 #include <range/v3/algorithm/contains.hpp>
 #include <range/v3/algorithm/count_if.hpp>
 
+#include "../json_utils.h"
+
 static constexpr auto LOG_TAG = "tools::sendTelegramMessage";
 
 using namespace std::chrono_literals;
@@ -94,7 +96,7 @@ OpenAITools::Tool tools::sendTelegramMessage(
             const auto message = ctx.args["text"].asStringOpt().valueOr("").replaceAll("\r", "");
             const auto photoFilename = ctx.args["photo_filename"].asStringOpt().valueOr("");
             const auto audioFilename = ctx.args["audio_filename"].asStringOpt().valueOr("");
-            const auto replyTo = ctx.args["reply_to_message_id"].asLongIntOpt().valueOr(0);
+            const auto replyTo = jsonAsLongInt(ctx.args["reply_to_message_id"]).valueOr(0);
 
             if (message.empty() && photoFilename.empty() && audioFilename.empty()) {
                 co_return "Error: At least one of \"text\", \"photo_filename\" or \"audio_filename\" must be populated";
