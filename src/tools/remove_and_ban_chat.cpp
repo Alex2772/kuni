@@ -10,6 +10,8 @@
 
 #include <range/v3/algorithm/contains.hpp>
 
+#include "../json_utils.h"
+
 using namespace std::chrono_literals;
 
 OpenAITools::Tool tools::removeAndBanChat(_<ITelegramClient> telegram) {
@@ -35,7 +37,7 @@ OpenAITools::Tool tools::removeAndBanChat(_<ITelegramClient> telegram) {
                 .required = {"chat_id"},
             },
         .handler = [telegram = std::move(telegram)](OpenAITools::Ctx ctx) -> AFuture<AString> {
-            auto chatId = ctx.args["chat_id"].asLongIntOpt().valueOrException("chat_id integer is required");
+            auto chatId = jsonAsLongInt(ctx.args["chat_id"]).valueOrException("chat_id integer is required");
             ALogger::info("remove_and_ban_chat") << "remove_and_ban_chat: chat_id" << chatId;
             if (chatId == config::PAPIK_CHAT_ID) {
                 // precaution -- can't delete chat with papik
