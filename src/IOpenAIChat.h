@@ -106,8 +106,8 @@ struct IOpenAIChat {
     };
 
     struct StreamingResponse {
-        AProperty<Response> response;
-        AFuture<> completed;
+        AProperty<Response> response{};
+        AFuture<> completed{};
     };
 
     virtual AFuture<Response> chat(Params params, AVector<Message> messages) = 0;
