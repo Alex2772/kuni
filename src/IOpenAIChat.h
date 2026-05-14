@@ -97,9 +97,11 @@ struct IOpenAIChat {
         };
         AVector<Choice> choices;
         struct Usage {
-            int64_t prompt_tokens;
-            int64_t completion_tokens;
-            int64_t total_tokens;
+            int64_t prompt_tokens{};
+            int64_t completion_tokens{};
+            int64_t total_tokens{};
+            int64_t prompt_cache_hit_tokens{};
+            int64_t prompt_cache_miss_tokens{};
         } usage;
     };
 
@@ -108,10 +110,9 @@ struct IOpenAIChat {
         AFuture<> completed;
     };
 
-    virtual AFuture<Response> chat(Params params, AVector<Message> messages) const = 0;
-    virtual _<StreamingResponse> chatStreaming(Params params, AVector<Message> messages) const = 0;
-
-    virtual AFuture<std::valarray<double>> embedding(Params params, AString input) const = 0;
+    virtual AFuture<Response> chat(Params params, AVector<Message> messages) = 0;
+    virtual _<StreamingResponse> chatStreaming(Params params, AVector<Message> messages) = 0;
+    virtual AFuture<std::valarray<double>> embedding(Params params, AString input) = 0;
 };
 
 template<>
@@ -190,7 +191,11 @@ AJSON_FIELDS(IOpenAIChat::Response,
                  AJSON_FIELDS_ENTRY(system_fingerprint) AJSON_FIELDS_ENTRY(choices) AJSON_FIELDS_ENTRY(usage))
 
 AJSON_FIELDS(IOpenAIChat::Response::Usage,
-             AJSON_FIELDS_ENTRY(prompt_tokens) AJSON_FIELDS_ENTRY(completion_tokens) AJSON_FIELDS_ENTRY(total_tokens)
+             AJSON_FIELDS_ENTRY(prompt_tokens)
+             AJSON_FIELDS_ENTRY(completion_tokens)
+             AJSON_FIELDS_ENTRY(total_tokens)
+             (prompt_cache_hit_tokens, "prompt_cache_hit_tokens", AJsonFieldFlags::OPTIONAL)
+             (prompt_cache_miss_tokens, "prompt_cache_miss_tokens", AJsonFieldFlags::OPTIONAL)
 
 )
 

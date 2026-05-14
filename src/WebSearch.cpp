@@ -45,7 +45,7 @@ AFuture<AVector<web::Result>> web::search(AString query, int maxResults) {
     co_return aui::from_json<AVector<Result>>(response["results"]);
 }
 
-AFuture<AString> web::searchAI(const IOpenAIChat& openAI, AString query) {
+AFuture<AString> web::searchAI(IOpenAIChat& openAI, AString query) {
     ALOG_TRACE(LOG_TAG) << "web::searchAI: " << query;
     OpenAITools tools {
         OpenAITools::Tool {

@@ -45,3 +45,36 @@ services:
           devices:
             - driver: nvidia
               capabilities: [gpu]
+
+# uncomment below if you want a dashboard with stats
+#
+#  prometheus:
+#    image: prom/prometheus:latest
+#    volumes:
+#      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml
+#      - ./bin/prometheus/data:/prometheus
+#    ports:
+#      - "9090:9090"
+#    restart: always
+#    command:
+#      - '--config.file=/etc/prometheus/prometheus.yml'
+#      - '--storage.tsdb.path=/prometheus'
+#    extra_hosts:
+#      - "host.docker.internal:host-gateway"
+#
+#  grafana:
+#    image: grafana/grafana:latest
+#    volumes:
+#      - ./bin/grafana/data:/var/lib/grafana
+#      - ./grafana/dashboards:/var/lib/grafana/dashboards
+#      - ./grafana/dashboards.yml:/etc/grafana/provisioning/dashboards/main.yaml
+#      - ./grafana/datasources:/etc/grafana/provisioning/datasources
+#    ports:
+#      - "3000:3000"
+#    restart: always
+#    depends_on:
+#      - prometheus
+#    environment:
+#      - GF_SECURITY_ADMIN_USER=admin
+#      - GF_SECURITY_ADMIN_PASSWORD=admin # IMPORTANT: change this
+#      - GF_USERS_ALLOW_SIGN_UP=false

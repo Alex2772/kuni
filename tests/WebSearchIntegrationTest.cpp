@@ -35,7 +35,8 @@ TEST(WebSearchIntegration, SearchAI) {
 
     AString results;
     async << [&]() -> AFuture<> {
-        results = co_await web::searchAI(OpenAIChatImpl{}, "what is c++ aui framework?");
+        OpenAIChatImpl chat{};
+        results = co_await web::searchAI(chat, "what is c++ aui framework?");
     }();
 
     while (async.size() > 0) {

@@ -45,6 +45,11 @@ auib_import(toml11 https://github.com/ToruNiina/toml11
         CMAKE_ARGS -DTOML11_ENABLE_ACCESS_CHECK=ON
 )
 
+auib_import(prometheus-cpp https://github.com/jupp0r/prometheus-cpp
+            VERSION v1.3.0
+            CMAKE_ARGS -DENABLE_PUSH=OFF -DENABLE_COMPRESSION=OFF -DENABLE_TESTING=OFF
+)
+
 auib_import(date https://github.com/HowardHinnant/date)
 
 set(AUIB_TD_VALIDATE OFF)
@@ -54,7 +59,16 @@ auib_import(Td https://github.com/tdlib/td
 aui_executable(${PROJECT_NAME})
 
 # Link required libs
-aui_link(${PROJECT_NAME} PUBLIC aui::core aui::json aui::curl aui::crypt aui::image aui::views Td::TdStatic toml11::toml11)
+aui_link(${PROJECT_NAME} PUBLIC
+        aui::core
+        aui::json
+        aui::curl
+        aui::crypt
+        aui::image
+        aui::views
+        Td::TdStatic
+        toml11::toml11
+        prometheus-cpp::pull)
 
 aui_compile_assets(${PROJECT_NAME})
 aui_enable_tests(${PROJECT_NAME})

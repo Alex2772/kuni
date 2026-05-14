@@ -40,7 +40,8 @@ static AString removeControlCharacters(AString input) {
     return input;
 }
 
-AFuture<AVector<IOpenAIChat::Message>> OpenAITools::handleToolCalls(const AVector<IOpenAIChat::Message::ToolCall>& toolCalls) {
+AFuture<AVector<IOpenAIChat::Message>> OpenAITools::handleToolCalls(const AVector<IOpenAIChat::Message::ToolCall>& toolCalls,
+    const _<MetricsBreadcumbs>& metricsBreadCumbs) {
     ALOG_TRACE("OpenAITools") << "handleToolCalls";
     AVector<IOpenAIChat::Message> result;
     for (const auto& toolCall : toolCalls) {
@@ -49,6 +50,10 @@ AFuture<AVector<IOpenAIChat::Message>> OpenAITools::handleToolCalls(const AVecto
             .content = removeControlCharacters(co_await [&]() -> AFuture<AString> {
                 try {
                     if (auto c = mHandlers.contains(toolCall.function.name)) {
+                        AOptional<MetricsBreadcumbs::Point> point;
+                        if (metricsBreadCumbs) {
+                            point.emplace(metricsBreadCumbs, "function", toolCall.function.name);
+                        }
                         co_return co_await c->second.handler({
                             .tools = *this,
                             .args = AJson::fromString(toolCall.function.arguments),

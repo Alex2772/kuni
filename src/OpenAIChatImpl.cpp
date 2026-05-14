@@ -104,7 +104,7 @@ AJson OpenAIChatImpl::makeQueryString(Params params, AVector<IOpenAIChat::Messag
     return json;
 }
 
-AFuture<IOpenAIChat::Response> OpenAIChatImpl::chat(Params params, AVector<Message> messages) const {
+AFuture<IOpenAIChat::Response> OpenAIChatImpl::chat(Params params, AVector<Message> messages) {
     messages.insert(messages.begin(), {Message::Role::SYSTEM_PROMPT, params.systemPrompt});
     AString query = AJson::toString(makeQueryString(params, messages));
     AFileOutputStream("last_query.json") << query.toStdString();
@@ -147,7 +147,7 @@ AFuture<IOpenAIChat::Response> OpenAIChatImpl::chat(Params params, AVector<Messa
     // }
     co_return responseResult;
 }
-_<IOpenAIChat::StreamingResponse> OpenAIChatImpl::chatStreaming(Params params, AVector<Message> messages) const {
+_<IOpenAIChat::StreamingResponse> OpenAIChatImpl::chatStreaming(Params params, AVector<Message> messages) {
     messages.insert(messages.begin(), {Message::Role::SYSTEM_PROMPT, params.systemPrompt});
     AString query = [&] {
         auto json = makeQueryString(params, messages);
@@ -235,7 +235,7 @@ _<IOpenAIChat::StreamingResponse> OpenAIChatImpl::chatStreaming(Params params, A
     return result;
 }
 
-AFuture<std::valarray<double>> OpenAIChatImpl::embedding(Params params, AString input) const {
+AFuture<std::valarray<double>> OpenAIChatImpl::embedding(Params params, AString input) {
     ALOG_TRACE(LOG_TAG) << "embedding";
     if (input.empty()) {
         input = " ";

@@ -7,7 +7,7 @@
 #include <OpenAIChatImpl.h>
 
 namespace util {
-AFuture<AString> importantThingsToRemember(const IOpenAIChat& openAI, AVector<IOpenAIChat::Message> context, AStringView previousWorkingMemory) {
+AFuture<AString> importantThingsToRemember(IOpenAIChat& openAI, AVector<IOpenAIChat::Message> context, AStringView previousWorkingMemory) {
     using namespace std::chrono_literals;
 
     AString prompt = "What are important things in timespan {} (3 days) you should remember?\n"_format(formatPastHours(24h * 3));

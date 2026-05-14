@@ -3,7 +3,7 @@
 #include "AUI/Common/AVector.h"
 #include "AUI/Json/AJson.h"
 #include "IOpenAIChat.h"
-
+#include "MetricsBreadcumbs.h"
 
 struct OpenAITools {
     struct Ctx {
@@ -33,7 +33,7 @@ struct OpenAITools {
 
     OpenAITools(std::initializer_list<Tool> tools);
 
-    AFuture<AVector<IOpenAIChat::Message>> handleToolCalls(const AVector<IOpenAIChat::Message::ToolCall>& toolCalls);
+    AFuture<AVector<IOpenAIChat::Message>> handleToolCalls(const AVector<IOpenAIChat::Message::ToolCall>& toolCalls, const _<MetricsBreadcumbs>& metricsBreadCumbs = nullptr);
 
     AJson asJson() const;
 

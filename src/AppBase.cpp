@@ -21,6 +21,7 @@
 #include "OpenAIChatImpl.h"
 #include "config.h"
 #include "KuniCharacter.h"
+#include "MetricsBreadcumbs.h"
 #include "WebSearch.h"
 #include "AUI/IO/AFileInputStream.h"
 #include "tools/ask_diary.h"
@@ -38,7 +39,7 @@ static constexpr auto LOG_TAG = "App";
 static const auto WORKING_MEMORY_PATH = "working_memory.md";
 
 
-AFuture<std::valarray<double>> contextEmbedding(const IOpenAIChat& openAI, ranges::range auto && rng) {
+AFuture<std::valarray<double>> contextEmbedding(IOpenAIChat& openAI, ranges::range auto && rng) {
     ALOG_TRACE(LOG_TAG) << "contextEmbedding";
     AString basePrompt;
     AUI_ASSERT(!ranges::empty(rng));
@@ -125,7 +126,7 @@ AppBase::AppBase(Init init): mInit(std::move(init)), mDiary({
                         // 2. reduce resource usage:
                         //    - less conversations would be made
                         //    - in case of group chats and telegram channels, messages would be processed in batches
-                        const auto minutes = std::uniform_int_distribution(15, 60)(re);
+                        const auto minutes = std::uniform_int_distribution(15, 120)(re);
                         ALogger::info(LOG_TAG) << "Going to sleep for " << minutes << " minutes";
                         for (int i = 0; i < minutes; ++i) {
                             // костыль ну да сойдёт
@@ -239,10 +240,14 @@ AppBase::AppBase(Init init): mInit(std::move(init)), mDiary({
                         .description = "Wait until further notifications",
                         .handler = escape,
                     });
-                    IOpenAIChat::Response botAnswer = co_await self.openAI()->chat( {
-                        .systemPrompt = getSystemPrompt(),
-                        .tools = notification.actions.asJson(),
-                    }, self.mTemporaryContext);
+                    IOpenAIChat::Response botAnswer = co_await [&]() -> AFuture<IOpenAIChat::Response> {
+                        MetricsBreadcumbs::Point metric(self.metricBreadcumbs(), "function", "notification processing loop");
+                        auto response = co_await self.openAI()->chat( {
+                            .systemPrompt = getSystemPrompt(),
+                            .tools = notification.actions.asJson(),
+                        }, self.mTemporaryContext);
+                        co_return response;
+                    }();
                     AUI_ASSERT(AThread::current() == self.getThread());
 
                     if (botAnswer.choices.empty() || botAnswer.choices.at(0).message.tool_calls.empty()) {
@@ -284,7 +289,7 @@ AppBase::AppBase(Init init): mInit(std::move(init)), mDiary({
                         goto naxyi_preserve_ctx;
                     }
                     {
-                        auto toolCalls = co_await notification.actions.handleToolCalls(botAnswer.choices.at(0).message.tool_calls);
+                        auto toolCalls = co_await notification.actions.handleToolCalls(botAnswer.choices.at(0).message.tool_calls, self.metricBreadcumbs());
                         if (ranges::any_of(toolCalls, [](const IOpenAIChat::Message& msg) { return msg.content.contains(IOpenAIChat::EMBEDDING_TAG); })) {
                             // Indicates a low quality tool call.
                             //
@@ -351,6 +356,7 @@ const AppBase::Notification& AppBase::passNotificationToAI(AString notification,
 }
 
 AFuture<> AppBase::diaryDumpMessages() {
+    MetricsBreadcumbs::Point metric(metricBreadcumbs(), "function", "diaryDumpMessages");
     ALOG_TRACE(LOG_TAG) << "diaryDumpMessages";
     // mDiary.reload(); // will find plagiarism against all entries. // commented out: exclude plagiarism checks for
     // included entries

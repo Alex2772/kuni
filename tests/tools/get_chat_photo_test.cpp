@@ -35,12 +35,12 @@ public:
 // ---------------------------------------------------------------------------
 class OpenAIMock : public IOpenAIChat {
 public:
-    MOCK_METHOD(AFuture<Response>, chat, (Params params, AVector<Message> messages), (const, override));
+    MOCK_METHOD(AFuture<Response>, chat, (Params params, AVector<Message> messages), (override));
 
-    ::_<StreamingResponse> chatStreaming(Params params, AVector<Message> messages) const override {
+    ::_<StreamingResponse> chatStreaming(Params params, AVector<Message> messages) override {
         return nullptr;
     }
-    MOCK_METHOD(AFuture<std::valarray<double>>, embedding, (Params params, AString input), (const, override));
+    MOCK_METHOD(AFuture<std::valarray<double>>, embedding, (Params params, AString input), (override));
 };
 }
 
