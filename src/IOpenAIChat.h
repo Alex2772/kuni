@@ -97,17 +97,17 @@ struct IOpenAIChat {
         };
         AVector<Choice> choices;
         struct Usage {
-            int64_t prompt_tokens{};
-            int64_t completion_tokens{};
-            int64_t total_tokens{};
-            int64_t prompt_cache_hit_tokens{};
-            int64_t prompt_cache_miss_tokens{};
+            int64_t prompt_tokens;
+            int64_t completion_tokens;
+            int64_t total_tokens;
+            int64_t prompt_cache_hit_tokens;
+            int64_t prompt_cache_miss_tokens;
         } usage;
     };
 
     struct StreamingResponse {
-        AProperty<Response> response{};
-        AFuture<> completed{};
+        AProperty<Response> response;
+        AFuture<> completed;
     };
 
     virtual AFuture<Response> chat(Params params, AVector<Message> messages) = 0;
