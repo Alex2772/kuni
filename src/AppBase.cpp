@@ -35,7 +35,7 @@ static std::default_random_engine re(std::time(nullptr));
 using namespace std::chrono_literals;
 
 static constexpr auto LOG_TAG = "App";
-static const auto WORKING_MEMORY_PATH = APath("data") / "working_memory.md";
+static const auto WORKING_MEMORY_PATH = "working_memory.md";
 
 
 AFuture<std::valarray<double>> contextEmbedding(const IOpenAIChat& openAI, ranges::range auto && rng) {
@@ -105,9 +105,9 @@ AppBase::AppBase(Init init): mInit(std::move(init)), mDiary({
                     // to read these chats (onBeforeMainLoop()).
 
                     try {
-                        if (WORKING_MEMORY_PATH.isRegularFileExists()) {
+                        if ((self.mInit.workingDir / WORKING_MEMORY_PATH).isRegularFileExists()) {
                             AByteBuffer workingMemory;
-                            workingMemory << AFileInputStream(WORKING_MEMORY_PATH);
+                            workingMemory << AFileInputStream(self.mInit.workingDir / WORKING_MEMORY_PATH);
                             // this thing emulates "middle" memory of human - tasks, promises and other stuff
                             // in timespan 1-3d.
                             self.passNotificationToAI("<things_to_remember>\n{}\n</things_to_remember>\n"
@@ -115,7 +115,7 @@ AppBase::AppBase(Init init): mInit(std::move(init)), mDiary({
                                 "Otherwise, just call #wait."_format(AStringView(workingMemory.data(), workingMemory.size())), {}, true);
                         }
                     } catch (const AException& e) {
-                        ALogger::err(LOG_TAG) << "Can't open " << WORKING_MEMORY_PATH << ": "<< e;
+                        ALogger::err(LOG_TAG) << "Can't open " << (self.mInit.workingDir / WORKING_MEMORY_PATH) << ": "<< e;
                     }
                 }
     #ifndef AUI_TESTS_MODULE
@@ -359,9 +359,9 @@ AFuture<> AppBase::diaryDumpMessages() {
         co_return;
     }
     AString previousWorkingMemory;
-    if (WORKING_MEMORY_PATH.isRegularFileExists()) {
+    if ((mInit.workingDir / WORKING_MEMORY_PATH).isRegularFileExists()) {
         AByteBuffer buf;
-        buf << AFileInputStream(WORKING_MEMORY_PATH);
+        buf << AFileInputStream(mInit.workingDir / WORKING_MEMORY_PATH);
         previousWorkingMemory = AStringView(buf.data(), buf.size());
     }
     auto importantThingsToRemember = util::importantThingsToRemember(*openAI(), mTemporaryContext, previousWorkingMemory);
@@ -420,7 +420,7 @@ AFuture<> AppBase::diaryDumpMessages() {
     {
         // do it in separate lines: first, we wait for LLM response, second, we overwrite file (destructive operation).
         auto workingMemoryMd = co_await importantThingsToRemember;
-        AFileOutputStream(WORKING_MEMORY_PATH) << workingMemoryMd;
+        AFileOutputStream(mInit.workingDir / WORKING_MEMORY_PATH) << workingMemoryMd;
     }
     mTemporaryContext.clear();
 }

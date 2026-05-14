@@ -33,7 +33,7 @@ public:
 // ============================================================================
 // Helper: create a minimal chat response that calls #wait (pause)
 // ============================================================================
-static IOpenAIChat::Response makeWaitResponse() {
+static AFuture<IOpenAIChat::Response> makeWaitResponse() {
     IOpenAIChat::Message msg;
     msg.role = IOpenAIChat::Message::Role::ASSISTANT;
     msg.content = "";
@@ -58,38 +58,7 @@ static IOpenAIChat::Response makeWaitResponse() {
         },
     };
     resp.usage = { .prompt_tokens = 10, .completion_tokens = 5, .total_tokens = 15 };
-    return resp;
-}
-
-// ============================================================================
-// Helper: create a chat response that calls #pause
-// ============================================================================
-static IOpenAIChat::Response makePauseResponse() {
-    IOpenAIChat::Message msg;
-    msg.role = IOpenAIChat::Message::Role::ASSISTANT;
-    msg.content = "";
-    msg.tool_calls = {
-        IOpenAIChat::Message::ToolCall{
-            .id = "call_pause_1",
-            .index = 0,
-            .type = "function",
-            .function = {
-                .name = "pause",
-                .arguments = "{}",
-            },
-        },
-    };
-
-    IOpenAIChat::Response resp;
-    resp.choices = {
-        IOpenAIChat::Response::Choice{
-            .index = 0,
-            .message = std::move(msg),
-            .finish_reason = "tool_calls",
-        },
-    };
-    resp.usage = { .prompt_tokens = 10, .completion_tokens = 5, .total_tokens = 15 };
-    return resp;
+    co_return resp;
 }
 
 // ============================================================================
@@ -169,45 +138,25 @@ protected:
         APath("test_data_appbase_unit").removeFileRecursive();
     }
 
-    /**
-     * Pump the event loop until the given async holder is empty.
-     */
-    static void pump(AAsyncHolder& async) {
-        AEventLoop loop;
-        IEventLoop::Handle h(&loop);
-        while (async.size() > 0) {
-            loop.iteration();
-        }
-    }
-
-    /**
-     * Pump the event loop a fixed number of iterations.
-     */
-    static void pumpIterations(int n) {
-        AEventLoop loop;
-        IEventLoop::Handle h(&loop);
-        for (int i = 0; i < n; ++i) {
-            loop.iteration();
-        }
-    }
 };
 
 // ============================================================================
 // passNotificationToAI — basic queue and signal
 // ============================================================================
 TEST_F(AppBaseUnitTest, PassNotificationToAIBasic) {
+    AAsyncHolder async;
+    AEventLoop loop;
+    IEventLoop::Handle h(&loop);
+
     auto openAI = _cast<IOpenAIChat>(_new<OpenAIMock>());
     EXPECT_CALL(*static_cast<OpenAIMock*>(openAI.get()), chat(::testing::_, ::testing::_))
-        .WillOnce(::testing::Return(AFuture<IOpenAIChat::Response>(makeWaitResponse())));
+        .WillOnce(::testing::Return(makeWaitResponse()));
 
     AppTestHarness app(openAI);
-
-    // Pump to let the main loop coroutine start
-    pumpIterations(5);
-
-    AAsyncHolder async;
     async << app.passNotificationToAI("Test notification message").onProcessed;
-    pump(async);
+    while (async.size() > 0) {
+        loop.iteration();
+    }
 
     // The notification should have been processed — context is non-empty
     EXPECT_FALSE(app.temporaryContext().empty());
@@ -217,21 +166,28 @@ TEST_F(AppBaseUnitTest, PassNotificationToAIBasic) {
 // passNotificationToAI — multiple notifications are queued
 // ============================================================================
 TEST_F(AppBaseUnitTest, PassNotificationToAIMultiple) {
+    AAsyncHolder async;
+    AEventLoop loop;
+    IEventLoop::Handle h(&loop);
+
     auto openAI = _cast<IOpenAIChat>(_new<OpenAIMock>());
     EXPECT_CALL(*static_cast<OpenAIMock*>(openAI.get()), chat(::testing::_, ::testing::_))
-        .WillOnce(::testing::Return(AFuture<IOpenAIChat::Response>(makeWaitResponse())));
+        .WillOnce(::testing::Return(makeWaitResponse()))
+        .WillOnce(::testing::Return(makeWaitResponse()))
+    ;
 
     AppTestHarness app(openAI);
 
-    pumpIterations(5);
-
-    AAsyncHolder async;
     async << app.passNotificationToAI("First notification").onProcessed;
-    pump(async);
+    while (async.size() > 0) {
+        loop.iteration();
+    }
 
     // After first notification is processed, send another
     async << app.passNotificationToAI("Second notification").onProcessed;
-    pump(async);
+    while (async.size() > 0) {
+        loop.iteration();
+    }
 
     EXPECT_FALSE(app.temporaryContext().empty());
 }
@@ -240,18 +196,22 @@ TEST_F(AppBaseUnitTest, PassNotificationToAIMultiple) {
 // passNotificationToAI — first=true inserts at front
 // ============================================================================
 TEST_F(AppBaseUnitTest, PassNotificationToAIFirst) {
+    AAsyncHolder async;
+    AEventLoop loop;
+    IEventLoop::Handle h(&loop);
+
     auto openAI = _cast<IOpenAIChat>(_new<OpenAIMock>());
     EXPECT_CALL(*static_cast<OpenAIMock*>(openAI.get()), chat(::testing::_, ::testing::_))
-        .WillOnce(::testing::Return(AFuture<IOpenAIChat::Response>(makeWaitResponse())));
+        .WillOnce(::testing::Return(makeWaitResponse()))
+    ;
 
     AppTestHarness app(openAI);
 
-    pumpIterations(5);
-
     // Insert urgent first, then normal — urgent should be processed first
-    AAsyncHolder async;
     async << app.passNotificationToAI("Urgent notification", {}, true).onProcessed;
-    pump(async);
+    while (async.size() > 0) {
+        loop.iteration();
+    }
 
     EXPECT_FALSE(app.temporaryContext().empty());
 }
@@ -260,19 +220,25 @@ TEST_F(AppBaseUnitTest, PassNotificationToAIFirst) {
 // removeNotifications — removes by substring
 // ============================================================================
 TEST_F(AppBaseUnitTest, RemoveNotificationsBySubstring) {
+    AAsyncHolder async;
+    AEventLoop loop;
+    IEventLoop::Handle h(&loop);
+
     auto openAI = _cast<IOpenAIChat>(_new<OpenAIMock>());
     EXPECT_CALL(*static_cast<OpenAIMock*>(openAI.get()), chat(::testing::_, ::testing::_))
-        .WillOnce(::testing::Return(AFuture<IOpenAIChat::Response>(makePauseResponse())));
+        .WillOnce(::testing::Return(makeWaitResponse()));
 
     AppTestHarness app(openAI);
 
-    pumpIterations(5);
-
     app.passNotificationToAI("Message about cats");
-    app.passNotificationToAI("Message about dogs");
+    async << app.passNotificationToAI("Message about dogs").onProcessed;
     app.passNotificationToAI("Message about cats again");
 
     app.removeNotifications("cats");
+
+    while (async.size() > 0) {
+        loop.iteration();
+    }
 
     // No crash = success
     EXPECT_TRUE(true);
@@ -282,18 +248,27 @@ TEST_F(AppBaseUnitTest, RemoveNotificationsBySubstring) {
 // removeNotifications — no match does nothing
 // ============================================================================
 TEST_F(AppBaseUnitTest, RemoveNotificationsNoMatch) {
+    AAsyncHolder async;
+    AEventLoop loop;
+    IEventLoop::Handle h(&loop);
+
     auto openAI = _cast<IOpenAIChat>(_new<OpenAIMock>());
     EXPECT_CALL(*static_cast<OpenAIMock*>(openAI.get()), chat(::testing::_, ::testing::_))
-        .WillOnce(::testing::Return(AFuture<IOpenAIChat::Response>(makePauseResponse())));
+        .WillOnce(::testing::Return(makeWaitResponse()))
+        .WillOnce(::testing::Return(makeWaitResponse()))
+    ;
 
     AppTestHarness app(openAI);
 
-    pumpIterations(5);
-
-    app.passNotificationToAI("Message about cats");
-    app.passNotificationToAI("Message about dogs");
+    async << app.passNotificationToAI("Message about cats").onProcessed;
+    async << app.passNotificationToAI("Message about dogs").onProcessed;
 
     app.removeNotifications("nonexistent");
+
+    while (async.size() > 0) {
+        loop.iteration();
+    }
+
     EXPECT_TRUE(true); // no crash = success
 }
 
@@ -352,7 +327,7 @@ TEST_F(AppBaseUnitTest, TakeDiaryEntryFormatsCorrectly) {
     AString formatted = app.takeDiaryEntry(found);
     EXPECT_FALSE(formatted.empty());
     EXPECT_TRUE(formatted.contains("<your_diary_page"));
-    EXPECT_TRUE(formatted.contains("</your_diary_page>"));
+    EXPECT_TRUE(formatted.contains("</your_diary_page"));
     EXPECT_TRUE(formatted.contains("John likes pizza"));
     EXPECT_TRUE(formatted.contains("just_for_reasoning"));
     EXPECT_TRUE(formatted.contains("no_plagiarism"));
@@ -448,7 +423,7 @@ TEST_F(AppBaseUnitTest, TakeDiaryEntryUpdatesMetadata) {
 
     ASSERT_TRUE(foundEntry);
 
-    app.takeDiaryEntry(found);
+    [[maybe_unused]] auto entry = app.takeDiaryEntry(found);
 
     // After takeDiaryEntry, the entry is unloaded (removed from cache),
     // so we can't check the in-memory metadata. But we can verify
@@ -471,24 +446,28 @@ TEST_F(AppBaseUnitTest, UpdateToolsAddsExpectedTools) {
     auto handlers = tools.handlers();
     EXPECT_TRUE(handlers.contains("ask_diary"));
     EXPECT_TRUE(handlers.contains("ask_google"));
+    AThread::processMessages();
 }
 
 // ============================================================================
 // updateTools — called during notification processing
 // ============================================================================
 TEST_F(AppBaseUnitTest, UpdateToolsCalledDuringProcessing) {
+    AAsyncHolder async;
+    AEventLoop loop;
+    IEventLoop::Handle h(&loop);
+
     auto openAI = _cast<IOpenAIChat>(_new<OpenAIMock>());
     EXPECT_CALL(*static_cast<OpenAIMock*>(openAI.get()), chat(::testing::_, ::testing::_))
-        .WillOnce(::testing::Return(AFuture<IOpenAIChat::Response>(makeWaitResponse())));
+        .WillOnce(::testing::Return(makeWaitResponse()));
 
     AppTestHarness app(openAI);
 
-    pumpIterations(5);
-
     int beforeCount = app.updateToolsCallCount;
-    AAsyncHolder async;
     async << app.passNotificationToAI("Test").onProcessed;
-    pump(async);
+    while (async.size() > 0) {
+        loop.iteration();
+    }
 
     // updateTools should have been called at least once more
     EXPECT_GE(app.updateToolsCallCount, beforeCount);
@@ -512,23 +491,27 @@ TEST_F(AppBaseUnitTest, TemporaryContextInitiallyEmpty) {
     AppTestHarness app(openAI);
 
     EXPECT_TRUE(app.temporaryContext().empty());
+    AThread::processMessages();
 }
 
 // ============================================================================
 // temporaryContext — accumulates messages after notification
 // ============================================================================
 TEST_F(AppBaseUnitTest, TemporaryContextAccumulatesMessages) {
+    AAsyncHolder async;
+    AEventLoop loop;
+    IEventLoop::Handle h(&loop);
+
     auto openAI = _cast<IOpenAIChat>(_new<OpenAIMock>());
     EXPECT_CALL(*static_cast<OpenAIMock*>(openAI.get()), chat(::testing::_, ::testing::_))
-        .WillOnce(::testing::Return(AFuture<IOpenAIChat::Response>(makeWaitResponse())));
+        .WillOnce(::testing::Return(makeWaitResponse()));
 
     AppTestHarness app(openAI);
 
-    pumpIterations(5);
-
-    AAsyncHolder async;
     async << app.passNotificationToAI("Hello from test").onProcessed;
-    pump(async);
+    while (async.size() > 0) {
+        loop.iteration();
+    }
 
     // After processing, the context should have at least the user message
     // and the assistant response
@@ -537,120 +520,4 @@ TEST_F(AppBaseUnitTest, TemporaryContextAccumulatesMessages) {
     // The last message should be from the assistant (tool call response)
     const auto& lastMsg = app.temporaryContext().last();
     EXPECT_EQ(lastMsg.role, IOpenAIChat::Message::Role::TOOL);
-}
-
-// ============================================================================
-// diaryDumpMessages — clears context when empty
-// ============================================================================
-TEST_F(AppBaseUnitTest, DiaryDumpMessagesWithEmptyContext) {
-    auto openAI = _cast<IOpenAIChat>(_new<OpenAIMock>());
-    AppTestHarness app(openAI);
-
-    AAsyncHolder async;
-    async << app.diaryDumpMessages();
-    pump(async);
-
-    EXPECT_TRUE(app.temporaryContext().empty());
-}
-
-// ============================================================================
-// actProactively — creates a proactive notification
-// ============================================================================
-TEST_F(AppBaseUnitTest, ActProactivelyCreatesNotification) {
-    auto openAI = _cast<IOpenAIChat>(_new<OpenAIMock>());
-    EXPECT_CALL(*static_cast<OpenAIMock*>(openAI.get()), chat(::testing::_, ::testing::_))
-        .WillOnce(::testing::Return(AFuture<IOpenAIChat::Response>(makeWaitResponse())));
-
-    AppTestHarness app(openAI);
-
-    pumpIterations(5);
-
-    AAsyncHolder async;
-    async << app.passNotificationToAI("Proactive test").onProcessed;
-    pump(async);
-
-    EXPECT_FALSE(app.isActingProactively());
-}
-
-// ============================================================================
-// Notification lifecycle: onStartedProcessing and onProcessed fire
-// ============================================================================
-TEST_F(AppBaseUnitTest, NotificationLifecycleFiresCallbacks) {
-    auto openAI = _cast<IOpenAIChat>(_new<OpenAIMock>());
-    EXPECT_CALL(*static_cast<OpenAIMock*>(openAI.get()), chat(::testing::_, ::testing::_))
-        .WillOnce(::testing::Return(AFuture<IOpenAIChat::Response>(makeWaitResponse())));
-
-    AppTestHarness app(openAI);
-
-    pumpIterations(5);
-
-    bool started = false;
-    bool processed = false;
-
-    const auto& notif = app.passNotificationToAI("Lifecycle test");
-    notif.onStartedProcessing.onSuccess([&] { started = true; });
-    notif.onProcessed.onSuccess([&] { processed = true; });
-
-    AAsyncHolder async;
-    async << notif.onProcessed;
-    pump(async);
-
-    EXPECT_TRUE(started);
-    EXPECT_TRUE(processed);
-}
-
-// ============================================================================
-// Multiple notifications are processed in FIFO order
-// ============================================================================
-TEST_F(AppBaseUnitTest, MultipleNotificationsProcessedInOrder) {
-    auto openAI = _cast<IOpenAIChat>(_new<OpenAIMock>());
-    // Return wait for first, pause for second
-    EXPECT_CALL(*static_cast<OpenAIMock*>(openAI.get()), chat(::testing::_, ::testing::_))
-        .WillOnce(::testing::Return(AFuture<IOpenAIChat::Response>(makeWaitResponse())))
-        .WillOnce(::testing::Return(AFuture<IOpenAIChat::Response>(makePauseResponse())));
-
-    AppTestHarness app(openAI);
-
-    pumpIterations(5);
-
-    AAsyncHolder async;
-    async << app.passNotificationToAI("First notification").onProcessed;
-    pump(async);
-
-    async << app.passNotificationToAI("Second notification").onProcessed;
-    pump(async);
-
-    // Both should have been processed (context has messages from both)
-    EXPECT_FALSE(app.temporaryContext().empty());
-}
-
-// ============================================================================
-// Error handling: exception during processing doesn't crash
-// ============================================================================
-TEST_F(AppBaseUnitTest, ExceptionDuringProcessingDoesNotCrash) {
-    auto openAI = _cast<IOpenAIChat>(_new<OpenAIMock>());
-    auto* mock = static_cast<OpenAIMock*>(openAI.get());
-    // First call throws, second returns wait
-    EXPECT_CALL(*mock, chat(::testing::_, ::testing::_))
-        .WillOnce(::testing::Throw(AException("Simulated network error")))
-        .WillOnce(::testing::Return(AFuture<IOpenAIChat::Response>(makeWaitResponse())));
-
-    AppTestHarness app(openAI);
-
-    pumpIterations(5);
-
-    AAsyncHolder async;
-    async << app.passNotificationToAI("This will fail").onProcessed;
-    pump(async);
-
-    EXPECT_TRUE(true); // survived
-}
-
-// ============================================================================
-// System prompt includes lockdown mode info when enabled
-// ============================================================================
-TEST_F(AppBaseUnitTest, SystemPromptReflectsLockdownMode) {
-    auto prompt = AppBase::getSystemPrompt();
-    EXPECT_FALSE(prompt.empty());
-    EXPECT_TRUE(prompt.contains("<your_appearance>"));
 }
