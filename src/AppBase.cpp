@@ -106,14 +106,11 @@ AppBase::AppBase(Init init): mInit(std::move(init)), mDiary({
                     // to read these chats (onBeforeMainLoop()).
 
                     try {
-                        if ((self.mInit.workingDir / WORKING_MEMORY_PATH).isRegularFileExists()) {
-                            AByteBuffer workingMemory;
-                            workingMemory << AFileInputStream(self.mInit.workingDir / WORKING_MEMORY_PATH);
-                            // this thing emulates "middle" memory of human - tasks, promises and other stuff
-                            // in timespan 1-3d.
-                            self.passNotificationToAI("<things_to_remember>\n{}\n</things_to_remember>\n"
-                                "You should take action only if you have found a task to do from above.\n"
-                                "Otherwise, just call #wait."_format(AStringView(workingMemory.data(), workingMemory.size())), {}, true);
+                        // this thing emulates "middle" memory of human - tasks, promises and other stuff
+                        // in timespan 1-3d.
+                        auto msg = co_await self.onCleanContext();
+                        if (!msg.empty()) {
+                            self.passNotificationToAI(std::move(msg), {}, true);
                         }
                     } catch (const AException& e) {
                         ALogger::err(LOG_TAG) << "Can't open " << (self.mInit.workingDir / WORKING_MEMORY_PATH) << ": "<< e;
@@ -460,6 +457,17 @@ Act proactively!
     notification.onProcessed.onSuccess([&] {
         mActingProactively = false;
     });
+}
+
+AFuture<AString> AppBase::onCleanContext() {
+    if ((mInit.workingDir / WORKING_MEMORY_PATH).isRegularFileExists()) {
+        AByteBuffer workingMemory;
+        workingMemory << AFileInputStream(mInit.workingDir / WORKING_MEMORY_PATH);
+        co_return "<things_to_remember>\n{}\n</things_to_remember>\n"
+            "You should take action only if you have found a task to do from above.\n"
+            "Otherwise, just call #wait.\n"_format(AStringView(workingMemory.data(), workingMemory.size()));
+    }
+    co_return "";
 }
 
 

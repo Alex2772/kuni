@@ -61,6 +61,8 @@ protected:
 
     aui::float_within_0_1 mRelevanceThreshold = 0.5f;
 
+    virtual AFuture<AString> onCleanContext();
+
     /**
      *
      * @return @brief Called before LLM's processing loop.

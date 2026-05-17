@@ -6,6 +6,7 @@
 namespace config {
     static constexpr bool CAPABILITY_TAKE_PHOTO = true;
     static constexpr bool CAPABILITY_RECORD_AUDIO = true;
+    static constexpr bool CAPABILITY_USE_STICKERS = true;
 
     static constexpr bool SHOULD_BEGIN_DIALOGS = true;
 
@@ -499,7 +500,7 @@ world) in the following format:
     static const AOptional<double> PRESENCE_PENALTY = std::nullopt; // qwen3.5:9b: 1.5
     static const AOptional<double> REPETITION_PENALTY = std::nullopt; // qwen3.5:9b: 1.05
 
-    static constexpr auto REPEAT_YOURSELF_TRIGGER_AVG = 0.83f; // lower is stricter
+    static constexpr auto REPEAT_YOURSELF_TRIGGER_AVG = 0.90f; // lower is stricter
     static constexpr auto REPEAT_YOURSELF_TRIGGER_MAX = REPEAT_YOURSELF_TRIGGER_AVG * 0.95f; // lower is stricter
     static constexpr auto REPEAT_YOURSELF_MAX_HISTORY = 32;
 
@@ -574,6 +575,7 @@ Output format:
   (wide/telephoto/macro), depth-of-field (shallow/deep), framing/cropping, stabilization; EXIF if present (focal length,
   aperture, shutter, ISO), otherwise “unknown”.
 - Uncertainties: list anything ambiguous or partially occluded.
+- Names: acknowledge people, objects and characters by referring to their names.
 
 Style guidelines:
 
@@ -582,7 +584,6 @@ Style guidelines:
 - Avoid opinions, aesthetics, or inferences beyond visible evidence.
 - Prefer short sentences and bullet lists.
 - Include both global summary and fine-grained details; err on the side of verbosity.
-- If faces are present, avoid naming real identities; only describe features.
 
 Example (structure only; fill with actual content): Title: … DistinctiveFeatures:
 … ObjectsAndLayout:
@@ -594,6 +595,37 @@ Optional: At the end, add a compact Facts list (<=15 bullets) with key atomic fa
 
 Use provided context to provide additional details about picture. For example, if dialogue is asking about comparing
 2 pictures, provide general assessment of the picture.
+)";
+
+    static constexpr auto STICKER_TO_TEXT_PROMPT = R"(
+You are a Telegram sticker interpretation module.
+
+Describe the sticker for text-only retrieval, emotional understanding, and choosing an appropriate reaction in chat.
+
+A sticker is not just an image: it usually communicates an emotion, reaction, meme, attitude, or social gesture. Focus
+on what the sticker means in conversation.
+
+Do not over-describe irrelevant visual details. Do not invent context that is not visible. If something is unclear,
+say “unknown”.
+
+Output format:
+
+- Title: short recognizable name for the sticker.
+- VisibleContent: factual description of the character/object/scene. Mention pose, facial expression, gesture, motion,
+  props, and visible text.
+- TextInSticker: exact visible text, preserving casing, punctuation, emojis, and line breaks. If no text, write “none”.
+- Emotion: main emotion or attitude expressed by the sticker.
+- Intensity: low / medium / high.
+- CommunicativeMeaning: what this sticker means when sent in chat.
+- UsageExamples: 2-4 short situations where this sticker would be appropriate.
+- MemeReference: known meme, character, or cultural reference if clearly recognizable; otherwise “unknown”.
+
+Style rules:
+- Be concise but specific.
+- Prefer emotional and social meaning over generic visual captioning.
+- Distinguish visible facts from interpretation.
+- Name real people or characters.
+- Target length: 40-80 words.
 )";
     static constexpr auto SLEEP_CONSOLIDATOR_PROMPT = R"(
 You are the Sleep-time Consolidator. You are making adjustments to pieces of memory, just like human brain does. You

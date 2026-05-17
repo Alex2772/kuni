@@ -9,6 +9,7 @@
 #include "image.h"
 #include "malicious_payloads.h"
 #include "AUI/Util/kAUI.h"
+#include "tools/stickers.h"
 #include "util/is_accessible_from_lockdown.h"
 
 #include <range/v3/algorithm/max_element.hpp>
@@ -351,12 +352,17 @@ AFuture<AString> llmui::formatChatHistoryMessage(
             AString xmlTag = "sticker";
             if (!sticker.sticker_->emoji_.empty()) {
                 checkForMaliciousPayloads(sticker.sticker_->emoji_);
-                xmlTag += " " + sticker.sticker_->emoji_;
+                xmlTag += " emoji=\"{}\""_format(sticker.sticker_->emoji_);
+            }
+            if constexpr (config::CAPABILITY_USE_STICKERS) {
+                xmlTag += " sticker_id=\"{}\""_format(sticker.sticker_->id_);
             }
             if (sticker.sticker_->sticker_) {
                 result += co_await llmui::image(
-                    temporaryContext, openAI, co_await fetchMedia(telegram, sticker.sticker_->sticker_), "sticker");
+                    temporaryContext, openAI, co_await fetchMedia(telegram, sticker.sticker_->sticker_), xmlTag);
             }
+            const auto id = sticker.sticker_->id_;
+            tools::stickers::knownStickers()[id] = std::move(sticker.sticker_);
         }
 
         if (msg.content_->get_id() == td::td_api::messageAnimation::ID) {

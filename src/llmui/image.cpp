@@ -4,6 +4,7 @@
 
 #include "image.h"
 
+#include "KuniCharacter.h"
 #include "AUI/IO/AFileInputStream.h"
 #include "AUI/Util/kAUI.h"
 
@@ -18,10 +19,14 @@ AFuture<AString> llmui::image(std::span<const IOpenAIChat::Message> temporaryCon
     try
     {
         if (cache.isRegularFileExists()) {
-            co_return AString::fromUtf8(AByteBuffer::fromStream(AFileInputStream(cache)));
+            auto content = AString::fromUtf8(AByteBuffer::fromStream(AFileInputStream(cache)));
+            co_return "<{} description>\n{}\n</{}>"_format(xmlTag, std::move(content), xmlTag);
         }
 
         AString context = "<context>\n";
+        context += "<character name=\"Kuni\">\n";
+        context += kuni_character::getAppearancePrompt();
+        context += "\n</character name=\"Kuni\">\n";
         for (const auto& i : temporaryContext) {
             context += "<context_item>\n";
             context += i.content;
@@ -36,14 +41,25 @@ AFuture<AString> llmui::image(std::span<const IOpenAIChat::Message> temporaryCon
         context += IOpenAIChat::embedImage(*image);
         context += "\n\nDescribe the last photo.";
 
+        // hack: ask for shorter descriptions for stickers.
+        AString prompt = [&] {
+            if (xmlTag.contains("sticker")) {
+                return config::STICKER_TO_TEXT_PROMPT;
+            }
+            return config::PHOTO_TO_TEXT_PROMPT;
+        }();
+        tryAgain:
         auto response = co_await openAI.chat({
-            .systemPrompt = config::PHOTO_TO_TEXT_PROMPT,
+            .systemPrompt = prompt,
             .config = config::ENDPOINT_PHOTO_TO_TEXT,
-            .seed = 1,
-        }, { { .role = IOpenAIChat::Message::Role::USER, .content = std::move(context) }});
-        auto out = "<{} description>\n{}\n</{}>"_format(xmlTag, response.choices.at(0).message.content, xmlTag);
-        AFileOutputStream(cache) << out;
-        co_return out;
+        }, { { .role = IOpenAIChat::Message::Role::USER, .content = context }});
+        auto content = std::move(response.choices.at(0).message.content);
+        if (content.trim().empty()) {
+            // probably local model overflown its reasoning so we will try again
+            goto tryAgain;
+        }
+        AFileOutputStream(cache) << static_cast<AString&>(content);
+        co_return "<{} description>\n{}\n</{}>"_format(xmlTag, std::move(content), xmlTag);
     } catch (const AException& e)
     {
         ALogger::err(LOG_TAG) << "Can't describe photo"  << e;
