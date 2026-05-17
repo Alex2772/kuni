@@ -27,6 +27,12 @@ OpenAITools::Tool tools::sendTelegramMessage(
     _<td::td_api::chat> chat,
     _<td::td_api::array<td::td_api::object_ptr<td::td_api::message>>> messages,
     std::valarray<double> chatEmbedding) {
+
+    struct State {
+        int messagesInARow = 0;
+        int64_t lastReplyToMessageId = 0;
+    };
+
     return {
         .name = "send_telegram_message",
         .description = "Sends a message to the \"{}\" chat. Requirements:\n"
@@ -64,10 +70,10 @@ OpenAITools::Tool tools::sendTelegramMessage(
                     openAI = std::move(openAI),
                     chat = std::move(chat),
                     chatEmbedding = std::move(chatEmbedding),
-                    messagesInRow = _new<int>(0),
+                    state = _new<State>(0),
                     messages = std::move(messages)
                     ](OpenAITools::Ctx ctx) -> AFuture<AString> {
-            if (*messagesInRow > 10) {
+            if (state->messagesInARow > 10) {
                 // stupid AI can't recognize it spams messages despite the warning
                 throw AException("Too many messages in a row. Don't spam!");
             }
@@ -96,7 +102,15 @@ OpenAITools::Tool tools::sendTelegramMessage(
             const auto message = ctx.args["text"].asStringOpt().valueOr("").replaceAll("\r", "");
             const auto photoFilename = ctx.args["photo_filename"].asStringOpt().valueOr("");
             const auto audioFilename = ctx.args["audio_filename"].asStringOpt().valueOr("");
-            const auto replyTo = util::jsonAsLongInt(ctx.args["reply_to_message_id"]).valueOr(0);
+            const auto replyTo = [&]() -> int64_t {
+                const auto value = util::jsonAsLongInt(ctx.args["reply_to_message_id"]).valueOr(0);
+                if (state->lastReplyToMessageId == value) {
+                    // we don't need to reply to the same message multiple times in a row.
+                    return 0;
+                }
+                state->lastReplyToMessageId = value;
+                return value;
+            }();
 
             if (message.empty() && photoFilename.empty() && audioFilename.empty()) {
                 co_return "Error: At least one of \"text\", \"photo_filename\" or \"audio_filename\" must be populated";
@@ -109,11 +123,15 @@ OpenAITools::Tool tools::sendTelegramMessage(
                 return tc.function.name == "send_telegram_message";
             }) == 1) {
                 if (glm::clamp((message.length() - 15.f) / 100.f, 0.f, 1.f) * 0.5f > std::uniform_real_distribution(0.f, 1.f)(gRandomEngine)) {
-                    co_return "Error: you must split your response into small separate messages.\n"
+                    AString msg = "Error: you must split your response into small separate messages.\n"
                         "Example:\n"
                         "- ахахаххаа\n"
                         "- ты смешной\n"
                         "- научишь также?\n";
+                    if constexpr (config::CAPABILITY_USE_STICKERS) {
+                        msg += "Alternatively, you can use a sticker (#sticker_send)\n";
+                    }
+                    co_return msg;
                 }
             }
 
@@ -298,12 +316,12 @@ OpenAITools::Tool tools::sendTelegramMessage(
 
             ALOG_DEBUG(LOG_TAG) << "Sent message: " << message;
 
-            ++*messagesInRow;
+            ++state->messagesInARow;
 
-            if (*messagesInRow > 5) {
-                co_return "Message sent successfully to \"{}\". Warning: you have sent {} messages in a row! Give your participant space to breathe!"_format(chat->title_, *messagesInRow);
+            if (state->messagesInARow > 5) {
+                co_return "Message sent successfully to \"{}\". Warning: you have sent {} messages in a row! Give your participant space to breathe!"_format(chat->title_, state->messagesInARow);
             }
-            if (*messagesInRow < 3) {
+            if (state->messagesInARow < 3) {
                 // in addition to prompt, we'll encourage llm to add a follow-up messages to make dialogs more
                 // natural:
                 // - (1) hi~
