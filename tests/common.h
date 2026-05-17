@@ -50,7 +50,7 @@ protected:
 };
 
 
-void populateUnrelatedDiaryEntries() {
+static void populateUnrelatedDiaryEntries() {
     // copy md files from tests/data/random_diary_entries.
     // these diary entries are actual output of real Kuni instance, roughly from March 2026, slightly distilled
     // to avoid duplication and compromising some personal information.

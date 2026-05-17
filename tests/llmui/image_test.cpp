@@ -58,7 +58,7 @@ TEST(LlmuiImageTest, CacheHit) {
     }
 
     // Create a cache entry
-    static constexpr auto CACHED_CONTENT = "<photo description>\nCached response\n</photo>";
+    static constexpr auto CACHED_CONTENT = "Cached response";
     APath cacheDir = APath("cache") / "images";
     cacheDir.makeDirs();
     APath cacheFile = cacheDir / "llmui_image_test_dummy.png.md";
@@ -67,7 +67,7 @@ TEST(LlmuiImageTest, CacheHit) {
     AVector<IOpenAIChat::Message> ctx;
     auto result = await(llmui::image(ctx, *openAI, imagePath, "photo"));
 
-    EXPECT_EQ(result, CACHED_CONTENT);
+    EXPECT_EQ(result, "<photo description>\n{}\n</photo>"_format(CACHED_CONTENT));
 
     // Cleanup
     imagePath.removeFile();
