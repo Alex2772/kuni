@@ -48,6 +48,8 @@
 #include <range/v3/algorithm/sort.hpp>
 
 #include "util/json_utils.h"
+#include <fstream>  // <-- Для работы с файлами
+#include <toml.hpp> // <-- Для парсинга TOML
 
 using namespace std::chrono_literals;
 
@@ -76,7 +78,7 @@ public:
 protected:
     void updateTools(OpenAITools& actions) override {
         AppBase::updateTools(actions);
-        if constexpr (config::CAPABILITY_TAKE_PHOTO) {
+        if (config::CAPABILITY_TAKE_PHOTO) {
             actions.insert(tools::takePhoto(_new<StableDiffusionClientImpl>(), openAI()));
         }
         if constexpr (config::CAPABILITY_RECORD_AUDIO) {
@@ -527,6 +529,31 @@ Some channels have reactions enabled. In that case, you can sometimes react with
 }   // namespace
 
 AUI_ENTRY {
+    // --- НАЧАЛО БЛОКА РАБОТЫ С КОНФИГОМ ---
+    const std::string config_file_path = "config.toml";
+
+    // 1. Проверяем, существует ли файл. Если нет - создаем.
+    std::ifstream check_file(config_file_path);
+    if (!check_file.is_open()) {
+        ALogger::info(LOG_TAG) << "Файл config.toml не найден. Создаю файл по умолчанию.";
+        std::ofstream new_config(config_file_path);
+        new_config << "# Автоматически сгенерированный файл конфигурации\n\n";
+        new_config << "# Разрешить боту делать фотографии (true / false)\n";
+        new_config << "capability_take_photo = false\n";
+        new_config.close();
+    } else {
+        check_file.close();
+    }
+
+    // 2. Читаем настройки из файла
+    try {
+        const auto config_data = toml::parse(config_file_path);
+        config::CAPABILITY_TAKE_PHOTO = toml::find<bool>(config_data, "capability_take_photo");
+        ALogger::info(LOG_TAG) << "Успешно загружены настройки из config.toml";
+    } catch (const std::exception& e) {
+        ALogger::err(LOG_TAG) << "Ошибка при чтении config.toml (используются базовые настройки): " << e.what();
+    }
+    // --- КОНЕЦ БЛОКА РАБОТЫ С КОНФИГОМ ---
     if (args.contains("--debug")) {
         ALogger::info(LOG_TAG) << "--debug mode enabled; service is not running";
         _new<KuniDebugWindow>()->show();

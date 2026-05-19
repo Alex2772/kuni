@@ -3,3 +3,9 @@ cmake-build-**
 *uild*
 .DS_Store
 bin
+
+tdlib/
+
+data/secrets.toml
+
+config.toml

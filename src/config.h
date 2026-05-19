@@ -4,7 +4,7 @@
 #include "Endpoint.h"
 
 namespace config {
-    static constexpr bool CAPABILITY_TAKE_PHOTO = true;
+    extern bool CAPABILITY_TAKE_PHOTO; // Теперь это рантайм-переменная
     static constexpr bool CAPABILITY_RECORD_AUDIO = true;
     static constexpr bool CAPABILITY_USE_STICKERS = true;
 
