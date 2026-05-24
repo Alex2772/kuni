@@ -33,6 +33,12 @@ struct OpenAITools {
 
     OpenAITools(std::initializer_list<Tool> tools);
 
+    /**
+     * @brief Optional hook fired after each tool call handler completes successfully.
+     * Not called if the handler throws. Set by AppBase::updateTools to emit AppBase::toolCallFired.
+     */
+    std::function<void(const AString& toolName)> onAfterToolCall;
+
     AFuture<AVector<IOpenAIChat::Message>> handleToolCalls(const AVector<IOpenAIChat::Message::ToolCall>& toolCalls, const _<MetricsBreadcumbs>& metricsBreadCumbs = nullptr);
 
     AJson asJson() const;

@@ -11,6 +11,7 @@ MetricsBreadcumbs::Point::Point(_<MetricsBreadcumbs> breadcumbs, AString key, AS
     mBreadcumbs(std::move(breadcumbs)),
     mKey(std::move(key)),
     mPrevValue(std::exchange(mBreadcumbs->mValue[mKey], value)) {
+    // ALogger::trace(LOG_TAG) << "MetricsBreadcumbs::Point: key=" << mKey << "; value=" << value;
 
 }
 
@@ -21,5 +22,6 @@ MetricsBreadcumbs::Point::~Point() {
     if (mBreadcumbs == nullptr) {
         return;
     }
+    // ALogger::trace(LOG_TAG) << "MetricsBreadcumbs::~Point: key=" << mKey << "; value=" << mPrevValue;
     mBreadcumbs->mValue[mKey] = std::move(mPrevValue);
 }

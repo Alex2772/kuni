@@ -54,11 +54,15 @@ AFuture<AVector<IOpenAIChat::Message>> OpenAITools::handleToolCalls(const AVecto
                         if (metricsBreadCumbs) {
                             point.emplace(metricsBreadCumbs, "function", toolCall.function.name);
                         }
-                        co_return co_await c->second.handler({
+                        auto handlerResult = co_await c->second.handler({
                             .tools = *this,
                             .args = AJson::fromString(toolCall.function.arguments),
                             .allToolCalls = toolCalls,
                         });
+                        if (onAfterToolCall) {
+                            onAfterToolCall(toolCall.function.name);
+                        }
+                        co_return std::move(handlerResult);
                     }
                     co_return "tool \"" + toolCall.function.name + "\" is not currently available. Please use another tool instead.";
                 } catch (const AException& e) {

@@ -49,6 +49,8 @@
 
 #include "util/json_utils.h"
 
+#include <range/v3/view/take.hpp>
+
 using namespace std::chrono_literals;
 
 std::default_random_engine gRandomEngine(std::time(nullptr));
@@ -142,6 +144,7 @@ protected:
 
 private:
     _<ITelegramClient> mTelegram;
+    std::list<MetricsBreadcumbs::Point> mLastOpenedChatLastMetrics;
 
     AFuture<AVector<td::td_api::object_ptr<td::td_api::chat>>> chatIdsToChats(std::span<td::td_api::int53> ids) {
         auto chats =
@@ -287,22 +290,22 @@ public:
         removeNotifications("<notification chat_id=\"{}\">\n"_format(chatId));
 
         _<td::td_api::chat> chat;
+        mLastOpenedChatLastMetrics = std::list<MetricsBreadcumbs::Point>{};
         {
             auto chatTgPtr = co_await mTelegram->sendQueryWithResult(ITelegramClient::toPtr(td::td_api::getChat(chatId)));
-            auto metric = _new<MetricsBreadcumbs::Point>(metricBreadcumbs(), "chat", chatTgPtr->title_);
             chat = aui::ptr::manage_shared(
                 chatTgPtr.release(),
-                [this, self = shared_from_this(), metric](td::td_api::chat* chat) {
+                [this, self = shared_from_this()](td::td_api::chat* chat) {
                     try {
                         setOnline(false);
                         mTelegram->sendQuery(ITelegramClient::toPtr(td::td_api::sendChatAction(chat->id_, {}, {}, nullptr)));
                         mTelegram->sendQuery(ITelegramClient::toPtr(td::td_api::closeChat(chat->id_)));
-                        AUI_NO_OPTIMIZE_OUT(metric); // just to ensure the lifetime of metric
                     } catch (...) {
                     }
                     delete chat;
                 });
         }
+        mLastOpenedChatLastMetrics.emplace_back(metricBreadcumbs(), "chat", chat->title_);
 
         AString result;
 
@@ -343,6 +346,33 @@ public:
             }
         }
         ALOG_DEBUG(LOG_TAG) << "Loaded " << messages.size() << " message(s): " << chat->title_;
+
+        // Compute response-time metadata for Prometheus. messages[0] is the most recent.
+        mLastOpenedChatLastMessageTime = [&]() -> AOptional<std::chrono::system_clock::time_point> {
+            if (messages.empty()) {
+                return std::nullopt;
+            }
+            return std::chrono::system_clock::from_time_t(messages.front()->date_);
+        }();
+        mLastOpenedChatLastMetrics.emplace_back(metricBreadcumbs(), "scenario", [&] {
+            if (messages.empty()) {
+                // this means Kuni sent a message to a new person.
+                return "new conversation";
+            }
+
+            td::td_api::int53 senderId = 0;
+            td::td_api::downcast_call(
+                *messages.front()->sender_id_,
+                aui::lambda_overloaded {
+                  [&](td::td_api::messageSenderUser& user) { senderId = user.user_id_; },
+                  [](auto&) {},
+                });
+            if (senderId == mTelegram->myId()) {
+                // last message is from Kuni.
+                return "kuni proactive";
+            }
+            return "reply to user";
+        }());
         if (messages.empty()) {
             // Kuni sometimes opens random chats?
             // throw AException("Failed to open chat");
@@ -540,7 +570,6 @@ AUI_ENTRY {
     async << [](_<ITelegramClient> telegram) -> AFuture<> {
         ALogger::info(LOG_TAG) << "Waiting for Telegram network...";
         co_await telegram->waitForConnection();
-        ALogger::info(LOG_TAG) << "Connected to Telegram";
         switch (config::LOCKDOWN_MODE) {
             case config::LockdownMode::NONE:
                 break;
@@ -561,6 +590,7 @@ AUI_ENTRY {
         app = _new<App>(telegram, openAI);
         prometheus = prometheus::setup(app->metricBreadcumbs());
         prometheus->registerOpenAI(*openAI);
+        prometheus->registerAppBase(*app);
         _new<AThread>([] {
             ALogger::info(LOG_TAG) << "Bot is up and running. Press enter to shutdown gracefully.";
             std::cin.get();

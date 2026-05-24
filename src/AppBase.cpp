@@ -61,7 +61,7 @@ AFuture<std::valarray<double>> contextEmbedding(IOpenAIChat& openAI, ranges::ran
 AppBase::AppBase(Init init): mInit(std::move(init)), mDiary({
     .diaryDir = mInit.workingDir / "diary",
     .openAI = mInit.openAI,
-}), mWakeupTimer(_new<ATimer>(200min)) {
+}), mWakeupTimer(_new<ATimer>(11min)) {
     // mTools.addTool({
     //     .name = "send_telegram_message",
     //     .description = "Sends a message to a Telegram user.",
@@ -225,6 +225,15 @@ AppBase::AppBase(Init init): mInit(std::move(init)), mDiary({
                     self.updateTools(notification.actions);
                     auto escape = [&](OpenAITools::Ctx ctx) -> AFuture<AString> {
                         pauseFlag = true;
+                        if (self.mActingProactively) {
+                            // at the end of "actProactively", let's try to encourage LLM to write someone, still.
+                            // if LLM's haven't written to anyone at this point, this notification will guide the LLM
+                            // that dismissive action is not acceptable and LLM will try to revisit some older dialog
+                            // despite no cue.
+                            // if LLM actually have written to someone at this point, LLM will initiate a dialog with
+                            // one more person.
+                            self.passNotificationToAI("You should write someone else and be more proactive.", {}, true);
+                        }
                         co_return "Success";
                     };
                     notification.actions.insert({
@@ -451,11 +460,17 @@ It's time to reflect on your thoughts!
 Act proactively!
 )";
     const auto& notification = passNotificationToAI(std::move(prompt));
-    notification.onStartedProcessing.onSuccess([&] {
+    struct State {
+        AOptional<MetricsBreadcumbs::Point> metric;
+    };
+    auto state = _new<State>();
+    notification.onStartedProcessing.onSuccess([this, state] {
         mActingProactively = true;
+        state->metric.emplace(metricBreadcumbs(), "function", "actProactively");
     });
-    notification.onProcessed.onSuccess([&] {
+    notification.onProcessed.onSuccess([this, state] {
         mActingProactively = false;
+        state->metric = std::nullopt;
     });
 }
 
@@ -463,9 +478,7 @@ AFuture<AString> AppBase::onCleanContext() {
     if ((mInit.workingDir / WORKING_MEMORY_PATH).isRegularFileExists()) {
         AByteBuffer workingMemory;
         workingMemory << AFileInputStream(mInit.workingDir / WORKING_MEMORY_PATH);
-        co_return "<things_to_remember>\n{}\n</things_to_remember>\n"
-            "You should take action only if you have found a task to do from above.\n"
-            "Otherwise, just call #wait.\n"_format(AStringView(workingMemory.data(), workingMemory.size()));
+        co_return "<things_to_remember>\n{}\n</things_to_remember>\n"_format(AStringView(workingMemory.data(), workingMemory.size()));
     }
     co_return "";
 }
@@ -475,6 +488,23 @@ void AppBase::updateTools(OpenAITools& actions) {
     ALOG_TRACE(LOG_TAG) << "updateTools";
     actions.insert(tools::askDiary(mTemporaryContext, mDiary));
     actions.insert(tools::askGoogle(openAI()));
+    actions.onAfterToolCall = [this](const AString& toolName) {
+        if (toolName == "wait") {
+            return;
+        }
+        if (toolName == "pause") {
+            return;
+        }
+        auto labels = metricBreadcumbs()->value();
+        emit toolCallFired(AppBase::ToolCallEvent{
+            .toolName = toolName,
+            .breadcrumbLabels = std::move(labels),
+            .lastOpenedChatLastMessageTime = mLastOpenedChatLastMessageTime.map([](std::chrono::system_clock::time_point t) {
+                return std::chrono::duration_cast<std::chrono::seconds>(std::chrono::system_clock::now() - t);
+            }),
+        });
+    };
+
 }
 
 void AppBase::removeNotifications(const AString& substring) {

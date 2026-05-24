@@ -50,6 +50,13 @@ public:
      */
     [[nodiscard]] bool isActingProactively() const { return mActingProactively; }
 
+    struct ToolCallEvent {
+        AString toolName;
+        AMap<AString, AString> breadcrumbLabels;
+        AOptional<std::chrono::seconds> lastOpenedChatLastMessageTime;
+    };
+    emits<ToolCallEvent> toolCallFired;
+
     [[nodiscard]]
     const _<MetricsBreadcumbs>& metricBreadcumbs() const {
         return mMetricBreadcumbs;
@@ -58,8 +65,10 @@ public:
 
 protected:
     AAsyncHolder mAsync;
-
     aui::float_within_0_1 mRelevanceThreshold = 0.5f;
+
+    // Set by llmuiOpenTelegramChat; read by updateTools to populate ToolCallEvent.
+    AOptional<std::chrono::system_clock::time_point> mLastOpenedChatLastMessageTime;
 
     virtual AFuture<AString> onCleanContext();
 
