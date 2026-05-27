@@ -411,8 +411,8 @@ world) in the following format:
     static const EndpointAndModel ENDPOINT_MAIN {
         .endpoint = {
             .baseUrl = "http://localhost:11434/v1/",
-            // .baseUrl = "https://api.deepseek.com/",
-            // .bearerKey = secrets::DEEPSEEK_BEARER_KEY,
+            // .baseUrl = "https://openrouter.ai/api/v1/",
+            // .bearerKey = secrets::OPENROUTER_BEARER_KEY,
         },
         // .model = "qwen3:14b",
         // .model = "deepseek-v4-flash",

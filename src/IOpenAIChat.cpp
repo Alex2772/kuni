@@ -52,3 +52,24 @@ AJson AJsonConv<AVector<IOpenAIChat::Message>>::toJson(const AVector<IOpenAIChat
     }
     return result;
 }
+
+void AJsonConv<IOpenAIChat::Response::Usage, void>::fromJson(const AJson& v, IOpenAIChat::Response::Usage& dst) {
+    aui::zero(dst);
+    dst.prompt_tokens = v["prompt_tokens"].asLongIntOpt().valueOr(0);
+    dst.completion_tokens = v["completion_tokens"].asLongIntOpt().valueOr(0);
+    dst.total_tokens = v["total_tokens"].asLongIntOpt().valueOr(0);
+    dst.prompt_cache_hit_tokens = v["prompt_cache_hit_tokens"].asLongIntOpt()
+        .valueOr([&]() -> int64_t {
+            auto promptTokenDetails = v["prompt_tokens_details"].asObjectOpt();
+            if (!promptTokenDetails) {
+                return -1;
+            }
+            return (*promptTokenDetails)["cached_tokens"].asLongIntOpt().valueOr(-1); // openrouter
+        });
+    if (dst.prompt_cache_hit_tokens < 0) {
+        dst.prompt_cache_hit_tokens = 0;
+    } else {
+        dst.prompt_cache_miss_tokens = v["prompt_cache_miss_tokens"].asLongIntOpt() // deepseek
+            .valueOr(dst.prompt_tokens - dst.prompt_cache_hit_tokens); // openrouter
+    }
+}

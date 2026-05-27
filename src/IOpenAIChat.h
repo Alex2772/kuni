@@ -190,14 +190,10 @@ AJSON_FIELDS(IOpenAIChat::Response,
              AJSON_FIELDS_ENTRY(id) AJSON_FIELDS_ENTRY(object) AJSON_FIELDS_ENTRY(created) AJSON_FIELDS_ENTRY(model)
                  AJSON_FIELDS_ENTRY(system_fingerprint) AJSON_FIELDS_ENTRY(choices) AJSON_FIELDS_ENTRY(usage))
 
-AJSON_FIELDS(IOpenAIChat::Response::Usage,
-             AJSON_FIELDS_ENTRY(prompt_tokens)
-             AJSON_FIELDS_ENTRY(completion_tokens)
-             AJSON_FIELDS_ENTRY(total_tokens)
-             (prompt_cache_hit_tokens, "prompt_cache_hit_tokens", AJsonFieldFlags::OPTIONAL)
-             (prompt_cache_miss_tokens, "prompt_cache_miss_tokens", AJsonFieldFlags::OPTIONAL)
-
-)
+template<>
+struct AJsonConv<IOpenAIChat::Response::Usage> {
+    static void fromJson(const AJson& v, IOpenAIChat::Response::Usage& dst);
+};
 
 template<>
 struct AJsonConv<AVector<IOpenAIChat::Message>> {

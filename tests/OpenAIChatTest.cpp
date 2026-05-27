@@ -39,7 +39,7 @@ TEST(OpenAIChat, ParseResponseOpenRouter1) {
     "cost": 0.000064,
     "is_byok": false,
     "prompt_tokens_details": {
-      "cached_tokens": 0,
+      "cached_tokens": 1000,
       "cache_write_tokens": 0,
       "audio_tokens": 0,
       "video_tokens": 0
@@ -62,6 +62,12 @@ TEST(OpenAIChat, ParseResponseOpenRouter1) {
     content.replaceAll("```json", "");
     content.replaceAll("```", "");
     auto json = AJson::fromString(content);
+    
+    EXPECT_EQ(response.model, "google/gemma-3-12b-it");
+    EXPECT_EQ(response.choices.at(0).finish_reason, "stop");
+    ASSERT_TRUE(json.isObject());
+    EXPECT_TRUE(json["positivePrompt"].asString().contains("Anime girl"));
+    EXPECT_TRUE(json["negativePrompt"].asString().contains("text:2"));
 }
 
 TEST(OpenAIChat, ParseResponseOpenRouter2) {
@@ -105,7 +111,7 @@ TEST(OpenAIChat, ParseResponseOpenRouter2) {
         "cost": 0.001893,
         "is_byok": false,
         "prompt_tokens_details": {
-            "cached_tokens": 0,
+            "cached_tokens": 1000,
             "cache_write_tokens": 0,
             "audio_tokens": 0,
             "video_tokens": 0
@@ -124,6 +130,17 @@ TEST(OpenAIChat, ParseResponseOpenRouter2) {
 }
 )";
     auto response = aui::from_json<IOpenAIChat::Response>(AJson::fromString(R));
+    
+    EXPECT_EQ(response.model, "deepseek/deepseek-v4-flash-20260423");
+    EXPECT_EQ(response.usage.prompt_tokens, 13312);
+    EXPECT_EQ(response.usage.completion_tokens, 106);
+    EXPECT_EQ(response.usage.total_tokens, 13418);
+    EXPECT_EQ(response.usage.prompt_cache_hit_tokens, 1000);
+    EXPECT_EQ(response.usage.prompt_cache_miss_tokens, 12312);
+    EXPECT_EQ(response.choices.at(0).finish_reason, "tool_calls");
+    ASSERT_EQ(response.choices.at(0).message.tool_calls.size(), 1);
+    EXPECT_EQ(response.choices.at(0).message.tool_calls[0].function.name, "send_telegram_message");
+    
     AOptional<AJson> args;
     OpenAITools tools {
         {
@@ -171,6 +188,11 @@ TEST(OpenAIChat, ParseResponseOllama1) {
     EXPECT_EQ(response.choices.at(0).message.reasoning, "The user wants me to describe the last photo provided.");
     EXPECT_EQ(response.choices.at(0).finish_reason, "stop");
     EXPECT_EQ(response.model, "qwen3.5:9b");
+    EXPECT_EQ(response.usage.prompt_tokens, 6863);
+    EXPECT_EQ(response.usage.completion_tokens, 1676);
+    EXPECT_EQ(response.usage.total_tokens, 8539);
+    EXPECT_EQ(response.usage.prompt_cache_hit_tokens, 0);
+    EXPECT_EQ(response.usage.prompt_cache_miss_tokens, 0);
 }
 
 TEST(OpenAIChat, ParseResponseDeepseek1) {
@@ -217,6 +239,8 @@ TEST(OpenAIChat, ParseResponseDeepseek1) {
     EXPECT_EQ(response.usage.prompt_tokens, 20301);
     EXPECT_EQ(response.usage.completion_tokens, 513);
     EXPECT_EQ(response.usage.total_tokens, 20814);
+    EXPECT_EQ(response.usage.prompt_cache_hit_tokens, 4096);
+    EXPECT_EQ(response.usage.prompt_cache_miss_tokens, 16205);
     EXPECT_EQ(response.system_fingerprint, "fp_xxx");
 }
 

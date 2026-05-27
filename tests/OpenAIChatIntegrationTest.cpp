@@ -80,11 +80,16 @@ TEST(OpenAIChatIntegration, Basic) {
                     .role = IOpenAIChat::Message::Role::USER,
                     .content = "Answer SHORTLY. What time is it? Do not make up information; if you don't have access to a tool, report it."
                 },
-        })).choices.at(0).message.content;
-        EXPECT_TRUE(response.contains("content") ||
-                    response.contains("information") || response.contains("cannot") ||
-                    response.contains("provide") || response.contains("time"))
-            << response;
+        }));
+        auto& content = response.choices.at(0).message.content;
+        EXPECT_TRUE(content.contains("content") ||
+                    content.contains("information") || content.contains("cannot") ||
+                    content.contains("provide") || content.contains("time"))
+            << content;
+
+        EXPECT_LT(0, response.usage.completion_tokens);
+        EXPECT_LT(0, response.usage.total_tokens);
+        EXPECT_LT(0, response.usage.prompt_tokens);
     }();
 
     while (async.size() > 0) {

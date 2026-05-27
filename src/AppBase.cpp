@@ -61,7 +61,7 @@ AFuture<std::valarray<double>> contextEmbedding(IOpenAIChat& openAI, ranges::ran
 AppBase::AppBase(Init init): mInit(std::move(init)), mDiary({
     .diaryDir = mInit.workingDir / "diary",
     .openAI = mInit.openAI,
-}), mWakeupTimer(_new<ATimer>(11min)) {
+}), mWakeupTimer(_new<ATimer>(200min)) {
     // mTools.addTool({
     //     .name = "send_telegram_message",
     //     .description = "Sends a message to a Telegram user.",
