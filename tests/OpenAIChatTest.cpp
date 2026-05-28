@@ -83,7 +83,7 @@ TEST(OpenAIChat, ParseResponseOpenRouter2) {
         {
             "index": 0,
             "logprobs": null,
-            "finish_reason": "tool_calls",
+            "finish_reason": null,
             "native_finish_reason": "tool_calls",
             "message": {
                 "role": "assistant",
@@ -137,7 +137,7 @@ TEST(OpenAIChat, ParseResponseOpenRouter2) {
     EXPECT_EQ(response.usage.total_tokens, 13418);
     EXPECT_EQ(response.usage.prompt_cache_hit_tokens, 1000);
     EXPECT_EQ(response.usage.prompt_cache_miss_tokens, 12312);
-    EXPECT_EQ(response.choices.at(0).finish_reason, "tool_calls");
+    EXPECT_EQ(response.choices.at(0).finish_reason, "");
     ASSERT_EQ(response.choices.at(0).message.tool_calls.size(), 1);
     EXPECT_EQ(response.choices.at(0).message.tool_calls[0].function.name, "send_telegram_message");
     

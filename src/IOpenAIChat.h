@@ -93,7 +93,7 @@ struct IOpenAIChat {
         struct Choice {
             int64_t index;
             Message message;
-            AString finish_reason;
+            String finish_reason;
         };
         AVector<Choice> choices;
         struct Usage {
