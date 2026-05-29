@@ -188,7 +188,8 @@ AJSON_FIELDS(IOpenAIChat::Response::Choice,
 
 AJSON_FIELDS(IOpenAIChat::Response,
              AJSON_FIELDS_ENTRY(id) AJSON_FIELDS_ENTRY(object) AJSON_FIELDS_ENTRY(created) AJSON_FIELDS_ENTRY(model)
-                 AJSON_FIELDS_ENTRY(system_fingerprint) AJSON_FIELDS_ENTRY(choices) AJSON_FIELDS_ENTRY(usage))
+                 AJSON_FIELDS_ENTRY(system_fingerprint) AJSON_FIELDS_ENTRY(choices)
+                 (usage, "usage", AJsonFieldFlags::OPTIONAL))
 
 template<>
 struct AJsonConv<IOpenAIChat::Response::Usage> {
