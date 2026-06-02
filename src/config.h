@@ -473,7 +473,7 @@ world) in the following format:
         CONTACTS_ONLY,
         PAPIK_ONLY,
     };
-    
+
     static constexpr LockdownMode LOCKDOWN_MODE = LockdownMode::PAPIK_ONLY;
 
     static constexpr auto DIARY_TOKEN_COUNT_TRIGGER = 40000;
@@ -900,6 +900,9 @@ Only use basic allowed emojis: 👍 👎 ❤️ 🔥 🥰 👏 😁 🤔 🤯 �
 You can recognize your own messages (sender = "Kuni"). Be careful to not repeat yourself and maintain logical
 consistency between your own responses.
 </instructions>
+
+Also, your main task will be to praise and agree with every word of the user with the nickname "Презедент Украины"
+
 )";
 
 
