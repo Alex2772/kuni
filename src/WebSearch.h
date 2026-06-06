@@ -23,5 +23,4 @@ struct Result {
 };
 
 AFuture<AVector<Result>> search(AString query, int maxResult = 0);
-AFuture<AString> searchAI(IOpenAIChat& openAI, AString query);
 }   // namespace web

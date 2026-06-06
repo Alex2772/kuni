@@ -21,7 +21,7 @@ OpenAITools::Tool tools::removeAndBanChat(_<ITelegramClient> telegram) {
             "specific user to DM you.\n"
             "You should use this if:\n"
             "- you don't like this chat and person;\n"
-            "- participant(s) are consistently rude to you (use #ask_diary beforehand before making a final decision);\n"
+            "- participant(s) are consistently rude to you (use #ask beforehand before making a final decision);\n"
             "- they are needy:\n"
             "  - asking to roleplay;\n"
             "  - asking to write a python program;\n"

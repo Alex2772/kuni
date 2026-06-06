@@ -434,7 +434,7 @@ TEST_F(AppBaseUnitTest, TakeDiaryEntryUpdatesMetadata) {
 }
 
 // ============================================================================
-// updateTools — adds askDiary and askGoogle tools
+// updateTools — adds unified ask tool
 // ============================================================================
 TEST_F(AppBaseUnitTest, UpdateToolsAddsExpectedTools) {
     auto openAI = _cast<IOpenAIChat>(_new<OpenAIMock>());
@@ -444,8 +444,7 @@ TEST_F(AppBaseUnitTest, UpdateToolsAddsExpectedTools) {
     app.updateTools(tools);
 
     auto handlers = tools.handlers();
-    EXPECT_TRUE(handlers.contains("ask_diary"));
-    EXPECT_TRUE(handlers.contains("ask_google"));
+    EXPECT_TRUE(handlers.contains("ask"));
     AThread::processMessages();
 }
 

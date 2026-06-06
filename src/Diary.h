@@ -184,7 +184,7 @@ public:
      * [0,1], and returns a sorted vector of {@link EntryExAndRelatedness}
      * objects.
      */
-    AFuture<AVector<EntryExAndRelatedness>> query(const std::valarray<double>& query, QueryOpts opts);
+    virtual AFuture<AVector<EntryExAndRelatedness>> query(const std::valarray<double>& query, QueryOpts opts);
 
     /**
      * @brief Compute the relatedness of a single entry to a context vector.
@@ -226,8 +226,6 @@ public:
      * Like person's sleeping
      */
     AFuture<> sleepingConsolidation();
-
-    virtual AFuture<AString> queryAI(const AString& query, QueryOpts opts);
 
     [[nodiscard]] _<IOpenAIChat> openAI() const noexcept { return mInit.openAI; }
 

@@ -28,25 +28,6 @@ TEST(WebSearchIntegration, Basic) {
     EXPECT_TRUE(results.at(0).title.contains("aui-framework")) << results.at(0).title;
 }
 
-TEST(WebSearchIntegration, SearchAI) {
-    AEventLoop loop;
-    IEventLoop::Handle h(&loop);
-    AAsyncHolder async;
-
-    AString results;
-    async << [&]() -> AFuture<> {
-        OpenAIChatImpl chat{};
-        results = co_await web::searchAI(chat, "what is c++ aui framework?");
-    }();
-
-    while (async.size() > 0) {
-        loop.iteration();
-    }
-
-    EXPECT_FALSE(results.empty());
-    EXPECT_TRUE(results.lowercase().contains("alex2772") || results.lowercase().contains("aui::core")) << results;
-}
-
 TEST(WebSearchIntegration, SearchAppAI) {
 
     static constexpr auto CHAT_HISTORY = R"OLOLO(

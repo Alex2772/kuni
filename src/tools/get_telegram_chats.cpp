@@ -6,7 +6,6 @@
 
 #include "config.h"
 #include "llmui/telegram.h"
-#include "util/populate_from_diary_ai_if_needed.h"
 
 #include <range/v3/action/reverse.hpp>
 #include <range/v3/algorithm/remove_if.hpp>

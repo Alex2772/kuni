@@ -160,30 +160,6 @@ TEST(DiaryIntegration, Query1) {
     }
 }
 
-TEST(DiaryIntegration, AskDiary) {
-    // I refer to hampsters' specific quote: "ВСЁ ПОШЛО БЫ ЛУЧШЕ, ЕСЛИ БЫ У ВСЕХ БЫЛИ ШАРЫ" (1774022551.md)
-    // nobody really will remember that unless was told to. (Kuni was told about this quote in 1774022551.md).
-    APath("test_data").removeFileRecursive();
-    populateUnrelatedDiaryEntries();
-
-    AAsyncHolder async;
-
-    AEventLoop loop;
-    IEventLoop::Handle h(&loop);
-
-    AString result;
-    async << [](AString& result) -> AFuture<> {
-        Diary diary({.diaryDir = "test_data", .openAI = _new<OpenAIChatImpl>() });
-        result = co_await diary.queryAI("which quote of hamster from overwatch Alex is referring to?", {});
-    }(result);
-
-    while (async.size() > 0) {
-        loop.iteration();
-    }
-    result = result.lowercase();
-    EXPECT_TRUE(result.contains("пошло бы лучше")) << result;
-}
-
 TEST(DiaryIntegration, RealWorldChatHistorySneakyTopicSwitch) {
     // real world example: Kuni was not able to remember Wrecking Ball from Overwatch; although there are a lot of diary
     // entries related to that.

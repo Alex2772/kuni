@@ -24,8 +24,7 @@
 #include "MetricsBreadcumbs.h"
 #include "WebSearch.h"
 #include "AUI/IO/AFileInputStream.h"
-#include "tools/ask_diary.h"
-#include "tools/ask_google.h"
+#include "tools/ask.h"
 #include "util/cosine_similarity.h"
 #include "util/important_things_to_remember.h"
 
@@ -332,7 +331,7 @@ AppBase::AppBase(Init init): mInit(std::move(init)), mDiary({
                         continue;
                     }
                     if (!notification.actions.handlers().empty()) {
-                        self.mTemporaryContext.last().content += "\nWhat's your next action? Use a `tool` to act. Use #ask_diary to consult with your knowledge database. The following tools available: " + AStringVector(notification.actions.handlers().keyVector()).join(", ");
+                        self.mTemporaryContext.last().content += "\nWhat's your next action? Use a `tool` to act. Use #ask to consult with your knowledge database. The following tools available: " + AStringVector(notification.actions.handlers().keyVector()).join(", ");
                     }
                     if (ranges::any_of(botAnswer.choices.at(0).message.tool_calls, [](const IOpenAIChat::Message::ToolCall& t){ return t.function.name == "send_telegram_message"; })) {
                         goto naxyi_preserve_ctx;
@@ -486,8 +485,7 @@ AFuture<AString> AppBase::onCleanContext() {
 
 void AppBase::updateTools(OpenAITools& actions) {
     ALOG_TRACE(LOG_TAG) << "updateTools";
-    actions.insert(tools::askDiary(mTemporaryContext, mDiary));
-    actions.insert(tools::askGoogle(openAI()));
+    actions.insert(tools::ask(mTemporaryContext, openAI(), mDiary));
     actions.onAfterToolCall = [this](const AString& toolName) {
         if (toolName == "wait") {
             return;

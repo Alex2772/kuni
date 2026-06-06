@@ -38,7 +38,6 @@
 #include "tools/send_telegram_message.h"
 #include "ui/debug/KuniDebugWindow.h"
 #include "util/is_accessible_from_lockdown.h"
-#include "util/populate_from_diary_ai_if_needed.h"
 #include "util/post_message.h"
 
 #include <range/v3/action/reverse.hpp>
@@ -448,20 +447,6 @@ public:
             // address specifically read messages.
             // this helps switching between unrelated contexts.
             chatEmbedding = co_await openAI()->embedding({ .config = config::ENDPOINT_EMBEDDING }, result);
-            // Alex2772 (18-04-2026):
-            //
-            // Replaced embedding search with util::populateFromDiaryAIIfNeeded
-            //
-            // {
-            //     const auto lengthBeforeInjection = result.length();
-            //     auto relatednesses = co_await diary().query(chatEmbedding, {.confidenceFactor = 0.f});
-            //     for (const auto& i : relatednesses) {
-            //         if ((result.length() - lengthBeforeInjection) > config::DIARY_INJECTION_MAX_LENGTH) {
-            //             break;
-            //         }
-            //         result = takeDiaryEntry(i) + result;
-            //     }
-            // }
             result = "You opened the chat \"{}\" in Telegram. You see last messages:\n"_format(chat->title_) + result;
 
             switch (chat->type_->get_id()) {
@@ -487,7 +472,7 @@ Do not repeat previously stated facts.
 
 You do not need to greet each time you receive a new message.
 
-Do not make up facts. Rely strictly on `your_diary_page` and #ask_diary only. If a fact can't be found, respond
+Do not make up facts. Rely strictly on `your_diary_page` and #ask only. If a fact can't be found, respond
 playfully dismissive.
 
 Be selective with your effort. Do not spend extra energy on low-value replies.

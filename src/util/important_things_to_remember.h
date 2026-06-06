@@ -1,6 +1,6 @@
 #pragma once
 
-#include "populate_from_diary_ai_if_needed.h"
+#include "format_past_hours.h"
 
 #include <AppBase.h>
 #include <IOpenAIChat.h>
@@ -11,7 +11,7 @@ AFuture<AString> importantThingsToRemember(IOpenAIChat& openAI, AVector<IOpenAIC
     using namespace std::chrono_literals;
 
     AString prompt = "What are important things in timespan {} (3 days) you should remember?\n"_format(formatPastHours(24h * 3));
-    prompt += "Do not attempt to make tool_calls or #ask_diary. Your job is to summarize your current tasks and "
+    prompt += "Do not attempt to make tool_calls or #ask. Your job is to summarize your current tasks and "
               "revisit tasks from previous session.\n";
     if (!previousWorkingMemory.empty()) {
         prompt += "\nHere is the PREVIOUS <things_to_remember> from the last session. "
@@ -58,8 +58,8 @@ AFuture<AString> importantThingsToRemember(IOpenAIChat& openAI, AVector<IOpenAIC
             .systemPrompt = AppBase::getSystemPrompt(),
             .config = config::ENDPOINT_MAIN,
         }, context)).choices.at(0).message.content;
-        if (content.contains("tool_calls") || content.contains("ask_diary")) {
-            // deepseek bug - attempts to use DSML to make a call to ask_diary.
+        if (content.contains("tool_calls") || content.contains("ask")) {
+            // deepseek bug - attempts to use DSML to make a tool call.
             continue;
         }
         co_return content;
