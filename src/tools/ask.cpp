@@ -91,7 +91,7 @@ static AFuture<AString> ask(IOpenAIChat& openAI, Diary& diary, const AString& qu
             .handler = [&](OpenAITools::Ctx ctx) -> AFuture<AString> {
                 const auto cue = ctx.args["text"].asStringOpt().valueOrException("text is required string");
                 const auto includeWebSearchResults = ctx.args["include_web_search_results"].asBoolOpt().valueOr(false);
-                ALOG_DEBUG(LOG_TAG) << "subagent query=\"" << query << "\", includeWebSearchResults=" << includeWebSearchResults;
+                ALOG_DEBUG(LOG_TAG) << "subagent query=\"" << cue << "\", includeWebSearchResults=" << includeWebSearchResults;
                 AString out;
                 if (includeWebSearchResults) {
                     out += "<local_db_results>\n";
