@@ -49,6 +49,7 @@
 #include "util/json_utils.h"
 
 #include <range/v3/view/take.hpp>
+#include <proxy_server/proxy_server.h>
 
 using namespace std::chrono_literals;
 
@@ -583,6 +584,8 @@ AUI_ENTRY {
             gEventLoop.stop();
         })->start();
     });
+
+    auto proxyServer = config::PROXY_ENABLED ? proxy_server::init() : nullptr;
 
     IEventLoop::Handle h(&gEventLoop);
     gEventLoop.loop();
