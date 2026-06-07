@@ -4,13 +4,18 @@
 
 #include "proxy_server.h"
 
+#include "OpenAITools.h"
 #include "config.h"
+#include <range/v3/all.hpp>
+#include "AUI/Util/AYieldGenerator.h"
 
 #include <httplib.h>
 #include "AUI/Json/Conversion.h"
 #include "AUI/Thread/AAsyncHolder.h"
 #include "AUI/Url/AUrl.h"
 #include "AUI/Util/kAUI.h"
+#include "tools/ask.h"
+#include "util/openai_streaming.h"
 
 static constexpr auto LOG_TAG = "proxy_server";
 
@@ -74,13 +79,36 @@ auto basicProxy(const char* apiPath = "chat/completions") {
     };
 }
 
-auto hjackChatCompletions(const char* apiPath = "chat/completions", const char* method = "POST") {
-    return [apiPath](const httplib::Request& req, httplib::Response& res) {
+auto hjackChatCompletions(_<IOpenAIChat> openAI, Diary& diary, const char* apiPath = "chat/completions") {
+    return [=, &diary](const httplib::Request& req, httplib::Response& res) {
         try {
             static const auto CONFIG = config::ENDPOINT_MAIN;
+
+            struct Service {
+                std::vector<std::byte> buffer;
+                httplib::ClientImpl::StreamHandle handle;
+                AYieldGenerator<std::string_view> lines;
+                AVector<IOpenAIChat::Message> temporaryContext;
+
+                Service(_<IOpenAIChat> openAI, Diary& diary)
+                  : injectedTools({ tools::ask(temporaryContext, openAI, diary) }) {}
+
+                OpenAITools injectedTools;
+            };
+            auto service = _new<Service>(openAI, diary);
+
             auto json = AJson::fromString(req.body);
-            const bool isStream = json["stream"].asBoolOpt().valueOr(false);
+
+            const bool isStream = json["stream"].asBoolOpt().valueOr(true);
+            AUI_ASSERT(isStream);
             json["stream"] = isStream;
+
+            aui::from_json(json["messages"], service->temporaryContext);
+
+            if (!json.contains("tools")) {
+                json["tools"] = AJson::Array{};
+            }
+            json["tools"].asArray().insertAll(service->injectedTools.asJson().asArray());
 
             AUrl url("{}{}"_format(CONFIG.endpoint.baseUrl, apiPath));
             const auto host = url.path().bytes().substr(0, url.path().bytes().find("/"));
@@ -94,7 +122,8 @@ auto hjackChatCompletions(const char* apiPath = "chat/completions", const char* 
             }
 
             AFileOutputStream(DATA_DIR / "last_query.json") << AJson::toString(json);
-            auto handle = _new<httplib::ClientImpl::StreamHandle>(upstream.open_stream(
+
+            service->handle = upstream.open_stream(
                 "POST",
                 path,
                 {},
@@ -102,26 +131,74 @@ auto hjackChatCompletions(const char* apiPath = "chat/completions", const char* 
                   { "Authorization", "Bearer {}"_format(CONFIG.endpoint.bearerKey) },
                   { "Content-Type", "application/json" },
                 },
-                AJson::toString(json)));
+                AJson::toString(json));
 
-            if (!handle->is_valid()) {
+            if (!service->handle.is_valid()) {
                 res.status = httplib::BadRequest_400;
                 return;
             }
 
-            res.status = handle->response->status;
+            service->lines = util::openai_streaming::lineByLine([&service = *service](char* dst, size_t size) {
+                return service.handle.read(dst, size);
+            });
+
+            res.status = service->handle.response->status;
             res.set_chunked_content_provider(
-                handle->response->get_header_value("Content-Type"), [handle](size_t, httplib::DataSink& sink) mutable {
-                    char buf[8192];
-                    auto n = handle->read(buf, sizeof(buf));
-                    if (n > 0) {
-                        sink.write(buf, static_cast<size_t>(n));
-                        return true;
+                service->handle.response->get_header_value("Content-Type"), [service](size_t, httplib::DataSink& sink) mutable {
+                    auto write = [&sink](std::string_view line) {
+                        sink.write(line.data(), static_cast<size_t>(line.length()));
+                    };
+                    std::string_view line;
+                    try {
+                        auto lineIt = service->lines.begin();   // this will continue the coro just like in python
+                        if (lineIt == service->lines.end()) {
+                            sink.done();
+                            return true;
+                        }
+                        line = *lineIt;
+                        ALOG_TRACE(LOG_TAG) << line;
+                    } catch (const AException& e) {
+                        ALogger::err(LOG_TAG) << "proxy_server::chat_completions: Unrecoverable error" << e;
+                        write("Unrecoverable error\n\n");
+                        sink.done();
+                        return false;
                     }
-                    sink.done();
+                    auto writeLineAsIs = [&] {
+                        write(line);
+                        write("\n\n");
+                    };
+                    try {
+                        auto delim = line.find(": ");
+                        if (delim == std::string_view::npos) {
+                            writeLineAsIs();
+                            return true;
+                        }
+                        auto command = line.substr(0, delim);
+                        auto value = line.substr(delim + 2);
+                        if (command != "data") {
+                            writeLineAsIs();
+                            return true;
+                        }
+                        if (value.empty()) {
+                            writeLineAsIs();
+                            return true;
+                        }
+                        if (value[0] != '{') {
+                            writeLineAsIs();
+                            return true;
+                        }
+                        auto json = AJson::fromBuffer(AByteBufferView(value));
+
+                        write("data: ");
+                        write(AJson::toString(json));
+                        write("\n\n");
+                    } catch (const AException& e) {
+                        ALogger::err(LOG_TAG) << "proxy_server::chat_completions: " << e;
+                        writeLineAsIs();
+                    }
                     return true;
                 });
-            ;
+
         } catch (const AException& e) {
             ALogger::err(LOG_TAG) << "proxy_server::chat_completions: " << e;
             res.set_content("Bad request", "text/plain");
@@ -136,10 +213,11 @@ auto hjackChatCompletions(const char* apiPath = "chat/completions", const char* 
 
 struct ProxyServerImpl : proxy_server::IProxyServer {
     httplib::Server app;
-    AAsyncHolder async;
     std::thread thread;
 
-    ProxyServerImpl() {
+    Diary diary;
+
+    ProxyServerImpl(_<IOpenAIChat> openAI): diary({ .diaryDir = "data/diary", .openAI = openAI }) {
         app.set_error_logger([](const httplib::Error& error, const httplib::Request* request) {
             ALogger::err(LOG_TAG) << "Error: " << error << " for " << request->method << " " << request->path;
         });
@@ -152,7 +230,7 @@ struct ProxyServerImpl : proxy_server::IProxyServer {
         app.Get("/", [](const httplib::Request& eq, httplib::Response& res) {
             res.set_content("Up and running", "text/plain");
         });
-        app.Post("/v1/chat/completions", basicProxy("chat/completions"));
+        app.Post("/v1/chat/completions", hjackChatCompletions(std::move(openAI), diary, "chat/completions"));
         app.Post("/v1/embeddings", basicProxy("chat/embeddings"));
         app.Post("/v1/images/generations", basicProxy("images/generations"));
         app.Post("/v1/audio/transcriptions", basicProxy("audio/transcriptions"));
@@ -171,4 +249,6 @@ struct ProxyServerImpl : proxy_server::IProxyServer {
 };
 }   // namespace
 
-std::shared_ptr<proxy_server::IProxyServer> proxy_server::init() { return std::make_shared<ProxyServerImpl>(); }
+std::shared_ptr<proxy_server::IProxyServer> proxy_server::init(_<IOpenAIChat> openAI) {
+    return std::make_shared<ProxyServerImpl>(std::move(openAI));
+}

@@ -4,6 +4,8 @@
 
 #include "IOpenAIChat.h"
 
+#include <range/v3/view/zip.hpp>
+
 AJson AJsonConv<AVector<IOpenAIChat::Message>>::toJson(const AVector<IOpenAIChat::Message>& v) {
     AJson::Array result;
     for (const auto& message: v) {
@@ -51,6 +53,13 @@ AJson AJsonConv<AVector<IOpenAIChat::Message>>::toJson(const AVector<IOpenAIChat
         result << aui::to_json(message);
     }
     return result;
+}
+
+void AJsonConv<AVector<IOpenAIChat::Message>, void>::fromJson(AJson json, AVector<IOpenAIChat::Message>& dst) {
+    dst.resize(json.asArray().size());
+    for (const auto&[in, out] : ranges::views::zip(json.asArray(), dst)) {
+        aui::from_json(in, out);
+    }
 }
 
 void AJsonConv<IOpenAIChat::Response::Usage, void>::fromJson(const AJson& v, IOpenAIChat::Response::Usage& dst) {

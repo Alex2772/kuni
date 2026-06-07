@@ -571,9 +571,14 @@ AUI_ENTRY {
 
     _<prometheus::IExporter> prometheus;
     _<App> app;
+    _<proxy_server::IProxyServer> proxyServer;
     AObject::connect(telegram->loggedIn, telegram, [&] {
         auto openAI = _new<OpenAIChatMeasurable>(std::make_unique<OpenAIChatImpl>());
         app = _new<App>(telegram, openAI);
+
+        if constexpr (config::PROXY_ENABLED) {
+            proxyServer = proxy_server::init(openAI);
+        }
         prometheus = prometheus::setup(app->metricBreadcumbs());
         prometheus->registerOpenAI(*openAI);
         prometheus->registerAppBase(*app);
@@ -585,7 +590,6 @@ AUI_ENTRY {
         })->start();
     });
 
-    auto proxyServer = config::PROXY_ENABLED ? proxy_server::init() : nullptr;
 
     IEventLoop::Handle h(&gEventLoop);
     gEventLoop.loop();

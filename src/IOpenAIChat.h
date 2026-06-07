@@ -199,4 +199,5 @@ struct AJsonConv<IOpenAIChat::Response::Usage> {
 template<>
 struct AJsonConv<AVector<IOpenAIChat::Message>> {
     static AJson toJson(const AVector<IOpenAIChat::Message>& v);
+    static void fromJson(AJson json, AVector<IOpenAIChat::Message>& dst);
 };
