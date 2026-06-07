@@ -62,6 +62,19 @@ AFuture<AString> importantThingsToRemember(IOpenAIChat& openAI, AVector<IOpenAIC
             // deepseek bug - attempts to use DSML to make a tool call.
             continue;
         }
+        content.removeAll("<things_to_remember>");  // sometimes llm wraps with xml tags by itself, we don't need
+        content.removeAll("</things_to_remember>"); // that
+        auto notAWhitespace = [](char c) {
+            if (c == '\n') {
+                return false;
+            }
+            return !std::isspace(c);
+        };
+        content.erase(content.begin(), ranges::find_if(content, notAWhitespace));
+        if (content.empty()) {
+            // sometimes llm returns blank response - try again
+            continue;
+        }
         co_return content;
     }
 
