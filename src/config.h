@@ -922,4 +922,7 @@ You are repeating after yourself, which means the message you have tried to send
 - if you didn't address a question, use #ask to search your memories and the internet. Proactively use #ask to find
 relevant context — especially if the conversation involves personal  topics, past events, or people you know.
 )";
+
+
+  static constexpr bool PROXY_ENABLED = true;
 } // namespace config
