@@ -16,6 +16,7 @@
 #include <range/v3/all.hpp>
 
 #include "OpenAITools.h"
+#include "AUI/Traits/parallel.h"
 
 using namespace std::chrono_literals;
 
@@ -28,17 +29,33 @@ Diary::Diary(Init init): mInit(std::move(init)) {
 
 AVector<Diary::Entry> Diary::read(const APath& diaryDir) {
     ALOG_TRACE(LOG_TAG) << "Diary::read: " << diaryDir;
-    AVector<Entry> result;
     diaryDir.makeDirs();
-    for (const auto& entry : diaryDir.listDir()) {
-        if (!entry.isRegularFileExists()) {
-            continue;
-        }
-        if (entry.extension() != "md") {
-            continue;
-        }
-        result << Entry{ .id = entry.filenameWithoutExtension(), .text = AString::fromUtf8(AByteBuffer::fromStream(AFileInputStream(entry))) };
-    }
+    auto listing = diaryDir.listDir();
+    return listing
+        | ranges::views::filter([](const APath& path) {
+            if (!path.isRegularFileExists()) {
+                return false;
+            }
+            if (path.extension() != "md") {
+                return false;
+            }
+            return true;
+          })
+        | ranges::view::transform([](const APath& path) {
+              return Entry{ .id = path.filenameWithoutExtension(), .text = AString::fromUtf8(AByteBuffer::fromStream(AFileInputStream(path))) };
+          })
+        | ranges::to_vector;
+}
+
+std::list<Diary::EntryEx> Diary::parseAndRead() {
+    const auto startTime = std::chrono::high_resolution_clock::now();
+
+    auto r = read(mInit.diaryDir);
+    auto result = parse(r);
+
+    const auto endTime = std::chrono::high_resolution_clock::now();
+    const auto duration = std::chrono::duration_cast<std::chrono::duration<double /*, seconds */>>(endTime - startTime);
+    ALOG_DEBUG(LOG_TAG) << "Loaded " << r.size() << " entry(ies), took " << "{:.2}s"_format(duration.count());
     return result;
 }
 
@@ -131,23 +148,31 @@ std::list<Diary::EntryEx> Diary::parse(AVector<Entry> diary) {
     // ---
     //
     // prologue in the md file with metadata.
-    return diary | ranges::views::transform([](Entry& entry) {
-        entry.text = entry.text.trim('\n');
-        try {
-            if (!entry.text.startsWith("---")) {
-                return EntryEx{.id = std::move(entry.id), .freeformBody = std::move(entry.text)};
-            }
-            auto end = entry.text.bytes().find("---", 4);
-            if (end == std::string::npos) {
-                return EntryEx{.id = std::move(entry.id), .freeformBody = std::move(entry.text)};
-            }
-            auto json = AJson::fromString(entry.text.bytes().substr(4, end - 4));
-            return EntryEx{.id = std::move(entry.id), .metadata = aui::from_json<EntryEx::Metadata>(std::move(json)), .freeformBody = std::move(AStringView(entry.text.bytes().substr(end + 4)))};
-        } catch (const AException& e) {
-            ALogger::err("DiaryManager") << "parse can't parse " << entry.id << ": " << e;
-            return EntryEx{.id = std::move(entry.id), .freeformBody = std::move(entry.text)};
-        }
-    }) | ranges::to<std::list<EntryEx>>;
+    auto futures = diary
+        | ranges::views::transform([](Entry& entry) {
+            return AUI_THREADPOOL_X [&entry] {
+                entry.text = entry.text.trim('\n');
+                try {
+                    if (!entry.text.startsWith("---")) {
+                        return EntryEx{.id = std::move(entry.id), .freeformBody = std::move(entry.text)};
+                    }
+                    auto end = entry.text.bytes().find("---", 4);
+                    if (end == std::string::npos) {
+                        return EntryEx{.id = std::move(entry.id), .freeformBody = std::move(entry.text)};
+                    }
+                    auto json = AJson::fromString(entry.text.bytes().substr(4, end - 4));
+                    return EntryEx{.id = std::move(entry.id), .metadata = aui::from_json<EntryEx::Metadata>(std::move(json)), .freeformBody = std::move(AStringView(entry.text.bytes().substr(end + 4)))};
+                } catch (const AException& e) {
+                    ALogger::err("DiaryManager") << "parse can't parse " << entry.id << ": " << e;
+                    return EntryEx{.id = std::move(entry.id), .freeformBody = std::move(entry.text)};
+                }
+            };
+          })
+        | ranges::to_vector;
+
+    return futures
+        | ranges::views::transform([](const AFuture<EntryEx>& value) { return std::exchange(*value, {}); })
+        | ranges::to<std::list<EntryEx>>;
 }
 
 void Diary::unload(std::list<EntryEx>::const_iterator it) {

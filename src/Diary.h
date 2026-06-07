@@ -241,10 +241,11 @@ private:
      */
 
     AAsyncHolder mAsync;
+
     /**
      * @brief Lazily cached list of parsed diary entries.
      */
-    aui::lazy<std::list<EntryEx>> mCachedDiary = [this] { return parse(read(mInit.diaryDir)); };
+    aui::lazy<std::list<EntryEx>> mCachedDiary = [this] { return parseAndRead(); };
 
 
     /**
@@ -255,6 +256,8 @@ private:
      * name (without extension) and the raw file content.
      */
     static AVector<Entry> read(const APath& path);
+
+    std::list<EntryEx> parseAndRead();
 };
 
 AJSON_FIELDS(Diary::EntryEx::Metadata, AJSON_FIELDS_ENTRY(score) (confidence, "confidence", AJsonFieldFlags::OPTIONAL) AJSON_FIELDS_ENTRY(lastUsed)
