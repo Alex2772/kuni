@@ -16,6 +16,7 @@
 #include "AUI/Util/kAUI.h"
 #include "tools/ask.h"
 #include "util/openai_streaming.h"
+#include "streaming_filter.h"
 
 static constexpr auto LOG_TAG = "proxy_server";
 
@@ -89,11 +90,18 @@ auto hjackChatCompletions(_<IOpenAIChat> openAI, Diary& diary, const char* apiPa
                 httplib::ClientImpl::StreamHandle handle;
                 AYieldGenerator<std::string_view> lines;
                 AVector<IOpenAIChat::Message> temporaryContext;
+                OpenAITools injectedTools;
+                proxy_server::StreamingFilter sseFilter{toolNames()};
 
                 Service(_<IOpenAIChat> openAI, Diary& diary)
                   : injectedTools({ tools::ask(temporaryContext, openAI, diary) }) {}
 
-                OpenAITools injectedTools;
+
+            private:
+                ASet<AString> toolNames() const {
+                    auto handles = injectedTools.handlers();
+                    return handles | ranges::views::keys | ranges::to<ASet<AString>>();
+                }
             };
             auto service = _new<Service>(openAI, diary);
 
@@ -145,8 +153,8 @@ auto hjackChatCompletions(_<IOpenAIChat> openAI, Diary& diary, const char* apiPa
             res.status = service->handle.response->status;
             res.set_chunked_content_provider(
                 service->handle.response->get_header_value("Content-Type"), [service](size_t, httplib::DataSink& sink) mutable {
-                    auto write = [&sink](std::string_view line) {
-                        sink.write(line.data(), static_cast<size_t>(line.length()));
+                    auto write = [&sink](std::string_view sv) {
+                        sink.write(sv.data(), static_cast<size_t>(sv.size()));
                     };
                     std::string_view line;
                     try {
@@ -156,46 +164,22 @@ auto hjackChatCompletions(_<IOpenAIChat> openAI, Diary& diary, const char* apiPa
                             return true;
                         }
                         line = *lineIt;
-                        ALOG_TRACE(LOG_TAG) << line;
+                        ALOG_DEBUG(LOG_TAG) << line;
                     } catch (const AException& e) {
                         ALogger::err(LOG_TAG) << "proxy_server::chat_completions: Unrecoverable error" << e;
                         write("Unrecoverable error\n\n");
                         sink.done();
                         return false;
                     }
-                    auto writeLineAsIs = [&] {
-                        write(line);
-                        write("\n\n");
-                    };
-                    try {
-                        auto delim = line.find(": ");
-                        if (delim == std::string_view::npos) {
-                            writeLineAsIs();
-                            return true;
-                        }
-                        auto command = line.substr(0, delim);
-                        auto value = line.substr(delim + 2);
-                        if (command != "data") {
-                            writeLineAsIs();
-                            return true;
-                        }
-                        if (value.empty()) {
-                            writeLineAsIs();
-                            return true;
-                        }
-                        if (value[0] != '{') {
-                            writeLineAsIs();
-                            return true;
-                        }
-                        auto json = AJson::fromBuffer(AByteBufferView(value));
+                    service->sseFilter.processLine(
+                        line,
+                        /*passThrough=*/[&write](std::string_view sv) {
+                            write(sv);
+                            write("\n\n");
+                        },
+                        /*handleToolCall=*/[&service](const IOpenAIChat::Message::ToolCall& tc) {
 
-                        write("data: ");
-                        write(AJson::toString(json));
-                        write("\n\n");
-                    } catch (const AException& e) {
-                        ALogger::err(LOG_TAG) << "proxy_server::chat_completions: " << e;
-                        writeLineAsIs();
-                    }
+                        });
                     return true;
                 });
 

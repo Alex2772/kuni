@@ -21,39 +21,13 @@
 #include "config.h"
 #include "AUI/IO/AByteBufferInputStream.h"
 #include "AUI/Util/ATokenizer.h"
+#include "util/openai_streaming.h"
 
 static constexpr auto LOG_TAG = "OpenAIChat";
 
 using namespace std::chrono_literals;
 
 
-struct StreamingResponse {
-    AString id;
-    AString object;
-    AString model;
-    AString system_fingerprint;
-    int64_t created;
-    struct Choice {
-        int index{};
-        IOpenAIChat::Message delta;
-    };
-    AVector<Choice> choices;
-};
-
-AJSON_FIELDS(StreamingResponse,
-    AJSON_FIELDS_ENTRY(id)
-    AJSON_FIELDS_ENTRY(object)
-    AJSON_FIELDS_ENTRY(model)
-    AJSON_FIELDS_ENTRY(system_fingerprint)
-    AJSON_FIELDS_ENTRY(choices)
-    AJSON_FIELDS_ENTRY(created)
-    )
-
-
-AJSON_FIELDS(StreamingResponse::Choice,
-    AJSON_FIELDS_ENTRY(index)
-    AJSON_FIELDS_ENTRY(delta)
-    )
 
 AString IOpenAIChat::embedImage(AImageView image) {
     ALOG_TRACE(LOG_TAG) << "embedImage";
@@ -171,13 +145,13 @@ _<IOpenAIChat::StreamingResponse> OpenAIChatImpl::chatStreaming(Params params, A
         const auto caller = AThread::current();
         auto processJson = [=](AJson json) {
             caller->enqueue([=, json = std::move(json)] {
-                auto response = aui::from_json<::StreamingResponse>(json);
+                auto chunk = aui::from_json<util::openai_streaming::StreamingChunk>(json);
                 auto out = result->response.writeScope();
-                out->id = response.id;
-                out->created = response.created;
-                out->model = response.model;
-                out->system_fingerprint = response.system_fingerprint;
-                for (auto& choice: response.choices) {
+                out->id = chunk.id;
+                out->created = chunk.created;
+                out->model = chunk.model;
+                out->system_fingerprint = chunk.system_fingerprint;
+                for (auto& choice: chunk.choices) {
                     choice.delta.role = Message::Role::ASSISTANT;
                     while (out->choices.size() <= choice.index) {
                         out->choices.emplace_back().index = out->choices.size();
