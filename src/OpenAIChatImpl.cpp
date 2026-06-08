@@ -151,13 +151,7 @@ _<IOpenAIChat::StreamingResponse> OpenAIChatImpl::chatStreaming(Params params, A
                 out->created = chunk.created;
                 out->model = chunk.model;
                 out->system_fingerprint = chunk.system_fingerprint;
-                for (auto& choice: chunk.choices) {
-                    choice.delta.role = Message::Role::ASSISTANT;
-                    while (out->choices.size() <= choice.index) {
-                        out->choices.emplace_back().index = out->choices.size();
-                    }
-                    out->choices.at(choice.index).message += choice.delta;
-                }
+                chunk.collectTo(out->choices);
             });
         };
 

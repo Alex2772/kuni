@@ -22,6 +22,18 @@ struct StreamingChunk {
         IOpenAIChat::String finish_reason;
     };
     AVector<Choice> choices;
+
+    void collectTo(AVector<IOpenAIChat::Response::Choice>& out) const {
+        for (auto& choice : choices) {
+            while (out.size() <= static_cast<size_t>(choice.index)) {
+                const auto i = out.size();
+                out.emplace_back().index = i;
+            }
+            out[choice.index].message += choice.delta;
+            out[choice.index].message.role = IOpenAIChat::Message::Role::ASSISTANT;
+            out[choice.index].finish_reason += choice.finish_reason;
+        }
+    }
 };
 
 }

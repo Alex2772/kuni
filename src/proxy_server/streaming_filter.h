@@ -33,10 +33,10 @@ namespace proxy_server {
 class StreamingFilter {
 public:
     /**
-     * @param injectedToolNames  Set of tool names handled locally by the proxy.
+     * @param filterToolNames  Set of tool names handled locally by the proxy.
      *                           Comparisons are case-sensitive.
      */
-    explicit StreamingFilter(ASet<AString> injectedToolNames);
+    explicit StreamingFilter(ASet<AString> filterToolNames);
 
     /**
      * @brief Process one SSE event line (the payload, WITHOUT the trailing \n\n).
@@ -55,18 +55,18 @@ public:
         const std::function<void(const IOpenAIChat::Message::ToolCall&)>& handleToolCall);
 
 private:
-    ASet<AString> mInjectedToolNames;
-
-    // Per-choice accumulator for streaming delta messages.
-    struct ChoiceState {
-        IOpenAIChat::Message accumulated;
-        bool intercepted = false;   // true once we determined this choice has an injected tool call
-    };
-    AVector<ChoiceState> mChoices;
+    // Tool names whose we shouldn't passthrough.
+    ASet<AString> mFilteredToolNames;
+    AVector<IOpenAIChat::Response::Choice> mChoices;
 
     // Raw SSE lines accumulated while we are not sure if a choice will be intercepted.
     // Flushed to passThrough if interception does not apply.
     AVector<std::string> mPendingLines;
+
+    // True once any content/reasoning chunk has been forwarded to the client before
+    // the tool-call phase started.  If true and all tool calls are injected, we must
+    // emit a synthetic finish_reason chunk so the client knows the stream ended.
+    bool mHasPassedThroughContent = false;
 };
 
 }   // namespace proxy_server

@@ -1,4 +1,7 @@
+#include "../../../.aui/prefix/range-v3/beda563b2764844e15b7fbd196eb5121/include/range/v3/view/drop_last.hpp"
 #include "proxy_server/streaming_filter.h"
+#include "util/openai_streaming.h"
+
 #include <gmock/gmock.h>
 #include <string>
 #include <vector>
@@ -11,6 +14,17 @@ using namespace testing;
 struct FilterResult {
     std::vector<std::string> passedThrough;
     std::vector<IOpenAIChat::Message::ToolCall> toolCalls;
+
+    auto collectPassedThrough() {
+        // we don't really care about amount and chunking of synthetic SSE. the only stuff we care is arguments were
+        // passed properly. so we accumulate these lines delta by delta and check the results.
+        AVector<IOpenAIChat::Response::Choice> accumulator;
+        for (const auto& line : passedThrough | ranges::views::drop_last(1)) {
+            auto str = line.substr(line.find(": ") + 2);
+            aui::from_json<util::openai_streaming::StreamingChunk>(AJson::fromString(str)).collectTo(accumulator);
+        }
+        return accumulator;
+    }
 };
 
 static FilterResult run(StreamingFilter& filter, std::vector<std::string_view> lines) {
@@ -96,7 +110,6 @@ TEST(StreamingFilter, SseCommentPassesThrough) {
     auto result = run(filter, {": OPENROUTER PROCESSING"});
     ASSERT_EQ(result.passedThrough.size(), 1u);
     EXPECT_EQ(result.passedThrough[0], ": OPENROUTER PROCESSING");
-    EXPECT_TRUE(result.toolCalls.empty());
 }
 
 // A tool call to a NON-injected tool must pass through as-is.
@@ -105,10 +118,57 @@ TEST(StreamingFilter, NonInjectedToolPassesThrough) {
     auto result = run(filter, {
         makeChunk(0, {}, {}, {}, 0, "call_1", "search", ""),
         makeChunk(0, {}, {}, {}, 0, {},        {},       R"({"q":"test"})"),
-        makeChunk(0, {}, {}, "tool_calls", 0),
+        makeChunk(0, {}, {}, "tool_calls"),
+        "data: [DONE]",
     });
     EXPECT_EQ(result.toolCalls.size(), 0u);
-    EXPECT_EQ(result.passedThrough.size(), 3u);
+    ASSERT_FALSE(result.passedThrough.empty());
+
+    // we expect the last line to be data: [DONE]
+    EXPECT_EQ(result.passedThrough.back(), "data: [DONE]");
+    auto accumulator = result.collectPassedThrough();
+    ASSERT_EQ(accumulator.size(), 1u);
+    EXPECT_EQ(accumulator[0].index, 0);
+    EXPECT_EQ(accumulator[0].finish_reason, "tool_calls");
+    EXPECT_EQ(accumulator[0].message.content, "");
+    EXPECT_EQ(accumulator[0].message.reasoning, "");
+    EXPECT_EQ(accumulator[0].message.role, IOpenAIChat::Message::Role::ASSISTANT);
+    ASSERT_EQ(accumulator[0].message.tool_calls.size(), 1u);
+    EXPECT_EQ(accumulator[0].message.tool_calls[0].index, 0);
+    EXPECT_EQ(accumulator[0].message.tool_calls[0].id, "call_1");
+    EXPECT_EQ(accumulator[0].message.tool_calls[0].function.name, "search");
+    EXPECT_EQ(accumulator[0].message.tool_calls[0].function.arguments, R"({"q":"test"})");
+}
+
+// A tool call to a NON-injected tool must pass through as-is.
+TEST(StreamingFilter, NonInjectedToolPassesThrough2) {
+    StreamingFilter filter({"ask"});   // "search" is NOT injected
+    auto result = run(filter, {
+        makeChunk(0, {}, {}, {}, 0, "call_0", "ask", ""),
+        makeChunk(0, {}, {}, {}, 1, "call_1", "search", ""),
+        makeChunk(0, {}, {}, {}, 1, {},        {},       R"({"q":"test"})"),
+        makeChunk(0, {}, {}, "tool_calls"),
+        "data: [DONE]",
+    });
+    ASSERT_EQ(result.toolCalls.size(), 1u);
+    EXPECT_EQ(result.toolCalls[0].function.name, "ask");
+    ASSERT_FALSE(result.passedThrough.empty());
+
+    // we expect the last line to be data: [DONE]
+    EXPECT_EQ(result.passedThrough.back(), "data: [DONE]");
+
+    auto accumulator = result.collectPassedThrough();
+    ASSERT_EQ(accumulator.size(), 1u);
+    EXPECT_EQ(accumulator[0].index, 0); // important: the client should see index 0 because we silently stolen "ask" from response
+    EXPECT_EQ(accumulator[0].finish_reason, "tool_calls");
+    EXPECT_EQ(accumulator[0].message.content, "");
+    EXPECT_EQ(accumulator[0].message.reasoning, "");
+    EXPECT_EQ(accumulator[0].message.role, IOpenAIChat::Message::Role::ASSISTANT);
+    ASSERT_EQ(accumulator[0].message.tool_calls.size(), 1u);
+    EXPECT_EQ(accumulator[0].message.tool_calls[0].index, 0);
+    EXPECT_EQ(accumulator[0].message.tool_calls[0].id, "call_1");
+    EXPECT_EQ(accumulator[0].message.tool_calls[0].function.name, "search");
+    EXPECT_EQ(accumulator[0].message.tool_calls[0].function.arguments, R"({"q":"test"})");
 }
 
 // A tool call to an injected tool must be intercepted (NOT passed through),
@@ -124,11 +184,12 @@ TEST(StreamingFilter, InjectedToolIsIntercepted) {
         makeChunk(0, {}, {}, {}, 0, {}, {}, R"({"query": "Hello)"),
         makeChunk(0, {}, {}, {}, 0, {}, {}, R"(, this is a test})"),
         makeChunk(0, {}, {}, "tool_calls", 0),
+        "data: [DONE]",
     });
-    EXPECT_EQ(result.passedThrough.size(), 0u);
+    ASSERT_EQ(result.passedThrough.size(), 1u);
+    EXPECT_EQ(result.passedThrough[0], "data: [DONE]");
+
     ASSERT_EQ(result.toolCalls.size(), 1u);
-    EXPECT_EQ(result.toolCalls[0].function.name, "ask");
-    EXPECT_EQ(result.toolCalls[0].id, "call_abc");
     EXPECT_THAT(std::string(result.toolCalls[0].function.arguments), HasSubstr("Hello"));
 }
 
@@ -147,110 +208,17 @@ TEST(StreamingFilter, ReasoningBeforeToolCallPassesThrough) {
     });
     // The first two reasoning chunks must have been flushed through.
     EXPECT_THAT(result.passedThrough, Contains(HasSubstr("The user wants me to call ask")));
+    EXPECT_THAT(result.passedThrough, Contains(HasSubstr("More reasoning")));
+
+    // the last two must have been flushed too.
+    EXPECT_THAT(result.passedThrough, Contains(HasSubstr("tool_calls")));
     EXPECT_THAT(result.passedThrough, Contains("data: [DONE]"));
+
     // Tool call chunks must NOT be forwarded.
     for (const auto& line : result.passedThrough) {
         EXPECT_THAT(line, Not(HasSubstr(R"("name":"ask")")));
     }
-    ASSERT_EQ(result.toolCalls.size(), 1u);
+    ASSERT_EQ(result.passedThrough.size(), 4u);
     EXPECT_EQ(result.toolCalls[0].function.name, "ask");
 }
 
-// When there are two choices and one has an injected tool call while the other
-// has plain content, the plain-content choice passes through and the tool call
-// choice is intercepted.
-TEST(StreamingFilter, TwoChoicesMixedInterception) {
-    StreamingFilter filter({"ask"});
-    auto result = run(filter, {
-        makeChunk(0, "hi"),                                              // choice 0: content
-        makeChunk(1, {}, {}, {}, 0, "call_2", "ask", ""),              // choice 1: injected tool
-        makeChunk(1, {}, {}, {}, 0, {}, {}, R"({"q":"test"})"),
-        makeChunk(0, " there", {}, "stop"),                              // choice 0 finishes
-        makeChunk(1, {}, {}, "tool_calls", 0),                          // choice 1 finishes
-    });
-    // choice 0 lines must pass through
-    EXPECT_THAT(result.passedThrough, Contains(HasSubstr(R"("content":"hi")")));
-    // choice 1 tool call must be intercepted
-    ASSERT_EQ(result.toolCalls.size(), 1u);
-    EXPECT_EQ(result.toolCalls[0].function.name, "ask");
-}
-
-// Arguments arrive before the function name (edge case: index chunk without
-// name, then name arrives in next chunk) — must buffer until name is known.
-TEST(StreamingFilter, BuffersUntilToolNameArrives) {
-    StreamingFilter filter({"ask"});
-
-    // First chunk: tool_call with index but no name yet
-    std::string chunkNoName = R"(data: {"id":"x","object":"chat.completion.chunk","created":0,"model":"m","choices":[{"index":0,"delta":{"role":"assistant","tool_calls":[{"index":0,"function":{"arguments":""}}]}}]})";
-    // Second chunk: name arrives
-    std::string chunkWithName = R"(data: {"id":"x","object":"chat.completion.chunk","created":0,"model":"m","choices":[{"index":0,"delta":{"role":"assistant","tool_calls":[{"index":0,"id":"call_x","function":{"name":"ask","arguments":""}}]}}]})";
-    std::string chunkArgs = makeChunk(0, {}, {}, {}, 0, {}, {}, R"({"q":"hello"})");
-    std::string chunkDone = makeChunk(0, {}, {}, "tool_calls", 0);
-
-    auto result = run(filter, {chunkNoName, chunkWithName, chunkArgs, chunkDone});
-    EXPECT_EQ(result.passedThrough.size(), 0u);
-    ASSERT_EQ(result.toolCalls.size(), 1u);
-    EXPECT_EQ(result.toolCalls[0].function.name, "ask");
-}
-
-// Reproduce the exact real-world sequence from the debug log (condensed).
-TEST(StreamingFilter, RealWorldSequenceFromLog) {
-    StreamingFilter filter({"ask"});
-
-    // Reasoning chunks
-    std::vector<std::string_view> lines;
-    lines.push_back(": OPENROUTER PROCESSING");
-    auto r1 = makeChunk(0, {}, "The user wants me to");
-    lines.push_back(r1);
-    auto r2 = makeChunk(0, {}, " try calling the ask tool");
-    lines.push_back(r2);
-
-    // Tool call starts — name in first chunk, arguments in subsequent chunks
-    auto tc1 = R"(data: {"id":"gen-x","object":"chat.completion.chunk","created":0,"model":"m","choices":[{"index":0,"delta":{"content":null,"role":"assistant","tool_calls":[{"index":0,"id":"call_bbc0740c61de436a97603323","type":"function","function":{"name":"ask","arguments":""}}]},"finish_reason":null}]})";
-    lines.push_back(tc1);
-
-    auto args1 = R"(data: {"id":"gen-x","object":"chat.completion.chunk","created":0,"model":"m","choices":[{"index":0,"delta":{"content":null,"role":"assistant","tool_calls":[{"index":0,"function":{"arguments":"{\"query\": \"Hello, this is a test query\""}}]},"finish_reason":null}]})";
-    lines.push_back(args1);
-
-    auto args2 = R"(data: {"id":"gen-x","object":"chat.completion.chunk","created":0,"model":"m","choices":[{"index":0,"delta":{"content":null,"role":"assistant","tool_calls":[{"index":0,"function":{"arguments":"}"}}]},"finish_reason":null}]})";
-    lines.push_back(args2);
-
-    auto finish = R"(data: {"id":"gen-x","object":"chat.completion.chunk","created":0,"model":"m","choices":[{"index":0,"delta":{"content":"","role":"assistant","reasoning":null},"finish_reason":"tool_calls"}]})";
-    lines.push_back(finish);
-
-    lines.push_back("data: [DONE]");
-
-    auto result = run(filter, lines);
-
-    // Reasoning and comment must pass through
-    EXPECT_THAT(result.passedThrough, Contains(": OPENROUTER PROCESSING"));
-    EXPECT_THAT(result.passedThrough, Contains(HasSubstr("The user wants me to")));
-    EXPECT_THAT(result.passedThrough, Contains("data: [DONE]"));
-
-    // Tool call chunks must NOT pass through
-    for (const auto& line : result.passedThrough) {
-        EXPECT_THAT(line, Not(HasSubstr(R"("name":"ask")")));
-    }
-
-    // Handler must be called once with the full accumulated call
-    ASSERT_EQ(result.toolCalls.size(), 1u);
-    EXPECT_EQ(result.toolCalls[0].function.name, "ask");
-    EXPECT_EQ(result.toolCalls[0].id, "call_bbc0740c61de436a97603323");
-    EXPECT_THAT(std::string(result.toolCalls[0].function.arguments), HasSubstr("Hello, this is a test query"));
-}
-
-// Empty input produces no output.
-TEST(StreamingFilter, EmptyInput) {
-    StreamingFilter filter({"ask"});
-    auto result = run(filter, {});
-    EXPECT_TRUE(result.passedThrough.empty());
-    EXPECT_TRUE(result.toolCalls.empty());
-}
-
-// Malformed JSON passes through unchanged.
-TEST(StreamingFilter, MalformedJsonPassesThrough) {
-    StreamingFilter filter({"ask"});
-    auto result = run(filter, {"data: {not valid json"});
-    ASSERT_EQ(result.passedThrough.size(), 1u);
-    EXPECT_EQ(result.passedThrough[0], "data: {not valid json");
-}

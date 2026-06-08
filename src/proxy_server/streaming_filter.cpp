@@ -8,11 +8,13 @@
 #include "AUI/Logging/ALogger.h"
 #include "util/openai_streaming.h"
 
+#include <range/v3/algorithm/any_of.hpp>
+
 static constexpr auto LOG_TAG = "streaming_filter";
 
 namespace proxy_server {
 
-StreamingFilter::StreamingFilter(ASet<AString> injectedToolNames) : mInjectedToolNames(std::move(injectedToolNames)) {}
+StreamingFilter::StreamingFilter(ASet<AString> filteredToolNames) : mFilteredToolNames(std::move(filteredToolNames)) {}
 
 void StreamingFilter::processLine(
     std::string_view line,
@@ -53,44 +55,19 @@ void StreamingFilter::processLine(
         return;
     }
 
-    for (auto& choice : chunk.choices) {
-        while (mChoices.size() <= static_cast<size_t>(choice.index)) {
-            mChoices.emplace_back();
-        }
+    chunk.collectTo(mChoices);
+
+    const bool anyUnresolved = ranges::any_of(chunk.choices, [&](const util::openai_streaming::StreamingChunk::Choice& choice) {
         auto& state = mChoices[choice.index];
+        return ranges::any_of(state.message.tool_calls, [&](const IOpenAIChat::Message::ToolCall& toolCall) {
+            return toolCall.function.name.empty();
+        });
+    });
 
-        state.accumulated += choice.delta;
-
-        if (!state.intercepted) {
-            for (const auto& tc : state.accumulated.tool_calls) {
-                if (!tc.function.name.empty()) {
-                    if (mInjectedToolNames.contains(tc.function.name)) {
-                        state.intercepted = true;
-                    }
-                }
-            }
-        }
-    }
-
-    bool anyUnresolved = false;
-    for (auto& choice : chunk.choices) {
+    const bool hasToolCalls = ranges::any_of(chunk.choices, [&](const util::openai_streaming::StreamingChunk::Choice& choice) {
         auto& state = mChoices[choice.index];
-        if (state.intercepted)
-            continue;
-        for (const auto& tc : state.accumulated.tool_calls) {
-            if (tc.function.name.empty()) {
-                anyUnresolved = true;
-            }
-        }
-    }
-
-    bool hasToolCalls = false;
-    for (auto& choice : chunk.choices) {
-        if (!mChoices[choice.index].accumulated.tool_calls.empty()) {
-            hasToolCalls = true;
-            break;
-        }
-    }
+        return !state.message.tool_calls.empty();
+    });
 
     if (!hasToolCalls) {
         // No tool calls involved — flush any pending lines and pass this one through.
@@ -98,6 +75,7 @@ void StreamingFilter::processLine(
             passThrough(pending);
         }
         mPendingLines.clear();
+        mHasPassedThroughContent = true;
         passThrough(line);
         return;
     }
@@ -108,25 +86,95 @@ void StreamingFilter::processLine(
         return;
     }
 
-    bool allIntercepted = true;
-    for (auto& choice : chunk.choices) {
-        if (!mChoices[choice.index].intercepted) {
-            allIntercepted = false;
-            break;
-        }
-    }
+    // All tool calls in the current chunk have names resolved. Determine if any are injected.
+    const bool anyInjected = ranges::any_of(chunk.choices, [&](const util::openai_streaming::StreamingChunk::Choice& c) {
+        auto& state = mChoices[c.index];
+        return ranges::any_of(state.message.tool_calls, [&](const IOpenAIChat::Message::ToolCall& tc) {
+            return mFilteredToolNames.contains(tc.function.name);
+        });
+    });
 
-    if (allIntercepted) {
-        mPendingLines.clear();
-        for (auto& choice : chunk.choices) {
-            auto& state = mChoices[choice.index];
-            if (!choice.finish_reason.empty()) {
-                for (const auto& tc : state.accumulated.tool_calls) {
-                    handleToolCall(tc);
+    if (anyInjected) {
+        // Check whether finish_reason has arrived (i.e. accumulation is complete).
+        const bool finished = ranges::any_of(mChoices, [](const IOpenAIChat::Response::Choice& c) {
+            return !c.finish_reason.empty();
+        });
+
+        if (!finished) {
+            // Keep buffering until finish_reason arrives.
+            mPendingLines.emplace_back(line);
+            return;
+        }
+
+        // finish_reason arrived — classify all tool calls and dispatch/reconstruct.
+        AVector<IOpenAIChat::Message::ToolCall> nonInjectedToolCalls;
+        for (auto& choice : mChoices) {
+            for (auto& toolCall : choice.message.tool_calls) {
+                if (mFilteredToolNames.contains(toolCall.function.name)) {
+                    handleToolCall(toolCall);
+                } else {
+                    auto reindexed = toolCall;
+                    reindexed.index = static_cast<int64_t>(nonInjectedToolCalls.size());
+                    nonInjectedToolCalls.emplace_back(std::move(reindexed));
                 }
             }
         }
+
+        // Drop pending lines — they contain injected tool call chunks.
+        mPendingLines.clear();
+
+        // Always emit a synthetic SSE chunk so the client sees a proper finish.
+        // If there are non-injected tool calls, emit them with finish_reason="tool_calls".
+        // If all tool calls were injected, emit an empty delta with finish_reason="stop"
+        // so the client knows the stream ended cleanly.
+        AJson deltaJson = AJson::Object{{"role", AString("assistant")}};
+        AString finishReason;
+
+        if (!nonInjectedToolCalls.empty()) {
+            AJson::Array toolCallsJson;
+            for (auto& tc : nonInjectedToolCalls) {
+                toolCallsJson.push_back(AJson::Object{
+                    {"index",    static_cast<int64_t>(tc.index)},
+                    {"id",       tc.id},
+                    {"type",     AString("function")},
+                    {"function", AJson::Object{
+                        {"name",      tc.function.name},
+                        {"arguments", tc.function.arguments},
+                    }},
+                });
+            }
+            deltaJson["tool_calls"] = std::move(toolCallsJson);
+            finishReason = "tool_calls";
+        } else if (mHasPassedThroughContent) {
+            // All tool calls were injected and handled internally, but the client already
+            // received content/reasoning chunks — emit a synthetic finish so it knows
+            // the stream ended cleanly.
+            finishReason = "tool_calls";
+        } else {
+            // All tool calls were injected and no content was sent to the client at all.
+            // Don't emit any synthetic chunk — just stay silent.
+        }
+
+        if (finishReason.empty()) {
+            return;
+        }
+
+        AJson choiceJson = AJson::Object{
+            {"index",         static_cast<int64_t>(0)},
+            {"delta",         std::move(deltaJson)},
+            {"finish_reason", finishReason},
+        };
+        AJson responseJson = AJson::Object{
+            {"id",      chunk.id},
+            {"object",  AString("chat.completion.chunk")},
+            {"created", chunk.created},
+            {"model",   chunk.model},
+            {"choices", AJson::Array{std::move(choiceJson)}},
+        };
+        auto reconstructed = "data: " + AJson::toString(responseJson);
+        passThrough(reconstructed);
     } else {
+        // No injected tool calls at all — flush pending lines and pass the current line through.
         for (auto& pending : mPendingLines) {
             passThrough(pending);
         }
