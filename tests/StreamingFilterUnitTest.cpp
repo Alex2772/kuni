@@ -1,4 +1,4 @@
-#include "../../../.aui/prefix/range-v3/beda563b2764844e15b7fbd196eb5121/include/range/v3/view/drop_last.hpp"
+#include <range/v3/view/drop_last.hpp>
 #include "proxy_server/streaming_filter.h"
 #include "util/openai_streaming.h"
 

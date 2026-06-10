@@ -54,6 +54,9 @@ public:
         const std::function<void(std::string_view)>& passThrough,
         const std::function<void(const IOpenAIChat::Message::ToolCall&)>& handleToolCall);
 
+    [[nodiscard]] const AVector<IOpenAIChat::Response::Choice>& choices() const & { return mChoices; }
+    [[nodiscard]] AVector<IOpenAIChat::Response::Choice> choices() && { return std::exchange(mChoices, {}); }
+
 private:
     // Tool names whose we shouldn't passthrough.
     ASet<AString> mFilteredToolNames;
