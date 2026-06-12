@@ -345,7 +345,7 @@ struct ProxyServerImpl : proxy_server::IProxyServer {
         app.Get("/", [](const httplib::Request& eq, httplib::Response& res) {
             res.set_content("Up and running", "text/plain");
         });
-        app.Post("/v1/chat/completions", hjackChatCompletions(messageInjector));
+        app.Post("/v1/chat/completions", hjackChatCompletions());
         app.Post("/v1/embeddings", basicProxy("chat/embeddings"));
         app.Post("/v1/images/generations", basicProxy("images/generations"));
         app.Post("/v1/audio/transcriptions", basicProxy("audio/transcriptions"));
