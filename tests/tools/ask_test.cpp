@@ -110,8 +110,7 @@ static std::valarray<double> dummyEmbedding() {
 TEST(AskTest, HandlerShortQueryError) {
     auto openAI = _new<OpenAIMock>();
     DiaryMock diary;
-    AVector<IOpenAIChat::Message> temporaryContext;
-    auto tool = tools::ask(temporaryContext, openAI, diary);
+    auto tool = tools::ask([] { return AString{}; }, openAI, diary);
 
     EXPECT_CALL(*openAI, chat(testing::_, testing::_)).Times(0);
     EXPECT_CALL(*openAI, embedding(testing::_, testing::_)).Times(0);
@@ -134,8 +133,7 @@ TEST(AskTest, HandlerShortQueryError) {
 TEST(AskTest, HandlerMissingQueryThrows) {
     auto openAI = _new<OpenAIMock>();
     DiaryMock diary;
-    AVector<IOpenAIChat::Message> temporaryContext;
-    auto tool = tools::ask(temporaryContext, openAI, diary);
+    auto tool = tools::ask([] { return AString{}; }, openAI, diary);
 
     EXPECT_CALL(*openAI, chat(testing::_, testing::_)).Times(0);
 
@@ -157,8 +155,7 @@ TEST(AskTest, HandlerMissingQueryThrows) {
 TEST(AskTest, HandlerSuccessWithToolCall) {
     auto openAI = _new<OpenAIMock>();
     DiaryMock diary;
-    AVector<IOpenAIChat::Message> temporaryContext;
-    auto tool = tools::ask(temporaryContext, openAI, diary);
+    auto tool = tools::ask([] { return AString{}; }, openAI, diary);
 
     const AString kFinalAnswer = "Alex writes ambient electronic music.";
     const AString kDiaryEntryBody = "Alex listens to ambient electronic music and writes his own tracks.";
@@ -205,8 +202,7 @@ TEST(AskTest, HandlerSuccessWithToolCall) {
 TEST(AskTest, HandlerLLMForcedToCallTool) {
     auto openAI = _new<OpenAIMock>();
     DiaryMock diary;
-    AVector<IOpenAIChat::Message> temporaryContext;
-    auto tool = tools::ask(temporaryContext, openAI, diary);
+    auto tool = tools::ask([] { return AString{}; }, openAI, diary);
 
     const AString kFinalAnswer = "Here is what I found.";
 
@@ -244,12 +240,9 @@ TEST(AskTest, HandlerWithTemporaryContextEnrichesQuery) {
     auto openAI = _new<OpenAIMock>();
     DiaryMock diary;
 
-    IOpenAIChat::Message ctxMsg;
-    ctxMsg.role = IOpenAIChat::Message::Role::ASSISTANT;
-    ctxMsg.content = "User said they are learning guitar.";
-    AVector<IOpenAIChat::Message> temporaryContext = { std::move(ctxMsg) };
+    AString ctxContent = "User said they are learning guitar.";
 
-    auto tool = tools::ask(temporaryContext, openAI, diary);
+    auto tool = tools::ask([&ctxContent] { return ctxContent; }, openAI, diary);
 
     const AString kFinalAnswer = "Found guitar-related diary entries.";
 
@@ -294,8 +287,7 @@ TEST(AskTest, HandlerWithTemporaryContextEnrichesQuery) {
 TEST(AskTest, HandlerDiaryReturnsNoEntries) {
     auto openAI = _new<OpenAIMock>();
     DiaryMock diary;
-    AVector<IOpenAIChat::Message> temporaryContext;
-    auto tool = tools::ask(temporaryContext, openAI, diary);
+    auto tool = tools::ask([] { return AString{}; }, openAI, diary);
 
     const AString kFinalAnswer = "I could not find relevant information.";
 
@@ -327,8 +319,7 @@ TEST(AskTest, HandlerDiaryReturnsNoEntries) {
 TEST(AskTest, ToolMetadata) {
     auto openAI = _new<OpenAIMock>();
     DiaryMock diary;
-    AVector<IOpenAIChat::Message> temporaryContext;
-    auto tool = tools::ask(temporaryContext, openAI, diary);
+    auto tool = tools::ask([] { return AString{}; }, openAI, diary);
 
     EXPECT_EQ(tool.name, "ask");
     EXPECT_FALSE(tool.description.empty());

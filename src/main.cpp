@@ -50,6 +50,8 @@
 
 #include <range/v3/view/take.hpp>
 #include <proxy_server/proxy_server.h>
+#include "tools/ask.h"
+#include <Diary.h>
 
 using namespace std::chrono_literals;
 
@@ -577,7 +579,15 @@ AUI_ENTRY {
         app = _new<App>(telegram, openAI);
 
         if constexpr (config::PROXY_ENABLED) {
-            proxyServer = proxy_server::init(openAI);
+            auto diary = std::make_shared<Diary>(Diary::Init{ .diaryDir = "data/diary", .openAI = openAI });
+            proxyServer = proxy_server::init([openAI, diary](const AVector<IOpenAIChat::Message>& ctx) {
+                // Create the tools directly without using an initializer list
+                auto askTool = tools::ask(
+                    [&ctx] { return ctx.empty() ? AString{} : AString(ctx.last().content); },
+                    openAI, *diary
+                );
+                return OpenAITools({ askTool }); // Ensure this matches the expected constructor
+            });
         }
         prometheus = prometheus::setup(app->metricBreadcumbs());
         prometheus->registerOpenAI(*openAI);

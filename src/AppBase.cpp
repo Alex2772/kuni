@@ -485,7 +485,7 @@ AFuture<AString> AppBase::onCleanContext() {
 
 void AppBase::updateTools(OpenAITools& actions) {
     ALOG_TRACE(LOG_TAG) << "updateTools";
-    actions.insert(tools::ask(mTemporaryContext, openAI(), mDiary));
+    actions.insert(tools::ask([this] { return mTemporaryContext.empty() ? AString{} : mTemporaryContext.last().content; }, openAI(), mDiary));
     actions.onAfterToolCall = [this](const AString& toolName) {
         if (toolName == "wait") {
             return;

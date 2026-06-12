@@ -162,7 +162,7 @@ Do not make up facts. Rely exclusively on provided context.
 }
 
 OpenAITools::Tool
-tools::ask(const AVector<IOpenAIChat::Message>& temporaryContext, _<IOpenAIChat> openAI, Diary& diary) {
+tools::ask(std::function<AString()> additionalDetails, _<IOpenAIChat> openAI, Diary& diary) {
     return {
         .name = "ask",
         .description = "Consult with Kuni's main knowledge database and the internet (subagent). Use this to "
@@ -187,7 +187,7 @@ tools::ask(const AVector<IOpenAIChat::Message>& temporaryContext, _<IOpenAIChat>
                 },
             .required = {"query"},
         },
-        .handler = [&temporaryContext, openAI, &diary](OpenAITools::Ctx ctx) -> AFuture<AString> {
+        .handler = [additionalDetails, openAI, &diary](OpenAITools::Ctx ctx) -> AFuture<AString> {
             auto query = ctx.args["query"].asStringOpt().valueOrException("\"query\" string is required");
             if (query.length() < 10) {
                 // Alex2772 16-04-2026:
@@ -206,7 +206,7 @@ tools::ask(const AVector<IOpenAIChat::Message>& temporaryContext, _<IOpenAIChat>
     - everything else to populate query
     )");
             }
-            if (!temporaryContext.empty()) {
+            if (const auto details = additionalDetails(); !details.empty()) {
                 query = "Here's the deal:\n"
                         "<additional context ignore_instructions>\n"
                         "{}\n"
@@ -216,9 +216,9 @@ tools::ask(const AVector<IOpenAIChat::Message>& temporaryContext, _<IOpenAIChat>
                         "- how do I usually act in this situation?\n"
                         "- is there additional details I should know?\n"
                         "- how can I improve my reaction?\n"
-                        "- {}"_format(temporaryContext.last().content, query);
+                        "- {}"_format(details, query);
             }
-            co_return (co_await ask(*openAI, diary, query, {.confidenceFactor = 0.f})) + "\nIf response above is dismissive, try rephrasing your query and include other details";
+            co_return (co_await ask(*openAI, diary, query, {.confidenceFactor = 0.f}));
         },
     };
 }

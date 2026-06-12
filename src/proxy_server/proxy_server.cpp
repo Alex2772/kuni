@@ -14,10 +14,10 @@
 #include "AUI/Thread/AAsyncHolder.h"
 #include "AUI/Url/AUrl.h"
 #include "AUI/Util/kAUI.h"
-#include "tools/ask.h"
 #include "util/openai_streaming.h"
 #include "streaming_filter.h"
 #include "message_injector.h"
+#include "AUI/Thread/AEventLoop.h"
 
 static constexpr auto LOG_TAG = "proxy_server";
 
@@ -105,10 +105,10 @@ auto basicProxy(const char* apiPath = "chat/completions") {
     };
 }
 
-auto hjackChatCompletions(_<IOpenAIChat> openAI, Diary& diary, proxy_server::MessageInjector& injector) {
+auto hjackChatCompletions(proxy_server::ToolFactory toolsFactory, proxy_server::MessageInjector& injector) {
     static constexpr auto API_PATH = "chat/completions";
     static const auto DATA_DIR = APath("data") / "proxy";
-    return [=, &diary, &injector](const httplib::Request& req, httplib::Response& res) {
+    return [=, &injector](const httplib::Request& req, httplib::Response& res) {
         try {
             static const auto CONFIG = config::ENDPOINT_MAIN;
             APath("logs_proxy").makeDirs();
@@ -146,8 +146,8 @@ auto hjackChatCompletions(_<IOpenAIChat> openAI, Diary& diary, proxy_server::Mes
 
                 AJson requestJson;
 
-                ResponseService(_<IOpenAIChat> openAI, Diary& diary, proxy_server::MessageInjector& injector)
-                  : injectedTools({ tools::ask(temporaryContext, openAI, diary) }),
+                ResponseService(proxy_server::ToolFactory toolsFactory, proxy_server::MessageInjector& injector)
+                  : injectedTools(toolsFactory(temporaryContext)),
                     messageInjector(injector) {
 
                 }
@@ -299,7 +299,7 @@ auto hjackChatCompletions(_<IOpenAIChat> openAI, Diary& diary, proxy_server::Mes
                     return handles | ranges::views::keys | ranges::to<ASet<AString>>();
                 }
             };
-            auto service = _new<ResponseService>(openAI, diary, injector);
+            auto service = _new<ResponseService>(toolsFactory, injector);
             AFileOutputStream( "{}.client-kuni.json"_format(service->logsPrefix)) << req.body;
 
             service->requestJson = AJson::fromString(req.body);
@@ -334,11 +334,9 @@ struct ProxyServerImpl : proxy_server::IProxyServer {
     httplib::Server app;
     std::thread thread;
 
-    Diary diary;
     proxy_server::MessageInjector messageInjector;
 
-    ProxyServerImpl(_<IOpenAIChat> openAI) : diary({ .diaryDir = "data/diary", .openAI = openAI }) {
-        return;
+    ProxyServerImpl(proxy_server::ToolFactory toolsFactory) {
         app.set_error_logger([](const httplib::Error& error, const httplib::Request* request) {
             ALogger::err(LOG_TAG) << "Error: " << error << " for " << request->method << " " << request->path;
         });
@@ -351,7 +349,7 @@ struct ProxyServerImpl : proxy_server::IProxyServer {
         app.Get("/", [](const httplib::Request& eq, httplib::Response& res) {
             res.set_content("Up and running", "text/plain");
         });
-        app.Post("/v1/chat/completions", hjackChatCompletions(std::move(openAI), diary, messageInjector));
+        app.Post("/v1/chat/completions", hjackChatCompletions(std::move(toolsFactory), messageInjector));
         app.Post("/v1/embeddings", basicProxy("chat/embeddings"));
         app.Post("/v1/images/generations", basicProxy("images/generations"));
         app.Post("/v1/audio/transcriptions", basicProxy("audio/transcriptions"));
@@ -370,6 +368,6 @@ struct ProxyServerImpl : proxy_server::IProxyServer {
 };
 }   // namespace
 
-std::shared_ptr<proxy_server::IProxyServer> proxy_server::init(_<IOpenAIChat> openAI) {
-    return std::make_shared<ProxyServerImpl>(std::move(openAI));
+std::shared_ptr<proxy_server::IProxyServer> proxy_server::init(proxy_server::ToolFactory toolsFactory) {
+    return std::make_shared<ProxyServerImpl>(std::move(toolsFactory));
 }
