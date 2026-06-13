@@ -26,14 +26,23 @@ using namespace std::chrono_literals;
 
 namespace {
 
-struct LogsPrefix {
-    AString operator()() {
-        return "{}.{}"_format(prefix, index++);
-    }
+struct RequestTrace {
+    AFileOutputStream stream { APath("logs_proxy") / ("{}"_format(std::chrono::system_clock::now()) + ".txt") };
 
-private:
-    APath prefix = APath("logs_proxy") / "{}"_format(std::chrono::system_clock::now());
-    size_t index = 0;
+    void write(AStringView tag, AStringView line) {
+        auto lines = line
+            | ranges::view::split('\n')
+            | ranges::view::transform([](auto&& rng) {
+                return AStringView(&*ranges::begin(rng), ranges::distance(rng));
+              });
+
+        for (const AStringView& line : lines) {
+            if (line.empty()) {
+                continue;
+            }
+            stream << "[{:<16}] {}\n"_format(tag, line);
+        }
+    }
 };
 
 struct ProxyServerImpl : proxy_server::IProxyServer {
@@ -117,26 +126,14 @@ struct ProxyServerImpl : proxy_server::IProxyServer {
                     proxy_server::MessageInjector& messageInjector;
                     Endpoint upstreamEndpoint;
                     AUrl url;
-                    LogsPrefix logsPrefix;
-
-                    struct LogsToLlm {
-                        AFileOutputStream kuniLlm;
-                        AFileOutputStream llmKuni;
-
-                        LogsToLlm(LogsPrefix& logsPrefix)
-                          : kuniLlm("{}.kuni-llm.json"_format(logsPrefix()))
-                          , llmKuni("{}.llm-kuni.txt"_format(logsPrefix())) {}
-
-                    } llmLogs { logsPrefix };
-                    AFileOutputStream logKuniClient { "{}.kuni-client.txt"_format(logsPrefix()) };
+                    RequestTrace trace;
 
                     httplib::Client upstream { "http://placeholder" };
 
                     AJson requestJson;
 
-                    ResponseService(LogsPrefix logsPrefix, proxy_server::ToolFactory toolsFactory, proxy_server::MessageInjector& injector, Endpoint ep)
-                      : logsPrefix(std::move(logsPrefix))
-                      , injectedTools(toolsFactory(temporaryContext))
+                    ResponseService(proxy_server::ToolFactory toolsFactory, proxy_server::MessageInjector& injector, Endpoint ep)
+                      : injectedTools(toolsFactory(temporaryContext))
                       , messageInjector(injector)
                       , upstreamEndpoint(std::move(ep))
                       , url("{}{}"_format(upstreamEndpoint.baseUrl, API_PATH))
@@ -155,7 +152,7 @@ struct ProxyServerImpl : proxy_server::IProxyServer {
                             DATA_DIR.makeDirs();
                         }
 
-                        llmLogs.kuniLlm << AJson::toString(requestJson);
+                        trace.write("kuni -> llm", AJson::toString(requestJson));
 
                         const auto path = "/" + url.path().bytes().substr(url.path().bytes().find("/") + 1);
                         ALogger::info(LOG_TAG) << "open_stream POST " << path;
@@ -183,7 +180,7 @@ struct ProxyServerImpl : proxy_server::IProxyServer {
 
                         lines = util::openai_streaming::lineByLine([this](char* dst, size_t size) {
                             auto readBytes = handle.read(dst, size);
-                            llmLogs.llmKuni << AByteBufferView(dst, readBytes);
+                            trace.write("llm -> kuni", AStringView(dst, readBytes));
                             return readBytes;
                         });
 
@@ -192,7 +189,7 @@ struct ProxyServerImpl : proxy_server::IProxyServer {
                             handle.response->get_header_value("Content-Type"),
                             [this, keepMeAlive, &res](size_t, httplib::DataSink& sink) mutable {
                                 auto write = [this, &sink](std::string_view sv) {
-                                    logKuniClient << AByteBufferView(sv.data(), sv.size());
+                                    trace.write("kuni -> client", sv);
                                     sink.write(sv.data(), static_cast<size_t>(sv.size()));
                                 };
                                 std::string_view line;
@@ -271,7 +268,6 @@ struct ProxyServerImpl : proxy_server::IProxyServer {
                             requestJson["messages"].asArray() << aui::to_json(result);
                         }
 
-                        llmLogs = LogsToLlm { logsPrefix };
                         sseFilter = proxy_server::StreamingFilter(toolNames());
                         post(res);
                     }
@@ -301,9 +297,8 @@ struct ProxyServerImpl : proxy_server::IProxyServer {
                     }
                 };
 
-                LogsPrefix logsPrefix;
-                AFileOutputStream("{}.client-kuni.json"_format(logsPrefix())) << req.body;
-                auto service = _new<ResponseService>(std::move(logsPrefix), toolFactory, messageInjector, config.upstreamEndpoint);
+                auto service = _new<ResponseService>(toolFactory, messageInjector, config.upstreamEndpoint);
+                service->trace.write("client -> kuni", AStringView(req.body));
 
                 service->requestJson = AJson::fromString(req.body);
 
