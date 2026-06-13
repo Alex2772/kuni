@@ -186,7 +186,7 @@ _<IOpenAIChat::StreamingResponse> OpenAIChatImpl::chatStreaming(Params params, A
                                                .withHeaders(std::move(headers))
                                                .withBody(query.toStdString())
                                                .withWriteCallback([&parseBuffer, &jsonTempBuffer](AByteBufferView buffer) -> size_t {
-                                                   ALOG_DEBUG(LOG_TAG) << "QueryStreaming piece " << buffer.toStdStringView();
+                                                   ALOG_TRACE(LOG_TAG) << "QueryStreaming piece " << buffer.toStdStringView();
                                                    jsonTempBuffer << buffer;
                                                    try {
                                                        parseBuffer();

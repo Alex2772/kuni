@@ -140,9 +140,9 @@ struct ProxyServerImpl : proxy_server::IProxyServer {
                       , upstream([&] {
                             const auto host = url.path().bytes().substr(0, url.path().bytes().find("/"));
                             const auto hostAndPort = "{}://{}"_format(url.schema(), host);
-                            ALogger::info(LOG_TAG) << "ResponseService upstream: " << hostAndPort
-                                                   << " url.path()=" << url.path().bytes()
-                                                   << " baseUrl=" << upstreamEndpoint.baseUrl;
+                            ALOG_TRACE(LOG_TAG) << "ResponseService upstream: " << hostAndPort
+                                                << " url.path()=" << url.path().bytes()
+                                                << " baseUrl=" << upstreamEndpoint.baseUrl;
                             return hostAndPort;
                         }()) {}
 
@@ -155,7 +155,7 @@ struct ProxyServerImpl : proxy_server::IProxyServer {
                         trace.write("kuni -> llm", AJson::toString(requestJson));
 
                         const auto path = "/" + url.path().bytes().substr(url.path().bytes().find("/") + 1);
-                        ALogger::info(LOG_TAG) << "open_stream POST " << path;
+                        ALOG_TRACE(LOG_TAG) << "open_stream POST " << path;
                         httplib::Headers headers {
                           { "Content-Type", "application/json" },
                         };
@@ -172,8 +172,8 @@ struct ProxyServerImpl : proxy_server::IProxyServer {
 
                         if (!handle.is_valid()) {
                             ALogger::err(LOG_TAG) << "open_stream failed: error=" << (int)handle.error
-                                                  << " response=" << (handle.response ? handle.response->status : -1)
-                                                  << " url=" << url.full();
+                                                    << " response=" << (handle.response ? handle.response->status : -1)
+                                                    << " url=" << url.full();
                             res.status = httplib::BadRequest_400;
                             return;
                         }
@@ -215,7 +215,7 @@ struct ProxyServerImpl : proxy_server::IProxyServer {
                                         return true;
                                     }
                                     line = *lineIt;
-                                    ALOG_DEBUG(LOG_TAG) << line;
+                                    ALOG_TRACE(LOG_TAG) << line;
                                 } catch (const AException& e) {
                                     ALogger::err(LOG_TAG) << "proxy_server::chat_completions: Unrecoverable error" << e;
                                     write("Unrecoverable error\n\n");
@@ -333,11 +333,11 @@ struct ProxyServerImpl : proxy_server::IProxyServer {
         app.set_error_logger([](const httplib::Error& error, const httplib::Request* request) {
             ALogger::err(LOG_TAG) << "Error: " << error << " for " << request->method << " " << request->path;
         });
+        app.set_logger([](const httplib::Request& request, const httplib::Response& res) {
+            ALogger::info(LOG_TAG) << res.status << " " << request.method << " " << request.path;
+        });
         app.set_error_handler([](const httplib::Request& request, httplib::Response& res) {
-            ALOG_DEBUG(LOG_TAG) << res.status << " " << request.method << " " << request.path;
-            if (res.status >= 400) {
-                ALogger::err(LOG_TAG) << res.status << " " << request.method << " " << request.path;
-            }
+            ALogger::info(LOG_TAG) << res.status << " " << request.method << " " << request.path << ": " << res.body;
         });
         app.Get("/", [](const httplib::Request& eq, httplib::Response& res) {
             res.set_content("Up and running", "text/plain");
