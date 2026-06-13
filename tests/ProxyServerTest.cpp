@@ -285,3 +285,52 @@ TEST_F(ProxyServerTest, HiddenContextInjection) {
     ASSERT_FALSE(response.choices.empty());
     EXPECT_EQ(response.choices.at(0).message.content, "Second answer");
 }
+
+// New chat after injected tool session: starting a fresh conversation (no messages from the previous
+// session) must NOT inject any hidden tool messages into the request.
+TEST_F(ProxyServerTest, NewChatAfterToolSession) {
+    // Session 1: tool call → final answer "Final answer"
+    llm.enqueue(MockLlmService::makeSseToolCall("nc_tool", R"({"q":"x"})"));
+    llm.enqueue(MockLlmService::makeSseText("Final answer"));
+
+    startProxy([](const AVector<IOpenAIChat::Message>&) {
+        return OpenAITools {{
+            .name = "nc_tool",
+            .description = "nc tool",
+            .parameters = {
+                .properties = { { "q", { .type = "string", .description = "q" } } },
+                .required = { "q" },
+            },
+            .handler = [](OpenAITools::Ctx) -> AFuture<AString> { co_return "nc_result"; },
+        }};
+    });
+
+    // Complete the first session so hidden context is stored in the proxy.
+    awaitStreaming({ { IOpenAIChat::Message::Role::USER, "question" } });
+    ASSERT_EQ(llm.receivedRequests.size(), 2u);
+
+    // New chat: client starts completely fresh — only a single user message, no assistant history.
+    llm.enqueue(MockLlmService::makeSseText("Clean answer"));
+
+    auto response = awaitStreaming({
+        { IOpenAIChat::Message::Role::USER, "brand new question" },
+    });
+
+    ASSERT_EQ(llm.receivedRequests.size(), 3u);
+
+    // The new-chat request must contain exactly the messages the client sent —
+    // no hidden tool_call / tool result from the previous session.
+    const auto& newChatMessages = llm.receivedRequests.at(2)["messages"].asArray();
+    for (const auto& msg : newChatMessages) {
+        const auto role = msg["role"].asStringOpt().valueOr("");
+        EXPECT_NE(role, "tool") << "New chat request must not contain tool result from a previous session";
+        if (role == "assistant") {
+            // Any assistant message must not carry tool_calls from the old session
+            EXPECT_FALSE(msg.contains("tool_calls") && !msg["tool_calls"].asArray().empty())
+                << "New chat request must not contain hidden tool_calls from a previous session";
+        }
+    }
+
+    ASSERT_FALSE(response.choices.empty());
+    EXPECT_EQ(response.choices.at(0).message.content, "Clean answer");
+}
