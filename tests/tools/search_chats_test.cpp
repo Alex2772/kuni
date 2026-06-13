@@ -6,6 +6,7 @@
 #include "../common.h"
 #include "AUI/Thread/AAsyncHolder.h"
 #include "AUI/Thread/AEventLoop.h"
+#include "util/await_synchronously.h"
 
 #include <gmock/gmock.h>
 
@@ -42,7 +43,7 @@ TEST(SearchChatsTest, MissingQueryThrows) {
 
     OpenAITools tools{};
     EXPECT_THROW(
-        await(tool.handler({
+        util::await_synchronously(tool.handler({
             .tools = tools,
             .args = AJson::Object{},  // empty args, no "query"
             .allToolCalls = {},
@@ -79,7 +80,7 @@ TEST(SearchChatsTest, NoResults) {
     auto tool = tools::searchChats(std::move(telegram));
 
     OpenAITools tools{};
-    auto result = await(tool.handler({
+    auto result = util::await_synchronously(tool.handler({
         .tools = tools,
         .args = AJson::Object{{"query", "nonexistent_chat"}},
         .allToolCalls = {},
@@ -142,7 +143,7 @@ TEST(SearchChatsTest, WithResults) {
     auto tool = tools::searchChats(std::move(telegram));
 
     OpenAITools tools{};
-    auto result = await(tool.handler({
+    auto result = util::await_synchronously(tool.handler({
         .tools = tools,
         .args = AJson::Object{{"query", "test_chat"}},
         .allToolCalls = {},
@@ -185,7 +186,7 @@ TEST(SearchChatsTest, AtPrefixStripped) {
     auto tool = tools::searchChats(std::move(telegram));
 
     OpenAITools tools{};
-    auto result = await(tool.handler({
+    auto result = util::await_synchronously(tool.handler({
         .tools = tools,
         .args = AJson::Object{{"query", "@username"}},
         .allToolCalls = {},

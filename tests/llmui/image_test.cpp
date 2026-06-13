@@ -10,6 +10,7 @@
 #include "AUI/IO/AFileOutputStream.h"
 #include "AUI/IO/AFileInputStream.h"
 #include "AUI/Image/png/PngImageLoader.h"
+#include "util/await_synchronously.h"
 
 #include <gmock/gmock.h>
 
@@ -38,7 +39,7 @@ TEST(LlmuiImageTest, UnsupportedMediaType) {
     EXPECT_CALL(*openAI, chat(testing::_, testing::_)).Times(0);
 
     AVector<IOpenAIChat::Message> ctx;
-    auto result = await(llmui::image(ctx, *openAI, "/nonexistent/path/to/image.jpg", "photo"));
+    auto result = util::await_synchronously(llmui::image(ctx, *openAI, "/nonexistent/path/to/image.jpg", "photo"));
 
     EXPECT_EQ(result, "<photo description>\nThis media type is not supported\n</photo>");
 }
@@ -65,7 +66,7 @@ TEST(LlmuiImageTest, CacheHit) {
     AFileOutputStream(cacheFile) << CACHED_CONTENT;
 
     AVector<IOpenAIChat::Message> ctx;
-    auto result = await(llmui::image(ctx, *openAI, imagePath, "photo"));
+    auto result = util::await_synchronously(llmui::image(ctx, *openAI, imagePath, "photo"));
 
     EXPECT_EQ(result, "<photo description>\n{}\n</photo>"_format(CACHED_CONTENT));
 
@@ -108,7 +109,7 @@ TEST(LlmuiImageTest, SuccessWithContext) {
     AVector<IOpenAIChat::Message> ctx = {
         { .role = IOpenAIChat::Message::Role::USER, .content = "This is context." },
     };
-    auto result = await(llmui::image(ctx, *openAI, imagePath, "photo"));
+    auto result = util::await_synchronously(llmui::image(ctx, *openAI, imagePath, "photo"));
 
     EXPECT_EQ(result, "<photo description>\nA test image with a cute cat.\n</photo>");
 
@@ -150,7 +151,7 @@ TEST(LlmuiImageTest, CustomXmlTag) {
         .WillOnce(Return(ByMove(AFuture(std::move(fakeResponse)))));
 
     AVector<IOpenAIChat::Message> ctx;
-    auto result = await(llmui::image(ctx, *openAI, imagePath, "screenshot"));
+    auto result = util::await_synchronously(llmui::image(ctx, *openAI, imagePath, "screenshot"));
 
     EXPECT_EQ(result, "<screenshot description>\nA scenic view.\n</screenshot>");
 

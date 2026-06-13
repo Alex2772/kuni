@@ -6,6 +6,7 @@
 #include "../common.h"
 #include "AUI/Thread/AAsyncHolder.h"
 #include "AUI/Thread/AEventLoop.h"
+#include "util/await_synchronously.h"
 
 #include <gmock/gmock.h>
 
@@ -17,7 +18,7 @@ using namespace testing;
 TEST(LlmuiAudioTest, NonexistentFileReturnsEmpty) {
     // voiceMessage tries to open the file, which will throw.
     // The exception is caught and an empty string is returned.
-    auto result = await(llmui::voiceMessage("/nonexistent/path/to/voice.ogg"));
+    auto result = util::await_synchronously(llmui::voiceMessage("/nonexistent/path/to/voice.ogg"));
 
     EXPECT_TRUE(result.empty());
 }

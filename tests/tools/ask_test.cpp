@@ -9,6 +9,7 @@
 #include "OpenAITools.h"
 #include "AUI/Thread/AAsyncHolder.h"
 #include "AUI/Thread/AEventLoop.h"
+#include "util/await_synchronously.h"
 
 #include <gmock/gmock.h>
 
@@ -117,7 +118,7 @@ TEST(AskTest, HandlerShortQueryError) {
 
     OpenAITools tools{};
 
-    auto result = await(tool.handler({
+    auto result = util::await_synchronously(tool.handler({
         .tools = tools,
         .args = AJson::Object{{"query", "short"}},
         .allToolCalls = {},
@@ -140,7 +141,7 @@ TEST(AskTest, HandlerMissingQueryThrows) {
     OpenAITools tools{};
 
     EXPECT_THROW(
-        await(tool.handler({
+        util::await_synchronously(tool.handler({
             .tools = tools,
             .args = AJson::Object{},
             .allToolCalls = {},
@@ -186,7 +187,7 @@ TEST(AskTest, HandlerSuccessWithToolCall) {
 
     OpenAITools tools{};
 
-    auto result = await(tool.handler({
+    auto result = util::await_synchronously(tool.handler({
         .tools = tools,
         .args = AJson::Object{{"query", "What kind of music does Alex write?"}},
         .allToolCalls = {},
@@ -224,7 +225,7 @@ TEST(AskTest, HandlerLLMForcedToCallTool) {
 
     OpenAITools tools{};
 
-    auto result = await(tool.handler({
+    auto result = util::await_synchronously(tool.handler({
         .tools = tools,
         .args = AJson::Object{{"query", "Tell me about Alex's music habits in detail."}},
         .allToolCalls = {},
@@ -269,7 +270,7 @@ TEST(AskTest, HandlerWithTemporaryContextEnrichesQuery) {
 
     OpenAITools tools{};
 
-    auto result = await(tool.handler({
+    auto result = util::await_synchronously(tool.handler({
         .tools = tools,
         .args = AJson::Object{{"query", "Does Alex play any musical instruments?"}},
         .allToolCalls = {},
@@ -304,7 +305,7 @@ TEST(AskTest, HandlerDiaryReturnsNoEntries) {
 
     OpenAITools tools{};
 
-    auto result = await(tool.handler({
+    auto result = util::await_synchronously(tool.handler({
         .tools = tools,
         .args = AJson::Object{{"query", "What are the user's hobbies and interests?"}},
         .allToolCalls = {},

@@ -580,14 +580,19 @@ AUI_ENTRY {
 
         if constexpr (config::PROXY_ENABLED) {
             auto diary = std::make_shared<Diary>(Diary::Init{ .diaryDir = "data/diary", .openAI = openAI });
-            proxyServer = proxy_server::init([openAI, diary](const AVector<IOpenAIChat::Message>& ctx) {
-                // Create the tools directly without using an initializer list
-                auto askTool = tools::ask(
-                    [&ctx] { return ctx.empty() ? AString{} : AString(ctx.last().content); },
-                    openAI, *diary
-                );
-                return OpenAITools({ askTool }); // Ensure this matches the expected constructor
-            });
+            proxyServer = proxy_server::init(
+                [openAI, diary](const AVector<IOpenAIChat::Message>& ctx) {
+                    // Create the tools directly without using an initializer list
+                    auto askTool = tools::ask(
+                        [&ctx] { return ctx.empty() ? AString{} : AString(ctx.last().content); },
+                        openAI, *diary
+                    );
+                    return OpenAITools({ askTool }); // Ensure this matches the expected constructor
+                },
+                {
+                    .upstreamEndpoint = config::ENDPOINT_MAIN.endpoint,
+                    .port = 10434,
+                });
         }
         prometheus = prometheus::setup(app->metricBreadcumbs());
         prometheus->registerOpenAI(*openAI);

@@ -18,52 +18,40 @@
 #include "streaming_filter.h"
 #include "message_injector.h"
 #include "AUI/Thread/AEventLoop.h"
+#include "util/await_synchronously.h"
 
 static constexpr auto LOG_TAG = "proxy_server";
 
 using namespace std::chrono_literals;
 
 namespace {
-template <typename T>
-T await(AFuture<T> future) {
-    AEventLoop loop;
-    IEventLoop::Handle h(&loop);
-    AAsyncHolder async;
-    T result;
-    AOptional<std::exception_ptr> eptr;
 
-    async << [](AFuture<T> f, T& result, AOptional<std::exception_ptr>& eptr) -> AFuture<> {
-        try {
-            result = co_await std::move(f);
-        } catch (const AException& e) {
-            eptr = std::current_exception();
-        }
-    }(std::move(future), result, eptr);
+struct LogsPrefix {
+    AString operator()() {
+        return "{}.{}"_format(prefix, index++);
+    }
 
-    while (async.size() > 0) {
-        loop.iteration();
-    }
-    if (eptr) {
-        std::rethrow_exception(eptr.value());
-    }
-    return result;
-}
+private:
+    APath prefix = APath("logs_proxy") / "{}"_format(std::chrono::system_clock::now());
+    size_t index = 0;
+};
 
 struct ProxyServerImpl : proxy_server::IProxyServer {
     httplib::Server app;
     std::thread thread;
     proxy_server::ToolFactory toolFactory;
+    proxy_server::Config config;
 
     proxy_server::MessageInjector messageInjector;
 
     auto basicProxy(const char* apiPath = "chat/completions") {
-        return [apiPath](const httplib::Request& req, httplib::Response& res) {
+        return [apiPath, this](const httplib::Request& req, httplib::Response& res) {
             try {
-                static const auto CONFIG = config::ENDPOINT_MAIN;
-                AUrl url("{}{}"_format(CONFIG.endpoint.baseUrl, apiPath));
+                const auto& ep = config.upstreamEndpoint;
+                AUrl url("{}{}"_format(ep.baseUrl, apiPath));
                 const auto host = url.path().bytes().substr(0, url.path().bytes().find("/"));
                 const auto hostAndPort = "{}://{}"_format(url.schema(), host);
-                httplib::Client upstream(hostAndPort);
+                httplib::Client upstreamClient(hostAndPort);
                 const auto path = "/" + url.path().bytes().substr(url.path().bytes().find("/") + 1);
 
                 static const auto DATA_DIR = APath("data") / "proxy";
@@ -72,12 +60,12 @@ struct ProxyServerImpl : proxy_server::IProxyServer {
                 }
 
                 AFileOutputStream(DATA_DIR / "last_query.json") << req.body;
-                auto handle = _new<httplib::ClientImpl::StreamHandle>(upstream.open_stream(
+                auto handle = _new<httplib::ClientImpl::StreamHandle>(upstreamClient.open_stream(
                     req.method,
                     path,
                     {},
                     {
-                      { "Authorization", "Bearer {}"_format(CONFIG.endpoint.bearerKey) },
+                      { "Authorization", "Bearer {}"_format(ep.bearerKey) },
                       { "Content-Type", "application/json" },
                     },
                     req.body));
@@ -117,7 +105,6 @@ struct ProxyServerImpl : proxy_server::IProxyServer {
         static const auto DATA_DIR = APath("data") / "proxy";
         return [this](const httplib::Request& req, httplib::Response& res) {
             try {
-                static const auto CONFIG = config::ENDPOINT_MAIN;
                 APath("logs_proxy").makeDirs();
 
                 struct ResponseService : std::enable_shared_from_this<ResponseService> {
@@ -128,31 +115,39 @@ struct ProxyServerImpl : proxy_server::IProxyServer {
                     AVector<AFuture<IOpenAIChat::Message>> ourToolCalls;
                     proxy_server::StreamingFilter sseFilter { toolNames() };
                     proxy_server::MessageInjector& messageInjector;
-                    AUrl url { "{}{}"_format(CONFIG.endpoint.baseUrl, API_PATH) };
-                    APath logsPrefix = APath("logs_proxy") / "{}"_format(std::chrono::system_clock::now());
-                    AFileOutputStream logKuniClient { "{}.kuni-client.txt"_format(logsPrefix) };
+                    Endpoint upstreamEndpoint;
+                    AUrl url;
+                    LogsPrefix logsPrefix;
 
-                    size_t requestGeneration = 0;
                     struct LogsToLlm {
                         AFileOutputStream kuniLlm;
                         AFileOutputStream llmKuni;
 
-                        LogsToLlm(const APath& logsPrefix, size_t requestGeneration)
-                          : kuniLlm("{}.kuni-llm{}.json"_format(logsPrefix, requestGeneration))
-                          , llmKuni("{}.llm-kuni{}.txt"_format(logsPrefix, requestGeneration)) {}
+                        LogsToLlm(LogsPrefix& logsPrefix)
+                          : kuniLlm("{}.kuni-llm.json"_format(logsPrefix()))
+                          , llmKuni("{}.llm-kuni.txt"_format(logsPrefix())) {}
 
-                    } llmLogs { logsPrefix, requestGeneration };
+                    } llmLogs { logsPrefix };
+                    AFileOutputStream logKuniClient { "{}.kuni-client.txt"_format(logsPrefix()) };
 
-                    httplib::Client upstream { [&] {
-                        const auto host = url.path().bytes().substr(0, url.path().bytes().find("/"));
-                        const auto hostAndPort = "{}://{}"_format(url.schema(), host);
-                        return hostAndPort;
-                    }() };
+                    httplib::Client upstream { "http://placeholder" };
 
                     AJson requestJson;
 
-                    ResponseService(proxy_server::ToolFactory toolsFactory, proxy_server::MessageInjector& injector)
-                      : injectedTools(toolsFactory(temporaryContext)), messageInjector(injector) {}
+                    ResponseService(LogsPrefix logsPrefix, proxy_server::ToolFactory toolsFactory, proxy_server::MessageInjector& injector, Endpoint ep)
+                      : logsPrefix(std::move(logsPrefix))
+                      , injectedTools(toolsFactory(temporaryContext))
+                      , messageInjector(injector)
+                      , upstreamEndpoint(std::move(ep))
+                      , url("{}{}"_format(upstreamEndpoint.baseUrl, API_PATH))
+                      , upstream([&] {
+                            const auto host = url.path().bytes().substr(0, url.path().bytes().find("/"));
+                            const auto hostAndPort = "{}://{}"_format(url.schema(), host);
+                            ALogger::info(LOG_TAG) << "ResponseService upstream: " << hostAndPort
+                                                   << " url.path()=" << url.path().bytes()
+                                                   << " baseUrl=" << upstreamEndpoint.baseUrl;
+                            return hostAndPort;
+                        }()) {}
 
                     void post(httplib::Response& res) {
                         auto keepMeAlive = shared_from_this();
@@ -163,17 +158,25 @@ struct ProxyServerImpl : proxy_server::IProxyServer {
                         llmLogs.kuniLlm << AJson::toString(requestJson);
 
                         const auto path = "/" + url.path().bytes().substr(url.path().bytes().find("/") + 1);
+                        ALogger::info(LOG_TAG) << "open_stream POST " << path;
+                        httplib::Headers headers {
+                          { "Content-Type", "application/json" },
+                        };
+                        if (!upstreamEndpoint.bearerKey.empty()) {
+                            headers.emplace("Authorization", "Bearer {}"_format(upstreamEndpoint.bearerKey));
+                        }
                         handle = upstream.open_stream(
                             "POST",
                             path,
                             {},
                             {
-                              { "Authorization", "Bearer {}"_format(CONFIG.endpoint.bearerKey) },
-                              { "Content-Type", "application/json" },
                             },
                             AJson::toString(requestJson));
 
                         if (!handle.is_valid()) {
+                            ALogger::err(LOG_TAG) << "open_stream failed: error=" << (int)handle.error
+                                                  << " response=" << (handle.response ? handle.response->status : -1)
+                                                  << " url=" << url.full();
                             res.status = httplib::BadRequest_400;
                             return;
                         }
@@ -258,7 +261,7 @@ struct ProxyServerImpl : proxy_server::IProxyServer {
                         // Await all tool call results.
                         AVector<IOpenAIChat::Message> toolResults;
                         for (auto& future : ourToolCalls) {
-                            toolResults << await(std::move(future));
+                            toolResults << util::await_synchronously(std::move(future));
                         }
                         ourToolCalls.clear();
 
@@ -268,7 +271,7 @@ struct ProxyServerImpl : proxy_server::IProxyServer {
                             requestJson["messages"].asArray() << aui::to_json(result);
                         }
 
-                        llmLogs = LogsToLlm { logsPrefix, ++requestGeneration };
+                        llmLogs = LogsToLlm { logsPrefix };
                         sseFilter = proxy_server::StreamingFilter(toolNames());
                         post(res);
                     }
@@ -276,10 +279,6 @@ struct ProxyServerImpl : proxy_server::IProxyServer {
                     // Called after the final LLM response is fully streamed to the client.
                     // Stores the hidden context so future client requests can be merged.
                     void storeHiddenContext(const AString& visibleAssistantContent) {
-                        if (requestGeneration == 0) {
-                            // No hidden round-trips happened — nothing to store.
-                            return;
-                        }
                         // Hidden messages = everything after the original client messages.
                         const auto& allMessages = requestJson["messages"].asArray();
                         const std::size_t originalCount = temporaryContext.size();
@@ -301,8 +300,10 @@ struct ProxyServerImpl : proxy_server::IProxyServer {
                         return handles | ranges::views::keys | ranges::to<ASet<AString>>();
                     }
                 };
-                auto service = _new<ResponseService>(toolFactory, messageInjector);
-                AFileOutputStream("{}.client-kuni.json"_format(service->logsPrefix)) << req.body;
+
+                LogsPrefix logsPrefix;
+                AFileOutputStream("{}.client-kuni.json"_format(logsPrefix())) << req.body;
+                auto service = _new<ResponseService>(std::move(logsPrefix), toolFactory, messageInjector, config.upstreamEndpoint);
 
                 service->requestJson = AJson::fromString(req.body);
 
@@ -332,7 +333,8 @@ struct ProxyServerImpl : proxy_server::IProxyServer {
         };
     }
 
-    ProxyServerImpl(proxy_server::ToolFactory toolFactory): toolFactory(toolFactory) {
+    ProxyServerImpl(proxy_server::ToolFactory toolFactory, proxy_server::Config config)
+      : toolFactory(std::move(toolFactory)), config(std::move(config)) {
         app.set_error_logger([](const httplib::Error& error, const httplib::Request* request) {
             ALogger::err(LOG_TAG) << "Error: " << error << " for " << request->method << " " << request->path;
         });
@@ -354,9 +356,13 @@ struct ProxyServerImpl : proxy_server::IProxyServer {
         app.Post("/v1/batches", basicProxy("batches"));
         app.Post("/v1/videos", basicProxy("videos"));
 
-        // http://localhost:10434
-        thread = std::thread([this] { app.listen("0.0.0.0", 10434); });
+        thread = std::thread([this] { app.listen("0.0.0.0", this->config.port); });
     }
+
+    void waitUntilReady() override {
+        app.wait_until_ready();
+    }
+
     ~ProxyServerImpl() override {
         app.stop();
         thread.join();
@@ -364,6 +370,6 @@ struct ProxyServerImpl : proxy_server::IProxyServer {
 };
 }   // namespace
 
-std::shared_ptr<proxy_server::IProxyServer> proxy_server::init(proxy_server::ToolFactory toolFactory) {
-    return std::make_shared<ProxyServerImpl>(std::move(toolFactory));
+std::shared_ptr<proxy_server::IProxyServer> proxy_server::init(proxy_server::ToolFactory toolFactory, proxy_server::Config config) {
+    return std::make_shared<ProxyServerImpl>(std::move(toolFactory), std::move(config));
 }

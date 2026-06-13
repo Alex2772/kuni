@@ -64,28 +64,3 @@ static void populateUnrelatedDiaryEntries() {
         APath::copy(f, diaryDir / f.filename());
     }
 }
-
-template<typename T>
-static T await(AFuture<T> future) {
-    AEventLoop loop;
-    IEventLoop::Handle h(&loop);
-    AAsyncHolder async;
-    T result;
-    AOptional<std::exception_ptr> eptr;
-
-    async << [](AFuture<T> f, T& result, AOptional<std::exception_ptr>& eptr) -> AFuture<> {
-        try {
-            result = co_await std::move(f);
-        } catch (const AException& e) {
-            eptr = std::current_exception();
-        }
-    }(std::move(future), result, eptr);
-
-    while (async.size() > 0) {
-        loop.iteration();
-    }
-    if (eptr) {
-        std::rethrow_exception(eptr.value());
-    }
-    return result;
-}

@@ -5,6 +5,7 @@
 #include "../common.h"
 #include "AUI/Thread/AAsyncHolder.h"
 #include "AUI/Thread/AEventLoop.h"
+#include "util/await_synchronously.h"
 
 #include <gmock/gmock.h>
 
@@ -47,7 +48,7 @@ TEST(TakePhotoTest, MissingPhotoDescThrows) {
 
     OpenAITools tools{};
     EXPECT_THROW(
-        await(tool.handler({
+        util::await_synchronously(tool.handler({
             .tools = tools,
             .args = AJson::Object{},  // empty args, no "photo_desc"
             .allToolCalls = {},
@@ -70,7 +71,7 @@ TEST(TakePhotoTest, PhotoDescNotStringThrows) {
 
     OpenAITools tools{};
     EXPECT_THROW(
-        await(tool.handler({
+        util::await_synchronously(tool.handler({
             .tools = tools,
             .args = AJson::Object{{"photo_desc", 123}},
             .allToolCalls = {},

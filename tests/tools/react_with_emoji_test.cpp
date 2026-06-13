@@ -6,6 +6,7 @@
 #include "../common.h"
 #include "AUI/Thread/AAsyncHolder.h"
 #include "AUI/Thread/AEventLoop.h"
+#include "util/await_synchronously.h"
 
 #include <gmock/gmock.h>
 
@@ -68,7 +69,7 @@ TEST(ReactWithEmojiTest, Success) {
     auto tool = tools::reactWithEmoji(std::move(telegram), std::move(chat));
 
     OpenAITools tools{};
-    auto result = await(tool.handler({
+    auto result = util::await_synchronously(tool.handler({
         .tools = tools,
         .args = AJson::Object{{"message_id", 42}, {"emoji", "🔥"}},
         .allToolCalls = {},
@@ -91,7 +92,7 @@ TEST(ReactWithEmojiTest, WrongChatId) {
     auto tool = tools::reactWithEmoji(std::move(telegram), std::move(chat));
 
     OpenAITools tools{};
-    auto result = await(tool.handler({
+    auto result = util::await_synchronously(tool.handler({
         .tools = tools,
         .args = AJson::Object{{"chat_id", 99999}, {"message_id", 42}, {"emoji", "🔥"}},
         .allToolCalls = {},
@@ -115,7 +116,7 @@ TEST(ReactWithEmojiTest, MissingMessageIdThrows) {
 
     OpenAITools tools{};
     EXPECT_THROW(
-        await(tool.handler({
+        util::await_synchronously(tool.handler({
             .tools = tools,
             .args = AJson::Object{{"emoji", "🔥"}},
             .allToolCalls = {},
@@ -137,7 +138,7 @@ TEST(ReactWithEmojiTest, MissingEmojiThrows) {
 
     OpenAITools tools{};
     EXPECT_THROW(
-        await(tool.handler({
+        util::await_synchronously(tool.handler({
             .tools = tools,
             .args = AJson::Object{{"message_id", 42}},
             .allToolCalls = {},

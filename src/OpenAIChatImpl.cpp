@@ -160,19 +160,24 @@ _<IOpenAIChat::StreamingResponse> OpenAIChatImpl::chatStreaming(Params params, A
             while (!jsonTempBuffer.empty()) {
                 ATokenizer tokenizer(std::make_unique<AByteBufferInputStream>(jsonTempBuffer));
                 AString command = tokenizer.readStringWhile([](char c) {
-                    return c != '{';
+                    return c != '{' && c != '\n';
                 });
                 if (command.startsWith("data: [DONE]")) {
                     break;
                 }
+                AUI_DEFER {
+                    const auto end = AStringView(jsonTempBuffer.data(), jsonTempBuffer.size()).find("\n\n");
+                    const auto at = end == std::string::npos ? jsonTempBuffer.end() : jsonTempBuffer.begin() + end + 2;
+                    jsonTempBuffer.erase(jsonTempBuffer.begin(), at);
+                };
+
                 if (!command.startsWith("data:")) {
-                    break;
+                    continue;
                 }
+
                 auto json = AJson::fromBuffer(jsonTempBuffer.slice(command.bytes().length()));
                 processJson(std::move(json));
-                const auto end = AStringView(jsonTempBuffer.data(), jsonTempBuffer.size()).find("\n\n");
-                const auto at = end == std::string::npos ? jsonTempBuffer.end() : jsonTempBuffer.begin() + end + 2;
-                jsonTempBuffer.erase(jsonTempBuffer.begin(), at);
+
             }
         };
         co_await ACurl::Builder(params.config.endpoint.baseUrl + "chat/completions")

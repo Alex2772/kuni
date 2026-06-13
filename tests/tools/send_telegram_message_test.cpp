@@ -6,6 +6,7 @@
 #include "../common.h"
 #include "AUI/Thread/AAsyncHolder.h"
 #include "AUI/Thread/AEventLoop.h"
+#include "util/await_synchronously.h"
 
 #include <gmock/gmock.h>
 
@@ -120,7 +121,7 @@ TEST(SendTelegramMessageTest, SuccessSimpleText) {
         telegram, openAI, chat, std::move(messages), std::valarray<double>{0.2});
 
     OpenAITools tools{};
-    auto result = await(tool.handler({
+    auto result = util::await_synchronously(tool.handler({
         .tools = tools,
         .args = AJson::Object{{"text", "Hello!"}},
         .allToolCalls = {},
@@ -153,7 +154,7 @@ TEST(SendTelegramMessageTest, WrongChatId) {
         telegram, openAI, chat, std::move(messages), std::valarray<double>{});
 
     OpenAITools tools{};
-    auto result = await(tool.handler({
+    auto result = util::await_synchronously(tool.handler({
         .tools = tools,
         .args = AJson::Object{{"text", "Hello!"}, {"chat_id", 99999}},
         .allToolCalls = {},
@@ -188,7 +189,7 @@ TEST(SendTelegramMessageTest, MissingAllContent) {
         telegram, openAI, chat, std::move(messages), std::valarray<double>{});
 
     OpenAITools tools{};
-    auto result = await(tool.handler({
+    auto result = util::await_synchronously(tool.handler({
         .tools = tools,
         .args = AJson::Object{},  // empty args
         .allToolCalls = {},
@@ -223,7 +224,7 @@ TEST(SendTelegramMessageTest, BothPhotoAndAudioError) {
         telegram, openAI, chat, std::move(messages), std::valarray<double>{});
 
     OpenAITools tools{};
-    auto result = await(tool.handler({
+    auto result = util::await_synchronously(tool.handler({
         .tools = tools,
         .args = AJson::Object{
             {"text", "hello"},
@@ -265,7 +266,7 @@ TEST(SendTelegramMessageTest, ReplyToMessageFromAnotherChatThrows) {
 
     OpenAITools tools{};
     EXPECT_THROW(
-        await(tool.handler({
+        util::await_synchronously(tool.handler({
             .tools = tools,
             .args = AJson::Object{
                 {"text", "Hello!"},
@@ -303,7 +304,7 @@ TEST(SendTelegramMessageTest, ReplyToExistingMessage) {
         telegram, openAI, chat, std::move(messages), std::valarray<double>{});
 
     OpenAITools tools{};
-    auto result = await(tool.handler({
+    auto result = util::await_synchronously(tool.handler({
         .tools = tools,
         .args = AJson::Object{
             {"text", "Hello!"},
@@ -342,7 +343,7 @@ TEST(SendTelegramMessageTest, TooManyMessagesInRowThrows) {
     // Send 11 messages — the 11th should throw
     auto test = [&] {
         for (int i = 0; i < 20; ++i) {
-            auto result = await(tool.handler({
+            auto result = util::await_synchronously(tool.handler({
                 .tools = tools,
                 .args = AJson::Object{{"text", "msg{}"_format(i)}},
                 .allToolCalls = {},
@@ -380,7 +381,7 @@ TEST(SendTelegramMessageTest, MultiLineMessageGetsSplit) {
         telegram, openAI, chat, std::move(messages), std::valarray<double>{});
 
     OpenAITools tools{};
-    auto result = await(tool.handler({
+    auto result = util::await_synchronously(tool.handler({
         .tools = tools,
         .args = AJson::Object{{"text", "line1\nline2\nline3"}},
         .allToolCalls = {},
@@ -413,7 +414,7 @@ TEST(SendTelegramMessageTest, InvalidPhotoFilenameSlash) {
 
     OpenAITools tools{};
     EXPECT_THROW(
-        await(tool.handler({
+        util::await_synchronously(tool.handler({
             .tools = tools,
             .args = AJson::Object{
                 {"text", "hello"},
@@ -449,7 +450,7 @@ TEST(SendTelegramMessageTest, InvalidPhotoFilenameDotDot) {
 
     OpenAITools tools{};
     EXPECT_THROW(
-        await(tool.handler({
+        util::await_synchronously(tool.handler({
             .tools = tools,
             .args = AJson::Object{
                 {"text", "hello"},
@@ -485,7 +486,7 @@ TEST(SendTelegramMessageTest, InvalidAudioFilenameSlash) {
 
     OpenAITools tools{};
     EXPECT_THROW(
-        await(tool.handler({
+        util::await_synchronously(tool.handler({
             .tools = tools,
             .args = AJson::Object{
                 {"text", "hello"},
@@ -520,7 +521,7 @@ TEST(SendTelegramMessageTest, InvalidAudioFilenameDotDot) {
 
     OpenAITools tools{};
     EXPECT_THROW(
-        await(tool.handler({
+        util::await_synchronously(tool.handler({
             .tools = tools,
             .args = AJson::Object{
                 {"text", "hello"},
@@ -568,7 +569,7 @@ TEST(SendTelegramMessageTest, RepeatDetectionThrows) {
 
     OpenAITools tools{};
     EXPECT_THROW(
-        await(tool.handler({
+        util::await_synchronously(tool.handler({
             .tools = tools,
             .args = AJson::Object{{"text", "Hello there!"}},
             .allToolCalls = {},
@@ -601,7 +602,7 @@ TEST(SendTelegramMessageTest, FirstMessageEncouragesFollowUp) {
         telegram, openAI, chat, std::move(messages), std::valarray<double>{});
 
     OpenAITools tools{};
-    auto result = await(tool.handler({
+    auto result = util::await_synchronously(tool.handler({
         .tools = tools,
         .args = AJson::Object{{"text", "Hi!"}},
         .allToolCalls = {},

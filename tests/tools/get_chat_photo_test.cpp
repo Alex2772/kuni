@@ -7,6 +7,7 @@
 #include "IOpenAIChat.h"
 #include "AUI/Thread/AAsyncHolder.h"
 #include "AUI/Thread/AEventLoop.h"
+#include "util/await_synchronously.h"
 
 #include <gmock/gmock.h>
 
@@ -98,7 +99,7 @@ TEST(GetChatPhotoTest, NoPhoto) {
     auto tool = tools::getChatPhoto(std::move(telegram), std::move(openAI), std::move(chat), temporaryContext);
 
     OpenAITools tools{};
-    auto result = await(tool.handler({
+    auto result = util::await_synchronously(tool.handler({
         .tools = tools,
         .args = AJson::Object{},
         .allToolCalls = {},
@@ -156,7 +157,7 @@ TEST(GetChatPhotoTest, HasPhotoSuccess) {
     auto tool = tools::getChatPhoto(std::move(telegram), std::move(openAI), std::move(chat), temporaryContext);
 
     OpenAITools tools{};
-    auto result = await(tool.handler({
+    auto result = util::await_synchronously(tool.handler({
         .tools = tools,
         .args = AJson::Object{},
         .allToolCalls = {},

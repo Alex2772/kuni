@@ -6,6 +6,7 @@
 #include "../common.h"
 #include "AUI/Thread/AAsyncHolder.h"
 #include "AUI/Thread/AEventLoop.h"
+#include "util/await_synchronously.h"
 
 #include <gmock/gmock.h>
 
@@ -42,7 +43,7 @@ TEST(RemoveAndBanChatTest, PapikChatIdReturnsFailed) {
     auto tool = tools::removeAndBanChat(std::move(telegram));
 
     OpenAITools tools{};
-    auto result = await(tool.handler({
+    auto result = util::await_synchronously(tool.handler({
         .tools = tools,
         .args = AJson::Object{{"chat_id", config::PAPIK_CHAT_ID}},
         .allToolCalls = {},
@@ -83,7 +84,7 @@ TEST(RemoveAndBanChatTest, BasicGroupCallsLeaveChat) {
     auto tool = tools::removeAndBanChat(std::move(telegram));
 
     OpenAITools tools{};
-    auto result = await(tool.handler({
+    auto result = util::await_synchronously(tool.handler({
         .tools = tools,
         .args = AJson::Object{{"chat_id", CHAT_ID}},
         .allToolCalls = {},
@@ -122,7 +123,7 @@ TEST(RemoveAndBanChatTest, SupergroupCallsLeaveChat) {
     auto tool = tools::removeAndBanChat(std::move(telegram));
 
     OpenAITools tools{};
-    auto result = await(tool.handler({
+    auto result = util::await_synchronously(tool.handler({
         .tools = tools,
         .args = AJson::Object{{"chat_id", CHAT_ID}},
         .allToolCalls = {},
@@ -143,7 +144,7 @@ TEST(RemoveAndBanChatTest, MissingChatIdThrows) {
 
     OpenAITools tools{};
     EXPECT_THROW(
-        await(tool.handler({
+        util::await_synchronously(tool.handler({
             .tools = tools,
             .args = AJson::Object{},  // empty args, no "chat_id"
             .allToolCalls = {},
