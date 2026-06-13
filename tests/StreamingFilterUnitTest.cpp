@@ -193,6 +193,46 @@ TEST(StreamingFilter, InjectedToolIsIntercepted) {
     EXPECT_THAT(std::string(result.toolCalls[0].function.arguments), HasSubstr("Hello"));
 }
 
+// When ALL tool calls are injected but the client already received
+// content/reasoning, They should NOT receive "finish_reason": "stop".
+// Sending "tool_calls" would confuse clients into expecting tool-call
+// results that never come.
+TEST(StreamingFilter, FinishReasonToolCallsDoesNotLeak) {
+    StreamingFilter filter({"ask"});
+    auto result = run(filter, {
+        makeChunk(0, {}, "Let me think..."),           // reasoning — passes through
+        makeChunk(0, {}, {}, {}, 0, "call_1", "ask", ""),
+        makeChunk(0, {}, {}, {}, 0, {}, {}, R"({"q":"hi"})"),
+        makeChunk(0, {}, {}, "tool_calls", 0),
+        "data: [DONE]",
+    });
+    // Tool call must be intercepted.
+    ASSERT_EQ(result.toolCalls.size(), 1u);
+    EXPECT_EQ(result.toolCalls[0].function.name, "ask");
+
+    // reasoning chunk
+    auto passedThrough = result.collectPassedThrough();
+    ASSERT_EQ(passedThrough.size(), 1u);
+    EXPECT_EQ(passedThrough[0].message.reasoning, "Let me think...") << "Reasoning should have had passed";
+    EXPECT_EQ(static_cast<AString&>(passedThrough[0].finish_reason), "") << "tools_calls should have had filtered out";
+}
+
+TEST(StreamingFilter, InterceptedToolCallCallsExactlyOnce) {
+    StreamingFilter filter({"ask"});
+    auto result = run(filter, {
+        makeChunk(0, {}, "Let me think..."),           // reasoning — passes through
+        makeChunk(0, {}, {}, {}, 0, "call_1", "ask", ""),
+        makeChunk(0, {}, {}, {}, 0, {}, {}, R"({"q":"hi"})"),
+        makeChunk(0, {}, {}, "tool_calls", 0),
+        makeChunk(0, {}, {}, "tool_calls", 0),
+        "data: [DONE]",
+    });
+    // Tool call must be intercepted.
+    ASSERT_EQ(result.toolCalls.size(), 1u);
+    EXPECT_EQ(result.toolCalls[0].function.name, "ask");
+}
+
+
 // Reasoning/content chunks that arrive BEFORE a tool-call chunk must pass
 // through; only the tool-call chunks should be intercepted.
 TEST(StreamingFilter, ReasoningBeforeToolCallPassesThrough) {

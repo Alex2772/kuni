@@ -42,7 +42,7 @@ TEST(StableDiffusionIntegrationClient, Txt2Img)
         }
     }();
 
-    while (async.size() > 0) {
+    while (!async.empty()) {
         loop.iteration();
     }
 }

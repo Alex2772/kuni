@@ -107,6 +107,12 @@ void StreamingFilter::processLine(
         }
 
         // finish_reason arrived — classify all tool calls and dispatch/reconstruct.
+        // Guard against duplicate finish_reason chunks from upstream.
+        if (mDispatched) {
+            return;
+        }
+        mDispatched = true;
+
         AVector<IOpenAIChat::Message::ToolCall> nonInjectedToolCalls;
         for (auto& choice : mChoices) {
             for (auto& toolCall : choice.message.tool_calls) {
@@ -128,7 +134,6 @@ void StreamingFilter::processLine(
         // If all tool calls were injected, emit an empty delta with finish_reason="stop"
         // so the client knows the stream ended cleanly.
         AJson deltaJson = AJson::Object{{"role", AString("assistant")}};
-        AString finishReason;
 
         if (!nonInjectedToolCalls.empty()) {
             AJson::Array toolCallsJson;
@@ -144,26 +149,15 @@ void StreamingFilter::processLine(
                 });
             }
             deltaJson["tool_calls"] = std::move(toolCallsJson);
-            finishReason = "tool_calls";
-        } else if (mHasPassedThroughContent) {
-            // All tool calls were injected and handled internally, but the client already
-            // received content/reasoning chunks — emit a synthetic finish so it knows
-            // the stream ended cleanly.
-            finishReason = "tool_calls";
-        } else {
-            // All tool calls were injected and no content was sent to the client at all.
-            // Don't emit any synthetic chunk — just stay silent.
-        }
-
-        if (finishReason.empty()) {
-            return;
         }
 
         AJson choiceJson = AJson::Object{
             {"index",         static_cast<int64_t>(0)},
             {"delta",         std::move(deltaJson)},
-            {"finish_reason", finishReason},
         };
+        if (!nonInjectedToolCalls.empty()) {
+            choiceJson["finish_reason"] = "tool_calls";
+        }
         AJson responseJson = AJson::Object{
             {"id",      chunk.id},
             {"object",  AString("chat.completion.chunk")},

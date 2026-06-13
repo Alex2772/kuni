@@ -20,7 +20,7 @@ TEST(WebSearchIntegration, Basic) {
         results = co_await web::search("aui framework c++", 3);
     }();
 
-    while (async.size() > 0) {
+    while (!async.empty()) {
         loop.iteration();
     }
 
@@ -112,7 +112,7 @@ TEST(WebSearchIntegration, SearchAppAI) {
 
     async << app->passNotificationToAI("You received a notification. Use #openChat").onProcessed;
 
-    while (async.size() > 0) {
+    while (!async.empty()) {
         loop.iteration();
     }
 }

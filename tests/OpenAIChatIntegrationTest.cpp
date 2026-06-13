@@ -92,7 +92,7 @@ TEST(OpenAIChatIntegration, Basic) {
         EXPECT_LT(0, response.usage.prompt_tokens);
     }();
 
-    while (async.size() > 0) {
+    while (!async.empty()) {
         loop.iteration();
     }
 }
@@ -127,7 +127,7 @@ TEST(OpenAIChatIntegration, BasicStreaming) {
             << response;
     }();
 
-    while (async.size() > 0) {
+    while (!async.empty()) {
         loop.iteration();
     }
 }
@@ -173,7 +173,7 @@ TEST(OpenAIChatIntegration, ToolUsage) {
         EXPECT_TRUE(response.choices[0].message.content.contains("12:00"));
     }();
 
-    while (async.size() > 0) {
+    while (!async.empty()) {
         loop.iteration();
     }
 }
@@ -233,7 +233,7 @@ TEST(OpenAIChatIntegration, BasicStreamingToolCalls) {
         EXPECT_TRUE(response.content.contains("12:00")) << response.content;
     }();
 
-    while (async.size() > 0) {
+    while (!async.empty()) {
         loop.iteration();
     }
 }
@@ -259,7 +259,7 @@ TEST(OpenAIChatIntegration, ImageRecognition) {
         EXPECT_TRUE(content.contains("cat")) << "\"cat\" should be mentioned: " << content;
     }();
 
-    while (async.size() > 0) {
+    while (!async.empty()) {
         loop.iteration();
     }
 }
@@ -302,7 +302,7 @@ TEST(OpenAIChatIntegration, ToolAttachments) {
         EXPECT_TRUE(content.contains("cat")) << "\"cat\" should be mentioned: " << content;
     }();
 
-    while (async.size() > 0) {
+    while (!async.empty()) {
         loop.iteration();
     }
 
@@ -327,7 +327,7 @@ TEST(OpenAIChatIntegration, Embeddings) {
 
     }();
 
-    while (async.size() > 0) {
+    while (!async.empty()) {
         loop.iteration();
     }
 

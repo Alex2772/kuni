@@ -31,7 +31,14 @@ struct StreamingChunk {
             }
             out[choice.index].message += choice.delta;
             out[choice.index].message.role = IOpenAIChat::Message::Role::ASSISTANT;
-            out[choice.index].finish_reason += choice.finish_reason;
+            if (!choice.finish_reason.empty()) {
+#if AUI_DEBUG
+                // we don't really expect finish_reason to be segmented.
+                // also, we don't expect the llm service to send multiple chunks with different finish_reason.
+                AUI_ASSERT(out[choice.index].finish_reason.empty() || out[choice.index].finish_reason == choice.finish_reason);
+#endif
+                out[choice.index].finish_reason += choice.finish_reason;
+            }
         }
     }
 };

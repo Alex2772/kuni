@@ -167,7 +167,7 @@ TEST_F(PrometheusUnitTest, ToolCallFiredOnSuccessfulToolCall) {
     spy.registerAppBase(*app);
 
     async << app->passNotificationToAI("Hello").onProcessed;
-    while (async.size() > 0) {
+    while (!async.empty()) {
         loop.iteration();
     }
 
@@ -198,7 +198,7 @@ TEST_F(PrometheusUnitTest, ToolCallFiredCarriesCorrectToolName) {
     spy.registerAppBase(*app);
 
     async << app->passNotificationToAI("Hello").onProcessed;
-    while (async.size() > 0) {
+    while (!async.empty()) {
         loop.iteration();
     }
 
@@ -244,7 +244,7 @@ TEST_F(PrometheusUnitTest, ToolCallFiredNotEmittedOnToolException) {
     spy.registerAppBase(*app);
 
     async << app->passNotificationToAI("Hello").onProcessed;
-    while (async.size() > 0) {
+    while (!async.empty()) {
         loop.iteration();
     }
 
@@ -279,7 +279,7 @@ TEST_F(PrometheusUnitTest, ToolCallFiredBreadcrumbLabelsSnapshot) {
     spy.registerAppBase(*app);
 
     async << app->passNotificationToAI("Hello").onProcessed;
-    while (async.size() > 0) {
+    while (!async.empty()) {
         loop.iteration();
     }
 
@@ -330,7 +330,7 @@ TEST_F(PrometheusUnitTest, ToolCallFiredlastOpenedChatLastMessageTime) {
     spy.registerAppBase(*app);
 
     async << app->passNotificationToAI("Hello").onProcessed;
-    while (async.size() > 0) {
+    while (!async.empty()) {
         loop.iteration();
     }
 
@@ -369,12 +369,12 @@ TEST_F(PrometheusUnitTest, MultipleToolCallsAllCaptured) {
     spy.registerAppBase(*app);
 
     async << app->passNotificationToAI("First").onProcessed;
-    while (async.size() > 0) {
+    while (!async.empty()) {
         loop.iteration();
     }
 
     async << app->passNotificationToAI("Second").onProcessed;
-    while (async.size() > 0) {
+    while (!async.empty()) {
         loop.iteration();
     }
 

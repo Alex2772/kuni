@@ -36,7 +36,7 @@ TEST(ImageGeneratorIntegration, Generate)
         }
     }();
 
-    while (async.size() > 0) {
+    while (!async.empty()) {
         loop.iteration();
     }
 }

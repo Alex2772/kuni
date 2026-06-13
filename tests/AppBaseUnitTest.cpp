@@ -154,7 +154,7 @@ TEST_F(AppBaseUnitTest, PassNotificationToAIBasic) {
 
     AppTestHarness app(openAI);
     async << app.passNotificationToAI("Test notification message").onProcessed;
-    while (async.size() > 0) {
+    while (!async.empty()) {
         loop.iteration();
     }
 
@@ -179,13 +179,13 @@ TEST_F(AppBaseUnitTest, PassNotificationToAIMultiple) {
     AppTestHarness app(openAI);
 
     async << app.passNotificationToAI("First notification").onProcessed;
-    while (async.size() > 0) {
+    while (!async.empty()) {
         loop.iteration();
     }
 
     // After first notification is processed, send another
     async << app.passNotificationToAI("Second notification").onProcessed;
-    while (async.size() > 0) {
+    while (!async.empty()) {
         loop.iteration();
     }
 
@@ -209,7 +209,7 @@ TEST_F(AppBaseUnitTest, PassNotificationToAIFirst) {
 
     // Insert urgent first, then normal — urgent should be processed first
     async << app.passNotificationToAI("Urgent notification", {}, true).onProcessed;
-    while (async.size() > 0) {
+    while (!async.empty()) {
         loop.iteration();
     }
 
@@ -236,7 +236,7 @@ TEST_F(AppBaseUnitTest, RemoveNotificationsBySubstring) {
 
     app.removeNotifications("cats");
 
-    while (async.size() > 0) {
+    while (!async.empty()) {
         loop.iteration();
     }
 
@@ -265,7 +265,7 @@ TEST_F(AppBaseUnitTest, RemoveNotificationsNoMatch) {
 
     app.removeNotifications("nonexistent");
 
-    while (async.size() > 0) {
+    while (!async.empty()) {
         loop.iteration();
     }
 
@@ -317,7 +317,7 @@ TEST_F(AppBaseUnitTest, TakeDiaryEntryFormatsCorrectly) {
         }
     }();
 
-    while (async.size() > 0) {
+    while (!async.empty()) {
         loop.iteration();
     }
 
@@ -373,7 +373,7 @@ TEST_F(AppBaseUnitTest, TakeDiaryEntrySkipsDuplicates) {
         }
     }();
 
-    while (async.size() > 0) {
+    while (!async.empty()) {
         loop.iteration();
     }
 
@@ -417,7 +417,7 @@ TEST_F(AppBaseUnitTest, TakeDiaryEntryUpdatesMetadata) {
         }
     }();
 
-    while (async.size() > 0) {
+    while (!async.empty()) {
         loop.iteration();
     }
 
@@ -464,7 +464,7 @@ TEST_F(AppBaseUnitTest, UpdateToolsCalledDuringProcessing) {
 
     int beforeCount = app.updateToolsCallCount;
     async << app.passNotificationToAI("Test").onProcessed;
-    while (async.size() > 0) {
+    while (!async.empty()) {
         loop.iteration();
     }
 
@@ -508,7 +508,7 @@ TEST_F(AppBaseUnitTest, TemporaryContextAccumulatesMessages) {
     AppTestHarness app(openAI);
 
     async << app.passNotificationToAI("Hello from test").onProcessed;
-    while (async.size() > 0) {
+    while (!async.empty()) {
         loop.iteration();
     }
 

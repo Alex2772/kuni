@@ -18,7 +18,7 @@ static T await_synchronously(const AFuture<T>& future) {
 
     async << future;
 
-    while (async.size() > 0) {
+    while (!async.empty()) {
         loop.iteration();
     }
     AThread::processMessages();

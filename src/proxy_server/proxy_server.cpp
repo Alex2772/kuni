@@ -30,17 +30,17 @@ struct RequestTrace {
     AFileOutputStream stream { APath("logs_proxy") / ("{}"_format(std::chrono::system_clock::now()) + ".txt") };
 
     void write(AStringView tag, AStringView line) {
-        auto lines = line
-            | ranges::view::split('\n')
-            | ranges::view::transform([](auto&& rng) {
+        auto lines =
+            line | ranges::view::split('\n') | ranges::view::transform([](auto&& rng) {
                 return AStringView(&*ranges::begin(rng), ranges::distance(rng));
-              });
+            });
 
+        const auto now = std::chrono::system_clock::now();
         for (const AStringView& line : lines) {
             if (line.empty()) {
                 continue;
             }
-            stream << "[{:<16}] {}\n"_format(tag, line);
+            stream << "[{}][{:<16}] {}\n"_format(now, tag, line);
         }
     }
 };
@@ -121,7 +121,7 @@ struct ProxyServerImpl : proxy_server::IProxyServer {
                     AYieldGenerator<std::string_view> lines;
                     AVector<IOpenAIChat::Message> temporaryContext;
                     OpenAITools injectedTools;
-                    AVector<AFuture<IOpenAIChat::Message>> ourToolCalls;
+                    AVector<IOpenAIChat::Message> ourToolCalls;
                     proxy_server::StreamingFilter sseFilter { toolNames() };
                     proxy_server::MessageInjector& messageInjector;
                     Endpoint upstreamEndpoint;
@@ -138,13 +138,13 @@ struct ProxyServerImpl : proxy_server::IProxyServer {
                       , upstreamEndpoint(std::move(ep))
                       , url("{}{}"_format(upstreamEndpoint.baseUrl, API_PATH))
                       , upstream([&] {
-                            const auto host = url.path().bytes().substr(0, url.path().bytes().find("/"));
-                            const auto hostAndPort = "{}://{}"_format(url.schema(), host);
-                            ALOG_TRACE(LOG_TAG) << "ResponseService upstream: " << hostAndPort
-                                                << " url.path()=" << url.path().bytes()
-                                                << " baseUrl=" << upstreamEndpoint.baseUrl;
-                            return hostAndPort;
-                        }()) {}
+                          const auto host = url.path().bytes().substr(0, url.path().bytes().find("/"));
+                          const auto hostAndPort = "{}://{}"_format(url.schema(), host);
+                          ALOG_TRACE(LOG_TAG)
+                              << "ResponseService upstream: " << hostAndPort << " url.path()=" << url.path().bytes()
+                              << " baseUrl=" << upstreamEndpoint.baseUrl;
+                          return hostAndPort;
+                      }()) {}
 
                     void post(httplib::Response& res) {
                         auto keepMeAlive = shared_from_this();
@@ -157,31 +157,23 @@ struct ProxyServerImpl : proxy_server::IProxyServer {
                         const auto path = "/" + url.path().bytes().substr(url.path().bytes().find("/") + 1);
                         ALOG_TRACE(LOG_TAG) << "open_stream POST " << path;
                         httplib::Headers headers {
-                          { "Content-Type", "application/json" },
+                            { "Content-Type", "application/json" },
                         };
                         if (!upstreamEndpoint.bearerKey.empty()) {
                             headers.emplace("Authorization", "Bearer {}"_format(upstreamEndpoint.bearerKey));
                         }
-                        handle = upstream.open_stream(
-                            "POST",
-                            path,
-                            {},
-                            {
-                            },
-                            AJson::toString(requestJson));
+                        handle = upstream.open_stream("POST", path, {}, std::move(headers), AJson::toString(requestJson));
 
                         if (!handle.is_valid()) {
-                            ALogger::err(LOG_TAG) << "open_stream failed: error=" << (int)handle.error
-                                                    << " response=" << (handle.response ? handle.response->status : -1)
-                                                    << " url=" << url.full();
+                            ALogger::err(LOG_TAG)
+                                << "open_stream failed: error=" << (int) handle.error << " response="
+                                << (handle.response ? handle.response->status : -1) << " url=" << url.full();
                             res.status = httplib::BadRequest_400;
                             return;
                         }
 
                         lines = util::openai_streaming::lineByLine([this](char* dst, size_t size) {
-                            auto readBytes = handle.read(dst, size);
-                            trace.write("llm -> kuni", AStringView(dst, readBytes));
-                            return readBytes;
+                            return handle.read(dst, size);
                         });
 
                         res.status = handle.response->status;
@@ -215,6 +207,7 @@ struct ProxyServerImpl : proxy_server::IProxyServer {
                                         return true;
                                     }
                                     line = *lineIt;
+                                    trace.write("llm -> kuni", line);
                                     ALOG_TRACE(LOG_TAG) << line;
                                 } catch (const AException& e) {
                                     ALogger::err(LOG_TAG) << "proxy_server::chat_completions: Unrecoverable error" << e;
@@ -235,8 +228,12 @@ struct ProxyServerImpl : proxy_server::IProxyServer {
                                     },
                                     /*handleToolCall=*/
                                     [&](const IOpenAIChat::Message::ToolCall& tc) {
-                                        ourToolCalls << injectedTools.handleToolCalls({ tc }).map(
-                                            [](const AVector<IOpenAIChat::Message>& results) { return results.first(); });
+                                        trace.write(
+                                            "kuni's tool",
+                                            "{}({})"_format(
+                                                static_cast<const AString&>(tc.function.name),
+                                                static_cast<const AString&>(tc.function.arguments)));
+                                        ourToolCalls << util::await_synchronously(injectedTools.handleToolCalls({ tc })).first();
                                     });
                                 return true;
                             });
@@ -255,16 +252,11 @@ struct ProxyServerImpl : proxy_server::IProxyServer {
                             }
                         }
 
-                        // Await all tool call results.
-                        AVector<IOpenAIChat::Message> toolResults;
-                        for (auto& future : ourToolCalls) {
-                            toolResults << util::await_synchronously(std::move(future));
-                        }
-                        ourToolCalls.clear();
-
                         // Append hidden messages to the LLM request context.
                         requestJson["messages"].asArray() << aui::to_json(assistantMsg);
-                        for (auto& result : toolResults) {
+
+                        const AVector<IOpenAIChat::Message> toolResults = std::exchange(ourToolCalls, {});
+                        for (const auto& result : toolResults) {
                             requestJson["messages"].asArray() << aui::to_json(result);
                         }
 
@@ -354,9 +346,7 @@ struct ProxyServerImpl : proxy_server::IProxyServer {
         thread = std::thread([this] { app.listen("0.0.0.0", this->config.port); });
     }
 
-    void waitUntilReady() override {
-        app.wait_until_ready();
-    }
+    void waitUntilReady() override { app.wait_until_ready(); }
 
     ~ProxyServerImpl() override {
         app.stop();
@@ -365,6 +355,7 @@ struct ProxyServerImpl : proxy_server::IProxyServer {
 };
 }   // namespace
 
-std::shared_ptr<proxy_server::IProxyServer> proxy_server::init(proxy_server::ToolFactory toolFactory, proxy_server::Config config) {
+std::shared_ptr<proxy_server::IProxyServer>
+proxy_server::init(proxy_server::ToolFactory toolFactory, proxy_server::Config config) {
     return std::make_shared<ProxyServerImpl>(std::move(toolFactory), std::move(config));
 }

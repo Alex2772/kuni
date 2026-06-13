@@ -38,11 +38,11 @@ encourages implementations not to do so. Through C++14, trigraphs are supported 
 Visual C++ continues to support trigraph substitution, but it's disabled by default. For information on how to enable
 trigraph substitution, see /Zc:trigraphs (Trigraphs Substitution).
 )").onProcessed;
-    while (async.size() > 0) {
+    while (!async.empty()) {
         loop.iteration();
     }
     async << app->diaryDumpMessages();
-    while (async.size() > 0) {
+    while (!async.empty()) {
         loop.iteration();
     }
 
@@ -73,11 +73,11 @@ You received a message from Alex2772 (chat_id=1):
 Today I was playing several games of Dota 2. Both times I was playing Arc Warden and both times we lost
 :( my teammates weren't bad though.
 )").onProcessed;
-        while (async.size() > 0) {
+        while (!async.empty()) {
             loop.iteration();
         }
         async << app->diaryDumpMessages();
-        while (async.size() > 0) {
+        while (!async.empty()) {
             loop.iteration();
         }
         app->diary().reload();
@@ -112,7 +112,7 @@ Guess which hero I was playing :)
 
         EXPECT_CALL(*app, telegramPostMessage(testing::_)).Times(testing::AtLeast(1));
 
-        while (async.size() > 0) {
+        while (!async.empty()) {
             loop.iteration();
         }
 
@@ -155,7 +155,7 @@ TEST(DiaryIntegration, Query1) {
         }
     }();
 
-    while (async.size() > 0) {
+    while (!async.empty()) {
         loop.iteration();
     }
 }
@@ -265,7 +265,7 @@ TEST(DiaryIntegration, RealWorldChatHistorySneakyTopicSwitch) {
 
         async << app->passNotificationToAI("You recevied a notification. Please use #open_chat to see mesages.").onProcessed;
 
-        while (async.size() > 0) {
+        while (!async.empty()) {
             loop.iteration();
         }
     }
@@ -343,7 +343,7 @@ TEST(DiaryIntegration, ConversationNoFollowUp) {
 
         async << app->passNotificationToAI("You recevied a notification. Please use #open_chat to see mesages.").onProcessed;
 
-        while (async.size() > 0) {
+        while (!async.empty()) {
             loop.iteration();
         }
     }
@@ -376,7 +376,7 @@ TEST(DiaryIntegration, Merge) {
         EXPECT_EQ(diary.list().size(), 2);
     }();
 
-    while (async.size() > 0) {
+    while (!async.empty()) {
         loop.iteration();
     }
 }
@@ -400,7 +400,7 @@ TEST(DiaryIntegration, Split) {
         EXPECT_EQ(diary.list().size(), 2);
     }();
 
-    while (async.size() > 0) {
+    while (!async.empty()) {
         loop.iteration();
     }
 }

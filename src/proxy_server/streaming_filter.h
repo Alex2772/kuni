@@ -70,6 +70,10 @@ private:
     // the tool-call phase started.  If true and all tool calls are injected, we must
     // emit a synthetic finish_reason chunk so the client knows the stream ended.
     bool mHasPassedThroughContent = false;
+
+    // True once injected tool calls have been dispatched to handleToolCall.
+    // Prevents double-dispatch if the upstream sends duplicate finish_reason chunks.
+    bool mDispatched = false;
 };
 
 }   // namespace proxy_server

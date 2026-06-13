@@ -64,7 +64,7 @@ AFuture<AString> importantThingsToRemember(IOpenAIChat& openAI, AVector<IOpenAIC
         }
         content.removeAll("<things_to_remember>");  // sometimes llm wraps with xml tags by itself, we don't need
         content.removeAll("</things_to_remember>"); // that
-        auto notAWhitespace = [](char c) {
+        static constexpr auto notAWhitespace = [](char c) {
             if (c == '\n') {
                 return false;
             }

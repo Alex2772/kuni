@@ -84,7 +84,7 @@ This media type is not supported
         co_return;
     }(telegram);
 
-    while (async.size() > 0) {
+    while (!async.empty()) {
         loop.iteration();
     }
 }

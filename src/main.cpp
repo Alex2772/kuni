@@ -583,11 +583,9 @@ AUI_ENTRY {
             proxyServer = proxy_server::init(
                 [openAI, diary](const AVector<IOpenAIChat::Message>& ctx) {
                     // Create the tools directly without using an initializer list
-                    auto askTool = tools::ask(
-                        [&ctx] { return ctx.empty() ? AString{} : AString(ctx.last().content); },
-                        openAI, *diary
-                    );
-                    return OpenAITools({ askTool }); // Ensure this matches the expected constructor
+                    return OpenAITools {
+                        tools::ask([&ctx] { return ctx.empty() ? AString {} : AString(ctx.last().content); }, openAI, *diary),
+                    };
                 },
                 {
                     .upstreamEndpoint = config::ENDPOINT_MAIN.endpoint,

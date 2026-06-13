@@ -183,6 +183,7 @@ TEST_F(ProxyServerTest, BasicPassthrough) {
     ASSERT_EQ(llm.receivedRequests.size(), 1u);
     ASSERT_FALSE(response.choices.empty());
     EXPECT_EQ(response.choices.at(0).message.content, "Hello from LLM");
+    EXPECT_EQ(static_cast<AString&>(response.choices.at(0).finish_reason), "stop");
 }
 
 // Tool injection: proxy intercepts a tool_call, executes it locally, then makes a second
@@ -193,9 +194,9 @@ TEST_F(ProxyServerTest, ToolInjection) {
     // Second LLM response: final answer after tool result is injected
     llm.enqueue(MockLlmService::makeSseText("Tool said: pong. Done."));
 
-    bool toolWasCalled = false;
+    int toolCallCount = 0;
 
-    startProxy([&toolWasCalled](const AVector<IOpenAIChat::Message>&) {
+    startProxy([&toolCallCount](const AVector<IOpenAIChat::Message>&) {
         return OpenAITools {{
             .name = "test_tool",
             .description = "A test tool",
@@ -203,8 +204,9 @@ TEST_F(ProxyServerTest, ToolInjection) {
                 .properties = { { "input", { .type = "string", .description = "input" } } },
                 .required = { "input" },
             },
-            .handler = [&toolWasCalled](OpenAITools::Ctx ctx) -> AFuture<AString> {
-                toolWasCalled = true;
+            .handler = [&toolCallCount](OpenAITools::Ctx ctx) -> AFuture<AString> {
+                ++toolCallCount;
+                EXPECT_EQ(toolCallCount, 1) << "test_tool must be called exactly once";
                 co_return "pong";
             },
         }};
@@ -216,12 +218,12 @@ TEST_F(ProxyServerTest, ToolInjection) {
     ASSERT_EQ(llm.receivedRequests.size(), 2u);
     EXPECT_EQ(aui::from_json<AVector<IOpenAIChat::Message>>(llm.receivedRequests.at(1)["messages"]).last().content, "pong");
 
-    // The tool must have been called
-    EXPECT_TRUE(toolWasCalled);
+    EXPECT_EQ(toolCallCount, 1);
 
     // Client sees the final answer, not the raw tool_call
     ASSERT_FALSE(response.choices.empty());
     EXPECT_EQ(response.choices.at(0).message.content, "Tool said: pong. Done.");
+    EXPECT_EQ(static_cast<AString&>(response.choices.at(0).finish_reason), "stop");
 
     // Second request to LLM must contain the assistant (with tool_calls) and the tool result
     const auto& secondReqMessages = llm.receivedRequests.at(1)["messages"].asArray();
@@ -243,7 +245,9 @@ TEST_F(ProxyServerTest, HiddenContextInjection) {
     llm.enqueue(MockLlmService::makeSseToolCall("ctx_tool", R"({"q":"x"})"));
     llm.enqueue(MockLlmService::makeSseText("Final answer"));
 
-    startProxy([](const AVector<IOpenAIChat::Message>&) {
+    int ctxToolCallCount = 0;
+
+    startProxy([&ctxToolCallCount](const AVector<IOpenAIChat::Message>&) {
         return OpenAITools {{
             .name = "ctx_tool",
             .description = "ctx tool",
@@ -251,13 +255,18 @@ TEST_F(ProxyServerTest, HiddenContextInjection) {
                 .properties = { { "q", { .type = "string", .description = "q" } } },
                 .required = { "q" },
             },
-            .handler = [](OpenAITools::Ctx) -> AFuture<AString> { co_return "ctx_result"; },
+            .handler = [&ctxToolCallCount](OpenAITools::Ctx) -> AFuture<AString> {
+                ++ctxToolCallCount;
+                EXPECT_EQ(ctxToolCallCount, 1) << "ctx_tool must be called exactly once (only in session 1)";
+                co_return "ctx_result";
+            },
         }};
     });
 
     // First session
     awaitStreaming({ { IOpenAIChat::Message::Role::USER, "question" } });
     ASSERT_EQ(llm.receivedRequests.size(), 2u);
+    EXPECT_EQ(ctxToolCallCount, 1) << "ctx_tool must have been called exactly once after session 1";
 
     // Session 2: client sends back the assistant message from session 1, plus a new user message.
     // The proxy should inject the hidden tool_call + tool_result before the assistant message.
@@ -284,6 +293,9 @@ TEST_F(ProxyServerTest, HiddenContextInjection) {
 
     ASSERT_FALSE(response.choices.empty());
     EXPECT_EQ(response.choices.at(0).message.content, "Second answer");
+    EXPECT_EQ(static_cast<AString&>(response.choices.at(0).finish_reason), "stop");
+
+    EXPECT_EQ(ctxToolCallCount, 1) << "ctx_tool must not be called again in session 2";
 }
 
 // New chat after injected tool session: starting a fresh conversation (no messages from the previous
@@ -293,7 +305,9 @@ TEST_F(ProxyServerTest, NewChatAfterToolSession) {
     llm.enqueue(MockLlmService::makeSseToolCall("nc_tool", R"({"q":"x"})"));
     llm.enqueue(MockLlmService::makeSseText("Final answer"));
 
-    startProxy([](const AVector<IOpenAIChat::Message>&) {
+    int ncToolCallCount = 0;
+
+    startProxy([&ncToolCallCount](const AVector<IOpenAIChat::Message>&) {
         return OpenAITools {{
             .name = "nc_tool",
             .description = "nc tool",
@@ -301,13 +315,18 @@ TEST_F(ProxyServerTest, NewChatAfterToolSession) {
                 .properties = { { "q", { .type = "string", .description = "q" } } },
                 .required = { "q" },
             },
-            .handler = [](OpenAITools::Ctx) -> AFuture<AString> { co_return "nc_result"; },
+            .handler = [&ncToolCallCount](OpenAITools::Ctx) -> AFuture<AString> {
+                ++ncToolCallCount;
+                EXPECT_EQ(ncToolCallCount, 1) << "nc_tool must be called exactly once (only in session 1)";
+                co_return "nc_result";
+            },
         }};
     });
 
     // Complete the first session so hidden context is stored in the proxy.
     awaitStreaming({ { IOpenAIChat::Message::Role::USER, "question" } });
     ASSERT_EQ(llm.receivedRequests.size(), 2u);
+    EXPECT_EQ(ncToolCallCount, 1) << "nc_tool must have been called exactly once in session 1";
 
     // New chat: client starts completely fresh — only a single user message, no assistant history.
     llm.enqueue(MockLlmService::makeSseText("Clean answer"));
@@ -333,4 +352,7 @@ TEST_F(ProxyServerTest, NewChatAfterToolSession) {
 
     ASSERT_FALSE(response.choices.empty());
     EXPECT_EQ(response.choices.at(0).message.content, "Clean answer");
+    EXPECT_EQ(static_cast<AString&>(response.choices.at(0).finish_reason), "stop");
+
+    EXPECT_EQ(ncToolCallCount, 1) << "nc_tool must not be called in the new chat session";
 }
