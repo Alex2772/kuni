@@ -348,6 +348,14 @@ AFuture<AString> llmui::formatChatHistoryMessage(
           [&](td::td_api::messageSenderUser& user) { senderId = user.user_id_; },
           [&](td::td_api::messageSenderChat& chat) { senderId = chat.chat_id_; },
         });
+
+    if (!msg.sender_tag_.empty()) {
+        formattedXmlTag += " chat_tag=\"{}\""_format(msg.sender_tag_);
+    }
+    if (!msg.author_signature_.empty()) {
+        formattedXmlTag += " author_signature=\"{}\""_format(msg.author_signature_);
+    }
+
     if (senderId != telegram.myId() && chat.last_read_inbox_message_id_ <= msg.id_) {
         formattedXmlTag += " unread";
     }

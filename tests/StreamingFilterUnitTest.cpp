@@ -173,6 +173,7 @@ TEST(StreamingFilter, NonInjectedToolPassesThrough2) {
 
 // A tool call to an injected tool must be intercepted (NOT passed through),
 // and the handler must be called exactly once with the complete accumulated call.
+// also we expect "finish_reason": "tool_calls" frame to be filtered out.
 TEST(StreamingFilter, InjectedToolIsIntercepted) {
     StreamingFilter filter({"ask"});
     // Simulate the real streaming sequence from the log:
@@ -186,8 +187,9 @@ TEST(StreamingFilter, InjectedToolIsIntercepted) {
         makeChunk(0, {}, {}, "tool_calls", 0),
         "data: [DONE]",
     });
-    ASSERT_EQ(result.passedThrough.size(), 1u);
-    EXPECT_EQ(result.passedThrough[0], "data: [DONE]");
+    ASSERT_EQ(result.passedThrough.size(), 2);
+    EXPECT_EQ(result.passedThrough[0], R"(data: {"id":"x","object":"chat.completion.chunk","created":0,"model":"m","choices":[{"index":0,"delta":{"role":"assistant"}}]})");
+    EXPECT_EQ(result.passedThrough[1], "data: [DONE]");
 
     ASSERT_EQ(result.toolCalls.size(), 1u);
     EXPECT_THAT(std::string(result.toolCalls[0].function.arguments), HasSubstr("Hello"));
@@ -250,8 +252,10 @@ TEST(StreamingFilter, ReasoningBeforeToolCallPassesThrough) {
     EXPECT_THAT(result.passedThrough, Contains(HasSubstr("The user wants me to call ask")));
     EXPECT_THAT(result.passedThrough, Contains(HasSubstr("More reasoning")));
 
-    // the last two must have been flushed too.
-    EXPECT_THAT(result.passedThrough, Contains(HasSubstr("tool_calls")));
+    // we don't expect tool_calls.
+    EXPECT_THAT(result.passedThrough, Not(Contains(HasSubstr("tool_calls"))));
+
+    // the last frame should have been flushed.
     EXPECT_THAT(result.passedThrough, Contains("data: [DONE]"));
 
     // Tool call chunks must NOT be forwarded.

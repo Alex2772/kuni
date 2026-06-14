@@ -189,7 +189,7 @@ AJSON_FIELDS(IOpenAIChat::Response::Choice,
 
 AJSON_FIELDS(IOpenAIChat::Response,
              AJSON_FIELDS_ENTRY(id) AJSON_FIELDS_ENTRY(object) AJSON_FIELDS_ENTRY(created) AJSON_FIELDS_ENTRY(model)
-                 AJSON_FIELDS_ENTRY(system_fingerprint) AJSON_FIELDS_ENTRY(choices)
+                 (system_fingerprint, "system_fingerprint", AJsonFieldFlags::OPTIONAL) AJSON_FIELDS_ENTRY(choices)
                  (usage, "usage", AJsonFieldFlags::OPTIONAL))
 
 template<>

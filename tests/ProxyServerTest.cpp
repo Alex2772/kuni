@@ -151,13 +151,13 @@ struct ProxyServerTest : ::testing::Test {
 
     void startProxy(proxy_server::ToolFactory factory = [](const AVector<IOpenAIChat::Message>&) { return OpenAITools{}; }) {
         proxy = proxy_server::init(
-            std::move(factory),
             {
                 .upstreamEndpoint = {
                     .baseUrl = "http://127.0.0.1:{}/v1/"_format(llm.port),
                     .bearerKey = "",
                 },
                 .port = PROXY_PORT,
+                .toolsFactory = std::move(factory),
             });
         proxy->waitUntilReady();
         client = std::make_shared<OpenAIChatImpl>();
@@ -355,4 +355,85 @@ TEST_F(ProxyServerTest, NewChatAfterToolSession) {
     EXPECT_EQ(static_cast<AString&>(response.choices.at(0).finish_reason), "stop");
 
     EXPECT_EQ(ncToolCallCount, 1) << "nc_tool must not be called in the new chat session";
+}
+
+// sentRequestToLLM signal: fired exactly once after a plain (non-tool) response, carrying the
+// correct request JSON that was actually forwarded to the upstream LLM.
+TEST_F(ProxyServerTest, SentRequestToLLMSignalBasic) {
+    llm.enqueue(MockLlmService::makeSseText("Signal test reply"));
+    startProxy();
+
+    AVector<AJson> signalPayloads;
+    AObject::connect(proxy->sentRequestToLLM, AObject::GENERIC_OBSERVER, [&signalPayloads](const AJson& req) {
+        signalPayloads << req;
+    });
+
+    awaitStreaming({ { IOpenAIChat::Message::Role::USER, "hello signal" } });
+
+    ASSERT_EQ(signalPayloads.size(), 1u) << "sentRequestToLLM must fire exactly once for a plain response";
+
+    // The payload must contain a "messages" array
+    ASSERT_TRUE(signalPayloads.at(0).contains("messages"));
+    const auto& messages = signalPayloads.at(0)["messages"].asArray();
+    ASSERT_FALSE(messages.empty());
+
+    // There must be a user message with the content we sent
+    bool foundUserMessage = false;
+    for (const auto& msg : messages) {
+        if (msg["role"].asStringOpt().valueOr("") == "user" &&
+            msg["content"].asStringOpt().valueOr("").find("hello signal") != std::string::npos) {
+            foundUserMessage = true;
+        }
+    }
+    EXPECT_TRUE(foundUserMessage) << "sentRequestToLLM payload must contain the user message";
+
+    // The payload must match what the mock LLM actually received
+    ASSERT_EQ(llm.receivedRequests.size(), 1u);
+    EXPECT_EQ(AJson::toString(signalPayloads.at(0)), AJson::toString(llm.receivedRequests.at(0)));
+}
+
+// sentRequestToLLM signal: when a tool call is involved, the signal must fire only ONCE — after
+// the final LLM response (not after the intermediate tool-call response), and the payload must
+// contain the full conversation including tool call and tool result messages.
+TEST_F(ProxyServerTest, SentRequestToLLMSignalAfterToolCall) {
+    llm.enqueue(MockLlmService::makeSseToolCall("sig_tool", R"({"val":"42"})"));
+    llm.enqueue(MockLlmService::makeSseText("Tool done."));
+
+    startProxy([](const AVector<IOpenAIChat::Message>&) {
+        return OpenAITools {{
+            .name = "sig_tool",
+            .description = "sig tool",
+            .parameters = {
+                .properties = { { "val", { .type = "string", .description = "value" } } },
+                .required = { "val" },
+            },
+            .handler = [](OpenAITools::Ctx) -> AFuture<AString> { co_return "tool_output_42"; },
+        }};
+    });
+
+    AVector<AJson> signalPayloads;
+    AObject::connect(proxy->sentRequestToLLM, AObject::GENERIC_OBSERVER, [&signalPayloads](const AJson& req) {
+        signalPayloads << req;
+    });
+
+    awaitStreaming({ { IOpenAIChat::Message::Role::USER, "do the tool" } });
+
+    ASSERT_EQ(llm.receivedRequests.size(), 2u);
+
+    // Signal must fire exactly once — after the final (second) LLM response
+    ASSERT_EQ(signalPayloads.size(), 1u) << "sentRequestToLLM must fire exactly once, after the final response";
+
+    // The single payload must correspond to the second (final) upstream request
+    EXPECT_EQ(AJson::toString(signalPayloads.at(0)), AJson::toString(llm.receivedRequests.at(1)));
+
+    // The payload must contain a tool result message
+    const auto& messages = signalPayloads.at(0)["messages"].asArray();
+    bool foundToolResult = false;
+    for (const auto& msg : messages) {
+        if (msg["role"].asStringOpt().valueOr("") == "tool" &&
+            msg["content"].asStringOpt().valueOr("") == "tool_output_42") {
+            foundToolResult = true;
+        }
+    }
+    EXPECT_TRUE(foundToolResult) << "sentRequestToLLM payload must include the tool result message";
 }

@@ -159,7 +159,7 @@ public:
      * The metadata block is serialized to JSON and written before the
      * freeform body, surrounded by `---` delimiters.
      */
-    void save(const EntryEx& entry);
+    virtual void save(const EntryEx& entry);
 
     /**
      * @brief Remove an entry from the in‑memory cache.

@@ -16,6 +16,7 @@
 #include "AUI/Util/ASharedRaiiHelper.h"
 #include "AUI/Util/kAUI.h"
 #include "AppBase.h"
+#include "IChatHistoryMessageProcessor.h"
 #include "ImageGenerator.h"
 #include "AUI/Image/jpg/JpgImageLoader.h"
 #include "telegram/ITelegramClient.h"
@@ -24,9 +25,11 @@
 #include "OpenAIChatImpl.h"
 #include "OpenAIChatMeasurable.h"
 #include "Prometheus.h"
+#include "AUI/AppInfo.h"
 #include "llmui/image.h"
 #include "llmui/malicious_payloads.h"
 #include "llmui/telegram.h"
+#include "proxy_server/context_bridge.h"
 #include "tools/get_chat_photo.h"
 #include "tools/take_photo.h"
 #include "tools/record_audio.h"
@@ -65,8 +68,12 @@ constexpr auto DIARY_DIR = "diary";
 
 AEventLoop gEventLoop;
 
+extern "C" AStringView project_version_info();
+
 class App : public AppBase {
 public:
+    AVector<_<IChatHistoryMessageProcessor>> chatHistoryMessageProcessors;
+
     App(_<ITelegramClient> telegram, _<IOpenAIChat> openAI)
       : AppBase({ .workingDir = "data", .openAI = std::move(openAI) }), mTelegram(std::move(telegram)) {
         ALOG_TRACE(LOG_TAG) << "App::App";
@@ -194,6 +201,24 @@ private:
         co_return;
     }
 
+    AFuture<AOptional<AString /* msg */>> tryHandleCmd(int64_t senderId, AStringView msg) {
+        try {
+            if (msg == "/version") {
+                static constexpr char KERNEL_NAME[] = {
+                    'k', 'u', 'n', 'i', 0 // original kernel name, plz do not replace
+                };
+#if AUI_TESTS_MODULE
+                co_return "Kernel: {}"_format(KERNEL_NAME);
+#else
+                co_return "{}\nKernel: {}"_format(project_version_info(), KERNEL_NAME);
+#endif
+            }
+        } catch (const AException& e) {
+            ALogger::err(LOG_TAG) << "Failed to handle command: " << e;
+        }
+        co_return std::nullopt;
+    }
+
     AFuture<> handleTelegramEvent(td::td_api::updateNewMessage u) {
         int64_t userId = 0;
         td::td_api::downcast_call(
@@ -237,8 +262,12 @@ private:
             }
         }
         auto notification = "<notification chat_id=\"{}\">\n"_format(chat->id_);
-        ;
+
         if (userId == u.message_->chat_id_) {
+            if (auto cmdResponse = co_await tryHandleCmd(userId, llmui::extractMessageTypeAndText(*u.message_))) {
+                co_await util::telegramPostMessage(*telegram(), userId, std::move(*cmdResponse), std::nullopt, std::nullopt, u.message_->id_);
+                co_return;
+            }
             notification += "You received a direct message from {} (chat_id = {})"_format(chat->title_, chat->id_);
         } else if (userId != 0) {
             auto user = co_await mTelegram->sendQueryWithResult(td::td_api::make_object<td::td_api::getUser>(userId));
@@ -396,6 +425,9 @@ public:
                 readMessages.push_back(msg->id_);
                 auto msgFormatted =
                     co_await llmui::formatChatHistoryMessage(*telegram(), *msg, *chat, *openAI(), temporaryContext());
+                for (const auto& i : chatHistoryMessageProcessors) {
+                    msgFormatted = co_await i->processChatHistoryMessage(*chat, *msg, std::move(msgFormatted));
+                }
                 result += msgFormatted;
                 td::td_api::int53 senderId = 0;
                 td::td_api::downcast_call(
@@ -580,17 +612,23 @@ AUI_ENTRY {
 
         if constexpr (config::PROXY_ENABLED) {
             auto diary = std::make_shared<Diary>(Diary::Init{ .diaryDir = "data/diary", .openAI = openAI });
-            proxyServer = proxy_server::init(
-                [openAI, diary](const AVector<IOpenAIChat::Message>& ctx) {
-                    // Create the tools directly without using an initializer list
-                    return OpenAITools {
-                        tools::ask([&ctx] { return ctx.empty() ? AString {} : AString(ctx.last().content); }, openAI, *diary),
-                    };
-                },
-                {
-                    .upstreamEndpoint = config::ENDPOINT_MAIN.endpoint,
-                    .port = 10434,
-                });
+            proxyServer = proxy_server::init({
+              .upstreamEndpoint = config::ENDPOINT_MAIN.endpoint,
+              .port = 10434,
+              .toolsFactory =
+                  [openAI, diary](const AVector<IOpenAIChat::Message>& ctx) {
+                      // Create the tools directly without using an initializer list
+                      return OpenAITools {
+                          tools::ask([&ctx] { return ctx.empty() ? AString {} : AString(ctx.last().content); }, openAI, *diary),
+                      };
+                  },
+            });
+            auto bridge = _new<proxy_server::ContextBridge>(proxy_server::ContextBridge::Config {
+                .endpoint = config::ENDPOINT_MAIN.endpoint,
+                .diary = diary,
+            });
+            AObject::connect(proxyServer->sentRequestToLLM, AUI_SLOT(bridge)::collectRequestToLLM);
+            app->chatHistoryMessageProcessors << bridge;
         }
         prometheus = prometheus::setup(app->metricBreadcumbs());
         prometheus->registerOpenAI(*openAI);

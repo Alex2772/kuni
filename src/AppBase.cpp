@@ -26,6 +26,7 @@
 #include "AUI/IO/AFileInputStream.h"
 #include "tools/ask.h"
 #include "util/cosine_similarity.h"
+#include "util/diary_save_entries.h"
 #include "util/important_things_to_remember.h"
 
 #include <range/v3/action/erase.hpp>
@@ -377,57 +378,10 @@ AFuture<> AppBase::diaryDumpMessages() {
     }
     auto importantThingsToRemember = util::importantThingsToRemember(*openAI(), mTemporaryContext, previousWorkingMemory);
 
-    mTemporaryContext << IOpenAIChat::Message{
-        .role = IOpenAIChat::Message::Role::USER,
-        .content = config::DIARY_PROMPT,
-    };
-
-    IOpenAIChat::Params chatParams{
+    co_await util::diarySaveEntries(mDiary, mTemporaryContext, {
         .systemPrompt = getSystemPrompt(),
-        // chatParams.tools = mTools.asJson; // no tools should be involved.
-    };
-    naxyi:
-    IOpenAIChat::Response botAnswer = co_await openAI()->chat(chatParams, mTemporaryContext);
-    if (botAnswer.choices.at(0).message.content.empty()) {
-        goto naxyi;
-    }
-    mTemporaryContext << botAnswer.choices.at(0).message;
-    auto id = std::chrono::duration_cast<std::chrono::seconds>(std::chrono::system_clock::now().time_since_epoch()).count();
-    auto message = botAnswer.choices.at(0).message.content;
-
-    // stupid AI sometimes messes up with separators
-    message.replaceAll("- --", "---");
-    message.replaceAll("-- -", "---");
-    auto split = message.split("---");
-
-    if (ranges::any_of(split, [](const auto& s) { return s.length() > 3000; })) {
-        mTemporaryContext << IOpenAIChat::Message {
-            .role = IOpenAIChat::Message::Role::USER,
-            .content = "One of your sections are too big. Shorten then and ensure correct division by \"---\".",
-        };
-    }
-
-    for (const auto& take : split) {
-        if (take.length() < 20) {
-            continue; // random shit
-        }
-        auto embedding = co_await openAI()->embedding({ .config = config::ENDPOINT_EMBEDDING }, take);
-        if (auto query = co_await mDiary.query(embedding, {.confidenceFactor = 0}); !query.empty()) {
-            ALogger::info("AppBase") << "{}.md"_format(id) << ": plagiarism factor other_id=\"" << query.first().entry->id << "\" relatedness =" << float(query.first().relatedness);
-            if (query.first().relatedness > config::DIARY_PLAGIARISM_THRESHOLD) {
-                ALogger::info("AppBase") << "{}.md"_format(id) << ": won't store because it's plagiarism other_id=\"" << query.first().entry->id << "\"";
-                continue;
-            }
-        }
-
-        mDiary.save({
-            .id = "{}"_format(id++),
-            .metadata = {
-                .embedding = std::move(embedding),
-            },
-            .freeformBody = std::move(take),
-        });
-    }
+        // no tools should be involved.
+    });
     {
         // do it in separate lines: first, we wait for LLM response, second, we overwrite file (destructive operation).
         auto workingMemoryMd = co_await importantThingsToRemember;

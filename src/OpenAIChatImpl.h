@@ -11,6 +11,8 @@ struct OpenAIChatImpl: IOpenAIChat {
 
     AFuture<std::valarray<double>> embedding(Params params, AString input) override;
 
+    static AFuture<AJson> makeHttpRequest(Endpoint endpoint, std::string query);
+
 private:
     static AJson makeQueryString(Params params, AVector<Message> messages);
 };

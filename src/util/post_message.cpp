@@ -35,8 +35,9 @@ AFuture<> util::telegramPostMessage(
                 }();
                 content->width_ = photo->get()->width();
                 content->height_ = photo->get()->height();
-                JpgImageLoader::save(AFileOutputStream("temp.jpg"), **photo);
-                content->photo_ = ITelegramClient::toPtr(td::td_api::inputFileLocal("temp.jpg"));
+                auto tempPath = "temp_{}.jpg"_format(std::chrono::system_clock::now().time_since_epoch().count());
+                JpgImageLoader::save(AFileOutputStream(tempPath), **photo);
+                content->photo_ = ITelegramClient::toPtr(td::td_api::inputFileLocal(tempPath));
                 return content;
             }
 

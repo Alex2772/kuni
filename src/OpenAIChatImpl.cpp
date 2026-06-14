@@ -78,28 +78,22 @@ AJson OpenAIChatImpl::makeQueryString(Params params, AVector<IOpenAIChat::Messag
     return json;
 }
 
-AFuture<IOpenAIChat::Response> OpenAIChatImpl::chat(Params params, AVector<Message> messages) {
-    messages.insert(messages.begin(), {Message::Role::SYSTEM_PROMPT, params.systemPrompt});
-    AString query = AJson::toString(makeQueryString(params, messages));
-    AFileOutputStream("last_query.json") << query.toStdString();
-    const auto logsDir = APath("logs");
-    logsDir.makeDirs();
-    auto now = std::chrono::system_clock::now();
-    AFileOutputStream(logsDir / "{}.0query.json"_format(now)) << query.toStdString();
-
+AFuture<AJson> OpenAIChatImpl::makeHttpRequest(Endpoint endpoint, std::string query) {
     ALOG_TRACE(LOG_TAG) << "Query: " << query;
     AVector<AString> headers = {"Content-Type: application/json"};
-    if (!params.config.endpoint.bearerKey.empty()) {
-        headers << "Authorization: Bearer {}"_format(params.config.endpoint.bearerKey);
+    if (!endpoint.bearerKey.empty()) {
+        headers << "Authorization: Bearer {}"_format(endpoint.bearerKey);
     }
+
     tryAgain:
-    auto response = AJson::fromBuffer((co_await ACurl::Builder(params.config.endpoint.baseUrl + "chat/completions")
+    auto response = AJson::fromBuffer((co_await ACurl::Builder(endpoint.baseUrl + "chat/completions")
                                            .withMethod(ACurl::Method::HTTP_POST)
                                            .withTimeout(config::REQUEST_TIMEOUT)
                                            .withHeaders(headers)
-                                           .withBody(query.toStdString())
+                                           .withBody(query)
                                            .runAsync())
                                           .body);
+
     if (response.contains("error")) {
         auto message = AJson::toString(response["error"]);
         if (message.contains("model failed to load, this may be due to resource limitations or an internal error")) {
@@ -112,6 +106,24 @@ AFuture<IOpenAIChat::Response> OpenAIChatImpl::chat(Params params, AVector<Messa
         }
         throw AException("Ollama error: " + message);
     }
+    co_return response;
+}
+
+AFuture<IOpenAIChat::Response> OpenAIChatImpl::chat(Params params, AVector<Message> messages) {
+    if (!params.systemPrompt.empty()) {
+        if (!messages.empty()) {
+            AUI_ASSERT(messages.first().role != Message::Role::SYSTEM_PROMPT);
+        }
+        messages.insert(messages.begin(), {Message::Role::SYSTEM_PROMPT, params.systemPrompt});
+    }
+    AString query = AJson::toString(makeQueryString(params, messages));
+    AFileOutputStream("last_query.json") << query.toStdString();
+    const auto logsDir = APath("logs");
+    logsDir.makeDirs();
+    auto now = std::chrono::system_clock::now();
+    AFileOutputStream(logsDir / "{}.0query.json"_format(now)) << query.toStdString();
+
+    auto response = co_await makeHttpRequest(params.config.endpoint, query);
     AFileOutputStream("last_response.json") << response;
     AFileOutputStream(logsDir / "{}.1response.json"_format(now)) << response;
     ALOG_DEBUG(LOG_TAG) << "Response: " << AJson::toString(response).replaceAll("\\n", "\n");

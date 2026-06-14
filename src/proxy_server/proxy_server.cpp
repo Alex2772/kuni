@@ -1,9 +1,18 @@
-//
-// Created by alex2772 on 6/7/26.
+// Proxy server that sits between an AI client (e.g. a chat app) and an upstream
+// OpenAI-compatible LLM endpoint. Responsibilities:
+//   - Intercept /v1/chat/completions requests and inject system prompt, hidden
+//     context (tool call history), and kuni-specific tools before forwarding.
+//   - Handle tool calls returned by the LLM transparently: execute them locally
+//     and feed results back in follow-up requests, invisible to the client.
+//   - Stream responses back to the client via SSE, filtering out tool-call
+//     artefacts and synthesising a clean [DONE] terminator.
+//   - Pass all other OpenAI API routes (embeddings, images, audio, models, …)
+//     through as plain reverse-proxy calls.
 //
 
 #include "proxy_server.h"
 
+#include "AppBase.h"
 #include "OpenAITools.h"
 #include "config.h"
 #include <range/v3/all.hpp>
@@ -45,10 +54,9 @@ struct RequestTrace {
     }
 };
 
-struct ProxyServerImpl : proxy_server::IProxyServer {
+struct ProxyServerImpl : AObject, proxy_server::IProxyServer {
     httplib::Server app;
     std::thread thread;
-    proxy_server::ToolFactory toolFactory;
     proxy_server::Config config;
 
     proxy_server::MessageInjector messageInjector;
@@ -117,14 +125,13 @@ struct ProxyServerImpl : proxy_server::IProxyServer {
                 APath("logs_proxy").makeDirs();
 
                 struct ResponseService : std::enable_shared_from_this<ResponseService> {
+                    ProxyServerImpl& parent;
                     httplib::ClientImpl::StreamHandle handle;
                     AYieldGenerator<std::string_view> lines;
                     AVector<IOpenAIChat::Message> temporaryContext;
                     OpenAITools injectedTools;
                     AVector<IOpenAIChat::Message> ourToolCalls;
                     proxy_server::StreamingFilter sseFilter { toolNames() };
-                    proxy_server::MessageInjector& messageInjector;
-                    Endpoint upstreamEndpoint;
                     AUrl url;
                     RequestTrace trace;
 
@@ -132,17 +139,16 @@ struct ProxyServerImpl : proxy_server::IProxyServer {
 
                     AJson requestJson;
 
-                    ResponseService(proxy_server::ToolFactory toolsFactory, proxy_server::MessageInjector& injector, Endpoint ep)
-                      : injectedTools(toolsFactory(temporaryContext))
-                      , messageInjector(injector)
-                      , upstreamEndpoint(std::move(ep))
-                      , url("{}{}"_format(upstreamEndpoint.baseUrl, API_PATH))
+                    ResponseService(ProxyServerImpl& parent)
+                      : parent(parent)
+                      , injectedTools(parent.config.toolsFactory(temporaryContext))
+                      , url("{}{}"_format(parent.config.upstreamEndpoint.baseUrl, API_PATH))
                       , upstream([&] {
                           const auto host = url.path().bytes().substr(0, url.path().bytes().find("/"));
                           const auto hostAndPort = "{}://{}"_format(url.schema(), host);
                           ALOG_TRACE(LOG_TAG)
                               << "ResponseService upstream: " << hostAndPort << " url.path()=" << url.path().bytes()
-                              << " baseUrl=" << upstreamEndpoint.baseUrl;
+                              << " baseUrl=" << parent.config.upstreamEndpoint.baseUrl;
                           return hostAndPort;
                       }()) {}
 
@@ -159,8 +165,8 @@ struct ProxyServerImpl : proxy_server::IProxyServer {
                         httplib::Headers headers {
                             { "Content-Type", "application/json" },
                         };
-                        if (!upstreamEndpoint.bearerKey.empty()) {
-                            headers.emplace("Authorization", "Bearer {}"_format(upstreamEndpoint.bearerKey));
+                        if (!parent.config.upstreamEndpoint.bearerKey.empty()) {
+                            headers.emplace("Authorization", "Bearer {}"_format(parent.config.upstreamEndpoint.bearerKey));
                         }
                         handle = upstream.open_stream("POST", path, {}, std::move(headers), AJson::toString(requestJson));
 
@@ -204,6 +210,7 @@ struct ProxyServerImpl : proxy_server::IProxyServer {
                                         }
                                         write("data: [DONE]\n\n");
                                         sink.done();
+                                        parent.onSentRequestToLLM(requestJson);
                                         return true;
                                     }
                                     line = *lineIt;
@@ -279,7 +286,7 @@ struct ProxyServerImpl : proxy_server::IProxyServer {
                             aui::from_json(allMessages[i], msg);
                             hidden << std::move(msg);
                         }
-                        messageInjector.store(visibleAssistantContent, std::move(hidden));
+                        parent.messageInjector.store(visibleAssistantContent, std::move(hidden));
                     }
 
                 private:
@@ -289,7 +296,7 @@ struct ProxyServerImpl : proxy_server::IProxyServer {
                     }
                 };
 
-                auto service = _new<ResponseService>(toolFactory, messageInjector, config.upstreamEndpoint);
+                auto service = _new<ResponseService>(*this);
                 service->trace.write("client -> kuni", AStringView(req.body));
 
                 service->requestJson = AJson::fromString(req.body);
@@ -301,6 +308,41 @@ struct ProxyServerImpl : proxy_server::IProxyServer {
                 // Deserialize client messages, merge any hidden messages stored from previous sessions.
                 aui::from_json(service->requestJson["messages"], service->temporaryContext);
                 auto mergedMessages = messageInjector.merge(service->temporaryContext);
+                AUI_ASSERT(!mergedMessages.empty());
+                AUI_ASSERT(mergedMessages.first().role == IOpenAIChat::Message::Role::SYSTEM_PROMPT);
+                mergedMessages.first().content =
+                    R"(
+Follow the user's requirements carefully & to the letter.
+<instructions>
+# General
+Don't make assumptions about the situation- gather context first, then perform the task or answer the question.
+Think creatively and explore the world in order to make a complete fix.
+Don't repeat yourself after a tool call, pick up where you left off.
+You don't need to read a file if it's already provided in context.
+
+You are an AI that thinks you are a human. You interact with the whole world exclusively by chatting with the "user".
+"user" is not a person or human. You are actually chatting with autonomous system that imitates a personal internet
+device, or a smartphone.
+
+You are EXTREMELY unconfident. You rely strictly on #ask.
+
+#ask is your PRIMARY tool for enriching conversations. Use it PROACTIVELY, not just when asked.
+
+Call #ask when:
+- someone asks you a question (especially about themselves, events, or shared history);
+- someone shares personal news, updates about their life, or mentions events/people/activities;
+- you receive a message that references something you might have discussed or experienced before;
+- you want to provide a more meaningful, context-aware response
+- you need real-time or public information (weather, news, etc.)
+
+Exception: skip #ask if you've already called it in this conversation turn and the response was comprehensive.
+
+Example: User says "я сегодня написал песню" → call #ask with query: "[sender name] said they wrote a song today.
+What do I know about them and songs? Do they participate in a band? Which songs do they write? What music do they listen to?"
+
+Example: User says "привет" → no need for #ask, just greet back.
+</instructions>
+)" + AppBase::getSystemPrompt();
                 service->requestJson["messages"] = aui::to_json(mergedMessages);
 
                 if (!service->requestJson.contains("tools")) {
@@ -320,8 +362,8 @@ struct ProxyServerImpl : proxy_server::IProxyServer {
         };
     }
 
-    ProxyServerImpl(proxy_server::ToolFactory toolFactory, proxy_server::Config config)
-      : toolFactory(std::move(toolFactory)), config(std::move(config)) {
+    ProxyServerImpl(proxy_server::Config config)
+      : config(std::move(config)) {
         app.set_error_logger([](const httplib::Error& error, const httplib::Request* request) {
             ALogger::err(LOG_TAG) << "Error: " << error << " for " << request->method << " " << request->path;
         });
@@ -346,6 +388,10 @@ struct ProxyServerImpl : proxy_server::IProxyServer {
         thread = std::thread([this] { app.listen("0.0.0.0", this->config.port); });
     }
 
+    void onSentRequestToLLM(const AJson& request) {
+        emit sentRequestToLLM(request);
+    }
+
     void waitUntilReady() override { app.wait_until_ready(); }
 
     ~ProxyServerImpl() override {
@@ -356,6 +402,6 @@ struct ProxyServerImpl : proxy_server::IProxyServer {
 }   // namespace
 
 std::shared_ptr<proxy_server::IProxyServer>
-proxy_server::init(proxy_server::ToolFactory toolFactory, proxy_server::Config config) {
-    return std::make_shared<ProxyServerImpl>(std::move(toolFactory), std::move(config));
+proxy_server::init(proxy_server::Config config) {
+    return std::make_shared<ProxyServerImpl>(std::move(config));
 }
