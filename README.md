@@ -300,6 +300,98 @@ The file includes:
 
 Both files are located in the working directory and can be edited to customize Kuni's personality and appearance. Changes take effect on the next application restart.
 
+## Proxy Server
+
+Kuni includes a transparent proxy server that sits between an AI client (e.g. a chat app like VS Code's Copilot) and the
+upstream OpenAI-compatible LLM endpoint. It intercepts `/v1/chat/completions` requests, enriches them with Kuni's
+context, and handles tool calls invisibly — the client sees a clean, uninterrupted stream.
+
+### What it does
+
+- **Injects system prompt & hidden context** — prepends the system prompt, hidden tool call history, and Kuni-specific
+  tool definitions before forwarding the request to the upstream LLM.
+- **Handles tool calls transparently** — when the LLM returns tool calls (e.g. `#ask`, diary writes), the proxy
+  executes them locally and feeds the results back in follow-up requests. The client never sees the raw tool call
+  round-trips — it just receives the final response.
+- **Streams via SSE** — responses are streamed back to the client using Server-Sent Events. The `StreamingFilter`
+  strips out tool-call artefacts and synthesises a clean `data: [DONE]` terminator.
+- **Passes through other API routes** — `/v1/embeddings`, `/v1/images/generations`, `/v1/audio/*`, `/v1/models`, etc.
+  are proxied as-is without modification.
+
+### Request lifecycle
+
+```
+Client  ──POST /v1/chat/completions──►  Proxy
+                                          │
+                                          ├─ inject system prompt
+                                          ├─ merge hidden messages (MessageInjector)
+                                          ├─ append Kuni tools (OpenAITools)
+                                          │
+                                          └──► Upstream LLM
+                                                    │
+                                          ◄── SSE stream ──┘
+                                          │
+                                          ├─ pass content chunks → Client
+                                          │
+                                          └─ intercept tool calls
+                                               │
+                                               ├─ execute locally
+                                               ├─ append results as hidden messages
+                                               └─ silently re-POST to LLM  ──► (repeat)
+                                                        │
+                                          ◄── final stream ──┘
+                                          │
+                                          └──► Client  (data: [DONE])
+```
+
+### Configuration
+
+Enable `PROXY_ENABLED` in config.
+
+#### VS Code GitHub Copilot.
+
+They tend to change UI, but the workflow keeps the same:
+
+1. Click on model chooser in the chat UI
+2. Click gear icon
+3. `Add Models...` -> `Custom Endpoint`
+4. Name - `Kuni`. Specify the machine address where Kuni is deployed (`http://localhost:10434`), key - none.
+5. The IDE will drop you into the JSON. Populate the configuration:
+
+```json
+	{
+		"name": "Kuni",
+		"vendor": "customendpoint",
+		"apiKey": "${input:chat.lm.secret.-119a85ac}",
+		"apiType": "chat-completions",
+		"models": [
+			{
+				"id": "deepseek-v4-flash",
+				"name": "Kuni (deepseek-v4-flash)",
+				"url": "http://localhost:10434/",
+				"toolCalling": true,
+				"vision": false,
+				"maxInputTokens": 128000,
+				"maxOutputTokens": 16000
+			},
+			{
+				"id": "~anthropic/claude-sonnet-latest",
+				"name": "Kuni (~anthropic/claude-sonnet-latest)",
+				"url": "http://localhost:10434/",
+				"toolCalling": true,
+				"vision": true,
+				"maxInputTokens": 128000,
+				"maxOutputTokens": 16000
+			}
+		]
+	}
+```
+
+### Logging & debugging
+
+- All intercepted requests and responses are logged to `logs_proxy/` (one file per request, timestamped).
+- The last raw upstream query is saved to `data/proxy/last_query.json` for inspection.
+
 ## Notes
 1. The project uses **coroutines** extensively (C++20 feature)
 2. **Telegram authentication** will be interactive on first run

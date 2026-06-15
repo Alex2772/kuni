@@ -1,7 +1,9 @@
 // Proxy server that sits between an AI client (e.g. a chat app) and an upstream
 // OpenAI-compatible LLM endpoint. Responsibilities:
 //   - Intercept /v1/chat/completions requests and inject system prompt, hidden
-//     context (tool call history), and kuni-specific tools before forwarding.
+//     context (tool call history), and kuni-specific tools before forwarding,
+//     preserving original JSON fields as much as possible (the entire module works
+//     on JSON level).
 //   - Handle tool calls returned by the LLM transparently: execute them locally
 //     and feed results back in follow-up requests, invisible to the client.
 //   - Stream responses back to the client via SSE, filtering out tool-call
@@ -128,20 +130,19 @@ struct ProxyServerImpl : AObject, proxy_server::IProxyServer {
                     ProxyServerImpl& parent;
                     httplib::ClientImpl::StreamHandle handle;
                     AYieldGenerator<std::string_view> lines;
-                    AVector<IOpenAIChat::Message> temporaryContext;
-                    OpenAITools injectedTools;
+                    OpenAITools injectedTools{};
                     AVector<IOpenAIChat::Message> ourToolCalls;
-                    proxy_server::StreamingFilter sseFilter { toolNames() };
+                    AOptional<proxy_server::StreamingFilter> sseFilter;
                     AUrl url;
                     RequestTrace trace;
 
                     httplib::Client upstream { "http://placeholder" };
 
+                    AJson originalRequestJson;
                     AJson requestJson;
 
                     ResponseService(ProxyServerImpl& parent)
                       : parent(parent)
-                      , injectedTools(parent.config.toolsFactory(temporaryContext))
                       , url("{}{}"_format(parent.config.upstreamEndpoint.baseUrl, API_PATH))
                       , upstream([&] {
                           const auto host = url.path().bytes().substr(0, url.path().bytes().find("/"));
@@ -152,7 +153,19 @@ struct ProxyServerImpl : AObject, proxy_server::IProxyServer {
                           return hostAndPort;
                       }()) {}
 
+                    void updateTools() {
+                        injectedTools = parent.config.toolsFactory(
+                            aui::from_json<AVector<IOpenAIChat::Message>>(requestJson["messages"]));
+
+                        auto tools = originalRequestJson["tools"].asArrayOpt().valueOr(AJson::Array{});
+                        tools.insertAll(injectedTools.asJson().asArray());
+                        requestJson["tools"] = std::move(tools);
+                    }
+
                     void post(httplib::Response& res) {
+                        updateTools();
+                        sseFilter = proxy_server::StreamingFilter(toolNames()); // reset streaming filter
+
                         auto keepMeAlive = shared_from_this();
                         if (!DATA_DIR.isDirectoryExists()) {
                             DATA_DIR.makeDirs();
@@ -202,12 +215,6 @@ struct ProxyServerImpl : AObject, proxy_server::IProxyServer {
                                         }
                                         // Stream finished — store hidden context keyed by the final
                                         // assistant content so future client requests can be merged.
-                                        {
-                                            const auto& finalChoices = sseFilter.choices();
-                                            if (!finalChoices.empty()) {
-                                                storeHiddenContext(finalChoices.first().message.content);
-                                            }
-                                        }
                                         write("data: [DONE]\n\n");
                                         sink.done();
                                         parent.onSentRequestToLLM(requestJson);
@@ -222,7 +229,7 @@ struct ProxyServerImpl : AObject, proxy_server::IProxyServer {
                                     sink.done();
                                     return false;
                                 }
-                                sseFilter.processLine(
+                                sseFilter->processLine(
                                     line,
                                     /*passThrough=*/
                                     [&write](std::string_view sv) {
@@ -247,7 +254,7 @@ struct ProxyServerImpl : AObject, proxy_server::IProxyServer {
                     }
 
                     void handleToolCallsAndMakeNewRequest(httplib::Response& res) {
-                        auto lastChoices = std::move(sseFilter).choices();
+                        auto lastChoices = std::move(*sseFilter).choices();
 
                         // Build the assistant message with tool_calls that triggered this round.
                         IOpenAIChat::Message assistantMsg;
@@ -259,34 +266,17 @@ struct ProxyServerImpl : AObject, proxy_server::IProxyServer {
                             }
                         }
 
-                        // Append hidden messages to the LLM request context.
-                        requestJson["messages"].asArray() << aui::to_json(assistantMsg);
+                        // Append hidden messages to the LLM request context and message injector.
+                        const auto& lastOriginalMessage = originalRequestJson["messages"].asArray().last();
+                        auto& injectedMessages = parent.messageInjector.after(lastOriginalMessage);
+                        requestJson["messages"].asArray() << injectedMessages.emplace_back(aui::to_json(assistantMsg));
 
                         const AVector<IOpenAIChat::Message> toolResults = std::exchange(ourToolCalls, {});
                         for (const auto& result : toolResults) {
-                            requestJson["messages"].asArray() << aui::to_json(result);
+                            requestJson["messages"].asArray() << injectedMessages.emplace_back(aui::to_json(result));
                         }
 
-                        sseFilter = proxy_server::StreamingFilter(toolNames());
                         post(res);
-                    }
-
-                    // Called after the final LLM response is fully streamed to the client.
-                    // Stores the hidden context so future client requests can be merged.
-                    void storeHiddenContext(const AString& visibleAssistantContent) {
-                        // Hidden messages = everything after the original client messages.
-                        const auto& allMessages = requestJson["messages"].asArray();
-                        const std::size_t originalCount = temporaryContext.size();
-                        if (allMessages.size() <= originalCount) {
-                            return;
-                        }
-                        proxy_server::MessageInjector::Messages hidden;
-                        for (std::size_t i = originalCount; i < allMessages.size(); ++i) {
-                            IOpenAIChat::Message msg;
-                            aui::from_json(allMessages[i], msg);
-                            hidden << std::move(msg);
-                        }
-                        parent.messageInjector.store(visibleAssistantContent, std::move(hidden));
                     }
 
                 private:
@@ -299,18 +289,15 @@ struct ProxyServerImpl : AObject, proxy_server::IProxyServer {
                 auto service = _new<ResponseService>(*this);
                 service->trace.write("client -> kuni", AStringView(req.body));
 
-                service->requestJson = AJson::fromString(req.body);
+                service->originalRequestJson = service->requestJson = AJson::fromString(req.body);
 
                 const bool isStream = service->requestJson["stream"].asBoolOpt().valueOr(true);
                 AUI_ASSERT(isStream);
                 service->requestJson["stream"] = isStream;
 
-                // Deserialize client messages, merge any hidden messages stored from previous sessions.
-                aui::from_json(service->requestJson["messages"], service->temporaryContext);
-                auto mergedMessages = messageInjector.merge(service->temporaryContext);
-                AUI_ASSERT(!mergedMessages.empty());
-                AUI_ASSERT(mergedMessages.first().role == IOpenAIChat::Message::Role::SYSTEM_PROMPT);
-                mergedMessages.first().content =
+                // hjack the system prompt.
+                AUI_ASSERT(service->requestJson["messages"][0]["role"].asString() == "system");
+                service->requestJson["messages"][0]["content"] =
                     R"(
 Follow the user's requirements carefully & to the letter.
 <instructions>
@@ -343,12 +330,10 @@ What do I know about them and songs? Do they participate in a band? Which songs 
 Example: User says "привет" → no need for #ask, just greet back.
 </instructions>
 )" + AppBase::getSystemPrompt();
-                service->requestJson["messages"] = aui::to_json(mergedMessages);
 
-                if (!service->requestJson.contains("tools")) {
-                    service->requestJson["tools"] = AJson::Array {};
-                }
-                service->requestJson["tools"].asArray().insertAll(service->injectedTools.asJson().asArray());
+                // insert hidden messages (tool calls belonging to proxy server)
+                service->requestJson["messages"] = messageInjector.merge(std::move(service->requestJson["messages"].asArray()));
+
                 service->post(res);
             } catch (const AException& e) {
                 ALogger::err(LOG_TAG) << "proxy_server::chat_completions: " << e;

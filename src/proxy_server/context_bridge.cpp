@@ -1,6 +1,7 @@
 #include "context_bridge.h"
 
 #include "OpenAIChatImpl.h"
+#include "json_fingerprint.h"
 #include "util/diary_save_entries.h"
 
 #include <range/v3/algorithm/remove_if.hpp>
@@ -14,21 +15,7 @@ using namespace std::chrono_literals;
 static constexpr auto LOG_TAG = "ContextBridge";
 
 static AString requestSalt(const AJson& request) {
-    auto result = AJson::toString(request["messages"]);
-    return result | ranges::views::filter([](char c) {
-               switch (c) {
-                   case '(':
-                   case ')':
-                   case '{':
-                   case '}':
-                   case '[':
-                   case ']':
-                       return false;
-                   default:
-                       return true;
-               }
-           }) |
-           ranges::to<AString>();
+    return proxy_server::fingerprint(request["messages"]);
 }
 
 proxy_server::ContextBridge::ContextBridge(Config config)

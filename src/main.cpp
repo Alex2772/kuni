@@ -606,6 +606,7 @@ AUI_ENTRY {
     _<prometheus::IExporter> prometheus;
     _<App> app;
     _<proxy_server::IProxyServer> proxyServer;
+    _<proxy_server::ContextBridge> contextBridge;
     AObject::connect(telegram->loggedIn, telegram, [&] {
         auto openAI = _new<OpenAIChatMeasurable>(std::make_unique<OpenAIChatImpl>());
         app = _new<App>(telegram, openAI);
@@ -616,19 +617,19 @@ AUI_ENTRY {
               .upstreamEndpoint = config::ENDPOINT_MAIN.endpoint,
               .port = 10434,
               .toolsFactory =
-                  [openAI, diary](const AVector<IOpenAIChat::Message>& ctx) {
+                  [openAI, diary](AVector<IOpenAIChat::Message> ctx) {
                       // Create the tools directly without using an initializer list
                       return OpenAITools {
-                          tools::ask([&ctx] { return ctx.empty() ? AString {} : AString(ctx.last().content); }, openAI, *diary),
+                          tools::ask([ctx = std::move(ctx)] { return ctx.empty() ? AString {} : AString(ctx.last().content); }, openAI, *diary),
                       };
                   },
             });
-            auto bridge = _new<proxy_server::ContextBridge>(proxy_server::ContextBridge::Config {
+            contextBridge = _new<proxy_server::ContextBridge>(proxy_server::ContextBridge::Config {
                 .endpoint = config::ENDPOINT_MAIN.endpoint,
                 .diary = diary,
             });
-            AObject::connect(proxyServer->sentRequestToLLM, AUI_SLOT(bridge)::collectRequestToLLM);
-            app->chatHistoryMessageProcessors << bridge;
+            AObject::connect(proxyServer->sentRequestToLLM, AUI_SLOT(contextBridge)::collectRequestToLLM);
+            app->chatHistoryMessageProcessors << contextBridge;
         }
         prometheus = prometheus::setup(app->metricBreadcumbs());
         prometheus->registerOpenAI(*openAI);
@@ -646,10 +647,15 @@ AUI_ENTRY {
     gEventLoop.loop();
 
     if (app) {
-        auto d = app->diaryDumpMessages();
-        while (!d.hasResult()) {
-            AThread::processMessages();
-        }
+        async << app->diaryDumpMessages();
+    }
+
+    if (contextBridge) {
+        async << contextBridge->collectAndSaveSessionsNotNewerThan(std::chrono::system_clock::now());
+    }
+
+    while (!async.empty()) {
+        gEventLoop.iteration();
     }
 
     return 0;

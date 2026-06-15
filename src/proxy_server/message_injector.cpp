@@ -4,35 +4,36 @@
 
 #include "message_injector.h"
 
+#include "json_fingerprint.h"
+
 namespace proxy_server {
 
-void MessageInjector::store(const AString& visibleAssistantContent, Messages hiddenMessages) {
-    mStore[visibleAssistantContent] = std::move(hiddenMessages);
+
+AVector<AJson>& MessageInjector::after(const AJson& msg) {
+    return mMessagesToInsertAfter[fingerprint(msg)];
 }
 
-MessageInjector::Messages MessageInjector::merge(Messages messages) const {
-    if (mStore.empty()) {
+AJson::Array MessageInjector::merge(AJson::Array messages) const {
+    if (mMessagesToInsertAfter.empty()) {
         return messages;
     }
 
-    Messages result;
-    result.reserve(messages.size());
-
-    for (auto& msg : messages) {
-        if (msg.role == IOpenAIChat::Message::Role::ASSISTANT && !msg.content.empty()) {
-            auto it = mStore.find(msg.content);
-            if (it != mStore.end()) {
-                // Splice hidden messages right before this visible assistant turn.
-                for (const auto& hidden : it->second) {
-                    result.push_back(hidden);
-                }
-            }
+    for (auto i = messages.begin(); i != messages.end(); ++i) {
+        auto fingerprint = proxy_server::fingerprint(*i);
+        auto toInsert = mMessagesToInsertAfter.find(fingerprint);
+        if (toInsert == mMessagesToInsertAfter.end()) {
+            continue;
         }
-        result.push_back(std::move(msg));
-    }
+        if (toInsert->second.empty()) {
+            continue;
+        }
 
-    return result;
+        i = messages.insert(std::next(i), toInsert->second.begin(), toInsert->second.end());
+        i += toInsert->second.size() - 1;
+    }
+    return messages;
 }
+
 
 } // namespace proxy_server
 

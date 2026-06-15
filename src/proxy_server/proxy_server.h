@@ -8,7 +8,7 @@
 
 namespace proxy_server {
 
-using ToolFactory = std::function<OpenAITools(const AVector<IOpenAIChat::Message>&)>;
+using ToolFactory = std::function<OpenAITools(AVector<IOpenAIChat::Message> messages)>;
 
 struct Config {
     Endpoint upstreamEndpoint;

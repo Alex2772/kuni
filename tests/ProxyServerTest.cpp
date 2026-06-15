@@ -9,6 +9,8 @@
 #include <mutex>
 #include <queue>
 
+#include <range/v3/all.hpp>
+
 #include "common.h"
 #include "proxy_server/proxy_server.h"
 #include "OpenAIChatImpl.h"
@@ -35,7 +37,12 @@ struct MockLlmService {
         server.Post("/v1/chat/completions", [this](const httplib::Request& req, httplib::Response& res) {
             std::string body;
             {
-                receivedRequests.push_back(AJson::fromString(req.body));
+                AJson requestJson = AJson::fromString(req.body);
+                receivedRequests.push_back(requestJson);
+                
+                // Validate: no tool results should be duplicated in any request
+                validateNoToolResultDuplication(requestJson);
+                
                 EXPECT_FALSE(responseQueue.empty()) << "MockLlmServer: unexpected request (queue empty)";
                 if (responseQueue.empty()) {
                     res.status = 500;
@@ -52,6 +59,31 @@ struct MockLlmService {
         port = server.bind_to_any_port("127.0.0.1");
         thread = std::thread([this] { server.listen_after_bind(); });
         server.wait_until_ready();
+    }
+
+    // Validate that tool results don't appear more than once in a single request
+    void validateNoToolResultDuplication(const AJson& requestJson) {
+        if (!requestJson.contains("messages")) {
+            return;
+        }
+        const auto& messages = requestJson["messages"].asArray();
+        AMap<AString, int> toolResultCount;  // key: tool_call_id, value: count
+        
+        for (const auto& msg : messages) {
+            const auto role = msg["role"].asStringOpt().valueOr("");
+            if (role == "tool") {
+                const auto toolCallId = msg["tool_call_id"].asStringOpt().valueOr("");
+                if (!toolCallId.empty()) {
+                    toolResultCount[toolCallId]++;
+                }
+            }
+        }
+        
+        // Each tool_call_id should appear at most once
+        for (const auto& [toolCallId, count] : toolResultCount) {
+            EXPECT_EQ(count, 1) << "Tool result for '" << toolCallId << "' appears " << count
+                                   << " times in a single LLM request (should be exactly 1)";
+        }
     }
 
     ~MockLlmService() {
@@ -78,6 +110,57 @@ struct MockLlmService {
                         { "content", content },
                     }},
                     { "finish_reason", "stop" },
+                }
+            }},
+        };
+        return "data: " + AJson::toString(chunk).toStdString() + "\n\ndata: [DONE]\n\n";
+    }
+
+    // Helper: build a SSE response with two tool calls in a single chunk: first is a
+    // proxy-intercepted tool (e.g. kuni_ask), second is a client-side tool (e.g. vscode_read_file).
+    // finish_reason = "tool_calls".
+    static std::string makeSseMixedToolCalls(
+        const std::string& proxyToolName,
+        const std::string& proxyToolArgs,
+        const std::string& proxyToolCallId,
+        const std::string& clientToolName,
+        const std::string& clientToolArgs,
+        const std::string& clientToolCallId,
+        const std::string& model = "test-model")
+    {
+        AJson chunk = AJson::Object {
+            { "id", "chatcmpl-test-mixed" },
+            { "object", "chat.completion.chunk" },
+            { "created", int64_t(0) },
+            { "model", model },
+            { "choices", AJson::Array {
+                AJson::Object {
+                    { "index", int64_t(0) },
+                    { "delta", AJson::Object {
+                        { "role", "assistant" },
+                        { "content", "" },
+                        { "tool_calls", AJson::Array {
+                            AJson::Object {
+                                { "index", int64_t(0) },
+                                { "id", proxyToolCallId },
+                                { "type", "function" },
+                                { "function", AJson::Object {
+                                    { "name", proxyToolName },
+                                    { "arguments", proxyToolArgs },
+                                }},
+                            },
+                            AJson::Object {
+                                { "index", int64_t(1) },
+                                { "id", clientToolCallId },
+                                { "type", "function" },
+                                { "function", AJson::Object {
+                                    { "name", clientToolName },
+                                    { "arguments", clientToolArgs },
+                                }},
+                            },
+                        }},
+                    }},
+                    { "finish_reason", "tool_calls" },
                 }
             }},
         };
@@ -436,4 +519,100 @@ TEST_F(ProxyServerTest, SentRequestToLLMSignalAfterToolCall) {
         }
     }
     EXPECT_TRUE(foundToolResult) << "sentRequestToLLM payload must include the tool result message";
+}
+
+// Regression test: tool results must not be duplicated when passed through the proxy.
+TEST_F(ProxyServerTest, ClientToolResultsNotDuplicated) {
+    AVector<IOpenAIChat::Message> clientSideMessages;
+
+    // Session 1: User suggests using proxy's tool
+    clientSideMessages << IOpenAIChat::Message{
+        .role = IOpenAIChat::Message::Role::USER,
+        .content = "who are you?",
+    };
+    llm.enqueue(MockLlmService::makeSseToolCall(
+        "kuni_ask",
+        R"({"q":"who I am"})",
+        "call_kuni_001"
+    ));
+    llm.enqueue(MockLlmService::makeSseText("I'm an AI character."));
+
+    startProxy([](const AVector<IOpenAIChat::Message>&) {
+        return OpenAITools{
+            {
+                .name = "kuni_ask",
+                .handler = [callCount = 0](OpenAITools::Ctx q) mutable -> AFuture<AString> {
+                    EXPECT_EQ(++callCount, 1u);
+                    EXPECT_EQ(q.args["q"].asStringOpt().valueOr(""), "who I am");
+                    co_return "You are an AI character";
+                }
+            }
+        };
+    });
+
+    // Complete first session
+    // Client receives: tool_call{vscode_read_file} in first request
+    // Then client calls the tool locally and sends back the result
+
+    clientSideMessages << awaitStreaming(clientSideMessages).choices.at(0).message;
+    ASSERT_EQ(llm.receivedRequests.size(), 2u) << "First session: two requests: user's kuni_ask call suggestion + tool response handle";
+    ASSERT_EQ(clientSideMessages.last().tool_calls.size(), 0u) << "a call to kuni_ask should not be visible to client";
+
+
+    // Session 2: Client suggests using client's tool (not kuni_ask):
+    // This is where the bug would manifest: tool result might get duplicated
+    clientSideMessages << IOpenAIChat::Message{
+        .role = IOpenAIChat::Message::Role::USER,
+        .content = "read test.txt",
+    };
+    llm.enqueue(MockLlmService::makeSseToolCall(
+        "vscode_read_file",
+        R"({"path":"test.txt"})",
+        "call_vscode_001"
+    ));
+    clientSideMessages << awaitStreaming(clientSideMessages).choices.at(0).message;
+    ASSERT_EQ(llm.receivedRequests.size(), 3u) << "Second session: 3 requests (1 added): call client's tool";
+    EXPECT_EQ(clientSideMessages.last().tool_calls.size(), 1u);
+    EXPECT_EQ(clientSideMessages.last().tool_calls.at(0).id, "call_vscode_001");
+    EXPECT_EQ(clientSideMessages.last().tool_calls.at(0).function.name, "vscode_read_file");
+
+
+    // session 3: client responds with test.txt contents
+    clientSideMessages << IOpenAIChat::Message{
+        .role = IOpenAIChat::Message::Role::TOOL,
+        .content = "file is empty",
+        .tool_call_id = clientSideMessages.last().tool_calls.at(0).id,
+    };
+    llm.enqueue(MockLlmService::makeSseText("content.txt is empty."));
+    clientSideMessages << awaitStreaming(clientSideMessages).choices.at(0).message;
+
+    ASSERT_EQ(llm.receivedRequests.size(), 4u) << "Third session: 1 more LLM request (total 4)";
+
+    // Validate last request structure: should contain the tool result from vscode_read_file
+    {
+        const auto& messages = llm.receivedRequests.at(3)["messages"].asArray();
+        bool foundToolResult = false;
+        for (const auto& msg : messages | ranges::views::take_last(2)) {
+            if (msg["role"].asStringOpt().valueOr("") == "tool") {
+                foundToolResult = true;
+                EXPECT_EQ(msg["tool_call_id"].asStringOpt().valueOr(""), "call_vscode_001");
+                EXPECT_EQ(msg["content"].asStringOpt().valueOr(""), "file is empty");
+            }
+        }
+        EXPECT_TRUE(foundToolResult) << "third request must contain tool result for vscode_read_file";
+    }
+
+    // Make fourth request: tool result should appear exactly once (no duplication)
+    // This is the critical check — if the bug exists, tool result will appear twice
+    // MockLlmService.validateNoToolResultDuplication will assert if there's duplication
+    clientSideMessages << IOpenAIChat::Message{
+        .role = IOpenAIChat::Message::Role::USER,
+        .content = "summarize our conversation",
+    };
+    llm.enqueue(MockLlmService::makeSseText("We were talking about context.txt."));
+    clientSideMessages << awaitStreaming(clientSideMessages).choices.at(0).message;
+
+    ASSERT_EQ(llm.receivedRequests.size(), 5u) << "Fourth session: 1 more LLM request (total 5)";
+    const auto& messages = llm.receivedRequests.back()["messages"].asArray();
+    EXPECT_EQ(ranges::count_if(messages, [](const AJson& msg) { return msg["role"].asString() == "tool"; }), 2u);
 }

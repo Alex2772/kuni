@@ -22,36 +22,25 @@ namespace proxy_server {
  */
 class MessageInjector {
 public:
-    using Messages = AVector<IOpenAIChat::Message>;
 
     /**
-     * @brief Record hidden messages that follow a visible assistant turn.
-     *
-     * @param visibleAssistantContent  The content of the assistant message as
-     *                                 seen by the client (used as lookup key).
-     * @param hiddenMessages           The messages to insert right before the
-     *                                 visible assistant message:
-     *                                 [assistant{tool_calls}, tool{result}, ...].
+     * @brief Returns an array of messages that should be inserted after `msg`.
+     * @param msg JSON object that represents a message
+     * @details
+     * Users can modify it to insert new hidden messages after `msg`.
      */
-    void store(const AString& visibleAssistantContent, Messages hiddenMessages);
+    AVector<AJson>& after(const AJson& msg);
 
     /**
-     * @brief Splice stored hidden messages into @p messages.
-     *
-     * Scans @p messages for assistant turns whose content matches a stored key
-     * and inserts the corresponding hidden messages immediately before each
-     * such assistant turn (so the LLM sees: ... hidden_tool_call, tool_result,
-     * assistant_final_answer ...).
-     *
-     * Each stored entry is applied at most once (first match wins).
-     *
+     * @brief Insert stored hidden messages into`messages`.
+     * @param messages JSON array of messages to insert in.
      * @return New message array with all applicable hidden messages spliced in.
      */
-    [[nodiscard]] Messages merge(Messages messages) const;
+    [[nodiscard]] AJson::Array merge(AJson::Array messages) const;
 
 private:
     // key: content of the visible assistant message
-    AMap<AString, Messages> mStore;
+    std::map<AString /* fingerprint */, AVector<AJson>> mMessagesToInsertAfter;
 };
 
 } // namespace proxy_server
