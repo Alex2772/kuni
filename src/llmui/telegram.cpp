@@ -20,7 +20,7 @@ static AFuture<AString> extractSenderName(ITelegramClient& telegram, int64_t sen
         senderName = "You (Kuni)";
     } else if (senderId != 0) {
         try {
-            auto sender = co_await telegram.sendQueryWithResult(ITelegramClient::toPtr(td::td_api::getUser(senderId)));
+            auto sender = co_await telegram.getUser(senderId);
             senderName = sender->td::td_api::user::first_name_ + " " + sender->td::td_api::user::last_name_;
             if (sender->td::td_api::user::usernames_) {
                 if (!sender->td::td_api::user::usernames_->active_usernames_.empty()) {
@@ -31,7 +31,7 @@ static AFuture<AString> extractSenderName(ITelegramClient& telegram, int64_t sen
         }
         if (senderName.empty()) {
             try {
-                auto sender = co_await telegram.sendQueryWithResult(ITelegramClient::toPtr(td::td_api::getChat(senderId)));
+                auto sender = co_await telegram.getChat(senderId);
                 senderName = sender->td::td_api::chat::title_;
             } catch (const AException&) {
             }
@@ -102,7 +102,7 @@ llmui::formatChatSingle(ITelegramClient& telegram, AString& result, td::td_api::
 }
 
 AFuture<>
-llmui::formatChatList(ITelegramClient& telegram, AString& result, std::span<td::td_api::object_ptr<td::td_api::chat>> chats) {
+llmui::formatChatList(ITelegramClient& telegram, AString& result, std::span<_<td::td_api::chat>> chats) {
     for (auto& chat : chats) {
         co_await formatChatSingle(telegram, result, *chat);
     }

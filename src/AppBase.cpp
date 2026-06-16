@@ -94,6 +94,7 @@ AppBase::AppBase(Init init): mInit(std::move(init)), mDiary({
 
             co_await self.onBeforeMainLoop();
             for (;;) {
+                self.onOffline();
                 if (self.mTemporaryContext.size() <= 1) {
                     // Alex2772 (Apr 19 2026):
                     // This approach is okay to revisit unfinished chats. However, if there are many unread chats,

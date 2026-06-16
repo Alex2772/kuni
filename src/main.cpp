@@ -155,13 +155,13 @@ private:
     _<ITelegramClient> mTelegram;
     std::list<MetricsBreadcumbs::Point> mLastOpenedChatLastMetrics;
 
-    AFuture<AVector<td::td_api::object_ptr<td::td_api::chat>>> chatIdsToChats(std::span<td::td_api::int53> ids) {
+    AFuture<AVector<_<td::td_api::chat>>> chatIdsToChats(std::span<td::td_api::int53> ids) {
         auto chats =
             ids | ranges::view::transform([&](td::td_api::int53 chatId) {
-                return telegram()->sendQueryWithResult(ITelegramClient::toPtr(td::td_api::getChat(chatId)));
+                return telegram()->getChat(chatId);
             }) |
             ranges::to_vector;
-        AVector<td::td_api::object_ptr<td::td_api::chat>> result;
+        AVector<_<td::td_api::chat>> result;
         result.reserve(chats.size());
         for (const auto& chat : chats) {
             result.push_back(co_await chat);
@@ -169,12 +169,11 @@ private:
         co_return result;
     }
 
-    AFuture<td::td_api::object_ptr<td::td_api::chat>> chatIdToChat(td::td_api::int53 id) {
-        co_return co_await telegram()->sendQueryWithResult(ITelegramClient::toPtr(td::td_api::getChat(id)));
-        ;
+    AFuture<_<td::td_api::chat>> chatIdToChat(td::td_api::int53 id) {
+        co_return co_await telegram()->getChat(id);
     }
 
-    AFuture<AVector<td::td_api::object_ptr<td::td_api::chat>>> getChats() {
+    AFuture<AVector<_<td::td_api::chat>>> getChats() {
         auto chatList = co_await telegram()->sendQueryWithResult(
             ITelegramClient::toPtr(td::td_api::getChats(ITelegramClient::toPtr(td::td_api::chatListMain()), 50)));
         co_return co_await chatIdsToChats(chatList->chat_ids_);
@@ -230,12 +229,13 @@ private:
         if (userId == mTelegram->myId()) {
             co_return;
         }
-        auto chat = co_await mTelegram->sendQueryWithResult(td::td_api::make_object<td::td_api::getChat>(u.message_->chat_id_));
 
         // Check lockdown mode - only allow PAPIK_CHAT_ID if lockdown is enabled
-        if (!co_await util::isAccessibleFromLockdown(*telegram(), chat->id_)) {
+        if (!co_await util::isAccessibleFromLockdown(*telegram(), u.message_->chat_id_)) {
             co_return;
         }
+
+        auto chat = co_await mTelegram->getChat(u.message_->chat_id_);
 
         if (chat->notification_settings_) {
             if (chat->notification_settings_->mute_for_ > 0) {
@@ -270,7 +270,7 @@ private:
             }
             notification += "You received a direct message from {} (chat_id = {})"_format(chat->title_, chat->id_);
         } else if (userId != 0) {
-            auto user = co_await mTelegram->sendQueryWithResult(td::td_api::make_object<td::td_api::getUser>(userId));
+            auto user = co_await mTelegram->getUser(userId);
             notification += "{} {} (user_id = {}) sent a message in group chat \"{}\" (chat_id = {})"_format(
                 user->first_name_, user->last_name_, userId, chat->title_, chat->id_);
         } else {
@@ -306,7 +306,23 @@ private:
 
     AMap<AString /* path */, AString /* description */> mImages = {};
 
+    struct CurrentlyOpenedChat {
+        App& app;
+        _<td::td_api::chat> chat;
+
+        ~CurrentlyOpenedChat() {
+            app.mTelegram->sendQuery(ITelegramClient::toPtr(td::td_api::sendChatAction(chat->id_, {}, {}, nullptr)));
+            app.mTelegram->sendQuery(ITelegramClient::toPtr(td::td_api::closeChat(chat->id_)));
+        }
+    };
+    AOptional<CurrentlyOpenedChat> mCurrentlyOpenedChat;
+
 public:
+    void onOffline() override {
+        mCurrentlyOpenedChat.reset();
+        setOnline(false);
+    }
+
     AFuture<AString> llmuiOpenTelegramChat(OpenAITools& tools, int64_t chatId) {
         // Check lockdown mode - only allow PAPIK_CHAT_ID if lockdown is enabled
         if (!co_await util::isAccessibleFromLockdown(*telegram(), chatId)) {
@@ -320,27 +336,13 @@ public:
         mTelegram->sendQuery(ITelegramClient::toPtr(td::td_api::openChat(chatId)));
         removeNotifications("<notification chat_id=\"{}\">\n"_format(chatId));
 
-        _<td::td_api::chat> chat;
+        _<td::td_api::chat> chat = co_await mTelegram->getChat(chatId);
+        mCurrentlyOpenedChat.emplace(*this, chat);
         mLastOpenedChatLastMetrics = std::list<MetricsBreadcumbs::Point>{};
-        {
-            auto chatTgPtr = co_await mTelegram->sendQueryWithResult(ITelegramClient::toPtr(td::td_api::getChat(chatId)));
-            chat = aui::ptr::manage_shared(
-                chatTgPtr.release(),
-                [this, self = shared_from_this()](td::td_api::chat* chat) {
-                    try {
-                        setOnline(false);
-                        mTelegram->sendQuery(ITelegramClient::toPtr(td::td_api::sendChatAction(chat->id_, {}, {}, nullptr)));
-                        mTelegram->sendQuery(ITelegramClient::toPtr(td::td_api::closeChat(chat->id_)));
-                    } catch (...) {
-                    }
-                    delete chat;
-                });
-        }
         mLastOpenedChatLastMetrics.emplace_back(metricBreadcumbs(), "chat", chat->title_);
 
         AString result;
 
-        std::valarray<double> chatEmbedding;
         td::td_api::array<td::td_api::object_ptr<td::td_api::message>> messages;
         {
             int64_t fromMessage = 0;
@@ -479,9 +481,6 @@ public:
             mTelegram->sendQuery(
                 ITelegramClient::toPtr(td::td_api::viewMessages(chatId, std::move(readMessages), nullptr, false)));
 
-            // address specifically read messages.
-            // this helps switching between unrelated contexts.
-            chatEmbedding = co_await openAI()->embedding({ .config = config::ENDPOINT_EMBEDDING }, result);
             result = "You opened the chat \"{}\" in Telegram. You see last messages:\n"_format(chat->title_) + result;
 
             switch (chat->type_->get_id()) {
@@ -562,7 +561,7 @@ Some channels have reactions enabled. In that case, you can sometimes react with
     naxyi:
         tools = OpenAITools {
             tools::sendTelegramMessage(
-                telegram(), openAI(), chat, _new<td::td_api::array<td::td_api::object_ptr<td::td_api::message>>>(std::move(messages)), std::move(chatEmbedding)),
+                telegram(), openAI(), chat, _new<td::td_api::array<td::td_api::object_ptr<td::td_api::message>>>(std::move(messages))),
             tools::getChatPhoto(telegram(), openAI(), chat, temporaryContext()),
             tools::reactWithEmoji(telegram(), chat),
         };

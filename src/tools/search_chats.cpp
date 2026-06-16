@@ -39,11 +39,11 @@ OpenAITools::Tool tools::searchChats(_<ITelegramClient> telegram) {
             }
 
             AString result;
-            AVector<td::td_api::object_ptr<td::td_api::chat>> chats;
+            AVector<_<td::td_api::chat>> chats;
             try {
                 auto chatFutures =
                     queryResult->chat_ids_ | ranges::view::transform([&](td::td_api::int53 chatId) {
-                        return telegram->sendQueryWithResult(ITelegramClient::toPtr(td::td_api::getChat(chatId)));
+                        return telegram->getChat(chatId);
                     }) |
                     ranges::to_vector;
                 chats.reserve(chatFutures.size());
@@ -53,10 +53,10 @@ OpenAITools::Tool tools::searchChats(_<ITelegramClient> telegram) {
             } catch (const AException& e) {
                 ALogger::err("search_chats") << "chatIdsToChats(queryResult->chat_ids_) failed: " << e;
             }
-            td::td_api::object_ptr<td::td_api::chat> publicChat;
+            _<td::td_api::chat> publicChat;
 
             try {
-                publicChat = co_await telegram->sendQueryWithResult(ITelegramClient::toPtr(td::td_api::getChat(usernameQueryResult->id_)));
+                publicChat = co_await telegram->getChat(usernameQueryResult->id_);
             } catch (const AException& e) {
                 ALogger::err("search_chats") << "chatIdToChat(usernameQueryResult->id_) failed: " << e;
             }

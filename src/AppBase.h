@@ -24,6 +24,8 @@ public:
         AFuture<> onProcessed;
     };
 
+    virtual void onOffline() {}
+
 
     /**
      * @brief Passes an event to the AI to process

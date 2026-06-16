@@ -16,7 +16,7 @@ AString extractMessageTypeAndText(td::td_api::message& msg);
 
 [[nodiscard]]
 AFuture<>
-formatChatList(ITelegramClient& telegram, AString& result, std::span<td::td_api::object_ptr<td::td_api::chat>> chats);
+formatChatList(ITelegramClient& telegram, AString& result, std::span<_<td::td_api::chat>> chats);
 
 [[nodiscard]]
 AFuture<AString> formatChatHistoryMessage(

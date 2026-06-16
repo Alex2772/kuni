@@ -25,8 +25,7 @@ OpenAITools::Tool tools::sendTelegramMessage(
     _<ITelegramClient> telegram,
     _<IOpenAIChat> openAI,
     _<td::td_api::chat> chat,
-    _<td::td_api::array<td::td_api::object_ptr<td::td_api::message>>> messages,
-    std::valarray<double> chatEmbedding) {
+    _<td::td_api::array<td::td_api::object_ptr<td::td_api::message>>> messages) {
 
     struct State {
         int messagesInARow = 0;
@@ -69,7 +68,6 @@ OpenAITools::Tool tools::sendTelegramMessage(
         .handler = [telegram = std::move(telegram),
                     openAI = std::move(openAI),
                     chat = std::move(chat),
-                    chatEmbedding = std::move(chatEmbedding),
                     state = _new<State>(0),
                     messages = std::move(messages)
                     ](OpenAITools::Ctx ctx) -> AFuture<AString> {

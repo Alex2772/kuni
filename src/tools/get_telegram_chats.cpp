@@ -31,10 +31,10 @@ OpenAITools::Tool tools::getTelegramChats(_<ITelegramClient> telegram,
             // chatIdsToChats
             auto chats =
                 chatList->chat_ids_ | ranges::view::transform([&](td::td_api::int53 chatId) {
-                    return telegram->sendQueryWithResult(ITelegramClient::toPtr(td::td_api::getChat(chatId)));
+                    return telegram->getChat(chatId);
                 }) |
                 ranges::to_vector;
-            AVector<td::td_api::object_ptr<td::td_api::chat>> resultChats;
+            AVector<_<td::td_api::chat>> resultChats;
             resultChats.reserve(chats.size());
             for (const auto& chat : chats) {
                 resultChats.push_back(co_await chat);
@@ -53,7 +53,7 @@ OpenAITools::Tool tools::getTelegramChats(_<ITelegramClient> telegram,
                 // active chats from the output during "acting proactively" phase.
                 //
                 // don't worry about active chats -- LLM will receive notifications from them anyway.
-                resultChats.removeIf([](const td::td_api::object_ptr<td::td_api::chat>& chat) {
+                resultChats.removeIf([](const _<td::td_api::chat>& chat) {
                     return chat->unread_count_ > 0;
                 });
             }

@@ -27,10 +27,11 @@ TelegramClientImpl::TelegramClientImpl() : mTgUpdateTimer(_new<ATimer>(1s)) {
 }
 
 AFuture<ITelegramClient::Object> TelegramClientImpl::sendQuery(td::td_api::object_ptr<td::td_api::Function> f) {
-    ALOG_TRACE(LOG_TAG) << "sendQuery";
+    ALOG_DEBUG(LOG_TAG) << "sendQuery " << td::td_api::to_string(f);
     if (mQueryCountLastUpdate++ >= 5) {
         // Telegram is strict about using 3rdparty telegram clients. For this reason, we have to ensure that we wouldn't
         // trigger their security leading to ban of the account.
+        ALogger::info(LOG_TAG) << "Too many calls to tdlib! Throttling...\n" << AStacktrace::capture(1, 8);
         co_await AThread::asyncSleep(1s);
     }
 
@@ -191,6 +192,109 @@ void TelegramClientImpl::commonHandler(td::tl::unique_ptr<td::td_api::Object> ob
                         },
                         [&](auto&) {},
                     });
+                }
+            },
+            // ── User cache updates ──────────────────────────────────────────
+            [this](td::td_api::updateUser& u) {
+                if (auto dst = mUserCache.contains(u.user_->id_)) {
+                    dst->second->tg = std::move(*u.user_);
+                }
+            },
+            [this](td::td_api::updateUserStatus& u) {
+                if (auto dst = mUserCache.contains(u.user_id_)) {
+                    dst->second->tg.status_ = std::move(u.status_);
+                }
+            },
+            // ── Chat cache updates ───────────────────────────────────────────
+            [this](td::td_api::updateChatTitle& u) {
+                if (auto dst = mChatCache.contains(u.chat_id_)) {
+                    dst->second->tg.title_ = std::move(u.title_);
+                }
+            },
+            [this](td::td_api::updateChatPhoto& u) {
+                if (auto dst = mChatCache.contains(u.chat_id_)) {
+                    dst->second->tg.photo_ = std::move(u.photo_);
+                }
+            },
+            [this](td::td_api::updateChatPermissions& u) {
+                if (auto dst = mChatCache.contains(u.chat_id_)) {
+                    dst->second->tg.permissions_ = std::move(u.permissions_);
+                }
+            },
+            [this](td::td_api::updateChatLastMessage& u) {
+                if (auto dst = mChatCache.contains(u.chat_id_)) {
+                    dst->second->tg.last_message_ = std::move(u.last_message_);
+                }
+            },
+            [this](td::td_api::updateChatReadInbox& u) {
+                if (auto dst = mChatCache.contains(u.chat_id_)) {
+                    dst->second->tg.last_read_inbox_message_id_ = u.last_read_inbox_message_id_;
+                    dst->second->tg.unread_count_ = u.unread_count_;
+                }
+            },
+            [this](td::td_api::updateChatReadOutbox& u) {
+                if (auto dst = mChatCache.contains(u.chat_id_)) {
+                    dst->second->tg.last_read_outbox_message_id_ = u.last_read_outbox_message_id_;
+                }
+            },
+            [this](td::td_api::updateChatUnreadMentionCount& u) {
+                if (auto dst = mChatCache.contains(u.chat_id_)) {
+                    dst->second->tg.unread_mention_count_ = u.unread_mention_count_;
+                }
+            },
+            [this](td::td_api::updateChatUnreadReactionCount& u) {
+                if (auto dst = mChatCache.contains(u.chat_id_)) {
+                    dst->second->tg.unread_reaction_count_ = u.unread_reaction_count_;
+                }
+            },
+            [this](td::td_api::updateChatNotificationSettings& u) {
+                if (auto dst = mChatCache.contains(u.chat_id_)) {
+                    dst->second->tg.notification_settings_ = std::move(u.notification_settings_);
+                }
+            },
+            [this](td::td_api::updateChatIsMarkedAsUnread& u) {
+                if (auto dst = mChatCache.contains(u.chat_id_)) {
+                    dst->second->tg.is_marked_as_unread_ = u.is_marked_as_unread_;
+                }
+            },
+            [this](td::td_api::updateChatBlockList& u) {
+                if (auto dst = mChatCache.contains(u.chat_id_)) {
+                    dst->second->tg.block_list_ = std::move(u.block_list_);
+                }
+            },
+            [this](td::td_api::updateChatHasScheduledMessages& u) {
+                if (auto dst = mChatCache.contains(u.chat_id_)) {
+                    dst->second->tg.has_scheduled_messages_ = u.has_scheduled_messages_;
+                }
+            },
+            [this](td::td_api::updateChatDraftMessage& u) {
+                if (auto dst = mChatCache.contains(u.chat_id_)) {
+                    dst->second->tg.draft_message_ = std::move(u.draft_message_);
+                }
+            },
+            [this](td::td_api::updateChatMessageAutoDeleteTime& u) {
+                if (auto dst = mChatCache.contains(u.chat_id_)) {
+                    dst->second->tg.message_auto_delete_time_ = u.message_auto_delete_time_;
+                }
+            },
+            [this](td::td_api::updateChatEmojiStatus& u) {
+                if (auto dst = mChatCache.contains(u.chat_id_)) {
+                    dst->second->tg.emoji_status_ = std::move(u.emoji_status_);
+                }
+            },
+            [this](td::td_api::updateChatBackground& u) {
+                if (auto dst = mChatCache.contains(u.chat_id_)) {
+                    dst->second->tg.background_ = std::move(u.background_);
+                }
+            },
+            [this](td::td_api::updateChatTheme& u) {
+                if (auto dst = mChatCache.contains(u.chat_id_)) {
+                    dst->second->tg.theme_ = std::move(u.theme_);
+                }
+            },
+            [this](td::td_api::updateChatReplyMarkup& u) {
+                if (auto dst = mChatCache.contains(u.chat_id_)) {
+                    dst->second->tg.reply_markup_message_id_ = u.reply_markup_message_->id_;
                 }
             },
             [&](auto& i) {
