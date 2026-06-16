@@ -22,6 +22,7 @@
 #include "AUI/IO/AByteBufferInputStream.h"
 #include "AUI/Util/ATokenizer.h"
 #include "util/openai_streaming.h"
+#include "util/tui_streaming.h"
 
 static constexpr auto LOG_TAG = "OpenAIChat";
 
@@ -110,28 +111,9 @@ AFuture<AJson> OpenAIChatImpl::makeHttpRequest(Endpoint endpoint, std::string qu
 }
 
 AFuture<IOpenAIChat::Response> OpenAIChatImpl::chat(Params params, AVector<Message> messages) {
-    if (!params.systemPrompt.empty()) {
-        if (!messages.empty()) {
-            AUI_ASSERT(messages.first().role != Message::Role::SYSTEM_PROMPT);
-        }
-        messages.insert(messages.begin(), {Message::Role::SYSTEM_PROMPT, params.systemPrompt});
-    }
-    AString query = AJson::toString(makeQueryString(params, messages));
-    AFileOutputStream("last_query.json") << query.toStdString();
-    const auto logsDir = APath("logs");
-    logsDir.makeDirs();
-    auto now = std::chrono::system_clock::now();
-    AFileOutputStream(logsDir / "{}.0query.json"_format(now)) << query.toStdString();
-
-    auto response = co_await makeHttpRequest(params.config.endpoint, query);
-    AFileOutputStream("last_response.json") << response;
-    AFileOutputStream(logsDir / "{}.1response.json"_format(now)) << response;
-    ALOG_DEBUG(LOG_TAG) << "Response: " << AJson::toString(response).replaceAll("\\n", "\n");
-    auto responseResult = aui::from_json<Response>(response);
-    // if (!responseResult.choices.empty() && !ALogger::global().isTrace()) {
-    //     ALOG_DEBUG(LOG_TAG) << "Response reasoning: " << responseResult.choices.at(0).message.reasoning_content << responseResult.choices.at(0).message.reasoning;
-    // }
-    co_return responseResult;
+    auto streaming = chatStreaming(std::move(params), std::move(messages));
+    co_await streaming->completed;
+    co_return *streaming->response;
 }
 _<IOpenAIChat::StreamingResponse> OpenAIChatImpl::chatStreaming(Params params, AVector<Message> messages) {
     messages.insert(messages.begin(), {Message::Role::SYSTEM_PROMPT, params.systemPrompt});
@@ -147,13 +129,18 @@ _<IOpenAIChat::StreamingResponse> OpenAIChatImpl::chatStreaming(Params params, A
     AFileOutputStream(logsDir / "{}.0query.json"_format(now)) << query.toStdString();
 
     ALOG_TRACE(LOG_TAG) << "QueryStreaming: " << query;
-    AVector<AString> headers = {"Content-Type: application/json"};
-    if (!params.config.endpoint.bearerKey.empty()) {
-        headers << "Authorization: Bearer {}"_format(params.config.endpoint.bearerKey);
-    }
     auto result = _new<IOpenAIChat::StreamingResponse>();
 
-    result->completed = [&]() -> AFuture<> {
+    // Subscribe to response changes and print incrementally to the TUI.
+    auto printer = std::make_shared<TuiStreamingPrinter>();
+    AObject::connect(result->response.changed, AObject::GENERIC_OBSERVER,
+                     [printer, weak = result.weak()] {
+                         if (auto s = weak.lock()) {
+                             printer->update(*s->response);
+                         }
+                     });
+
+    result->completed = [](AString query, _<StreamingResponse> result, Params params, _<TuiStreamingPrinter> printer) -> AFuture<> {
         const auto caller = AThread::current();
         auto processJson = [=](AJson json) {
             caller->enqueue([=, json = std::move(json)] {
@@ -192,6 +179,11 @@ _<IOpenAIChat::StreamingResponse> OpenAIChatImpl::chatStreaming(Params params, A
 
             }
         };
+
+        AVector<AString> headers = {"Content-Type: application/json"};
+        if (!params.config.endpoint.bearerKey.empty()) {
+            headers << "Authorization: Bearer {}"_format(params.config.endpoint.bearerKey);
+        }
         co_await ACurl::Builder(params.config.endpoint.baseUrl + "chat/completions")
                                                .withMethod(ACurl::Method::HTTP_POST)
                                                .withTimeout(config::REQUEST_TIMEOUT)
@@ -216,7 +208,8 @@ _<IOpenAIChat::StreamingResponse> OpenAIChatImpl::chatStreaming(Params params, A
         AUI_ASSERT(AThread::current() == caller);
 #endif
         AThread::processMessages();
-    }();
+        printer->finish();
+    }(std::move(query), result, std::move(params), std::move(printer));
     return result;
 }
 
