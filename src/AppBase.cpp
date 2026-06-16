@@ -249,11 +249,15 @@ AppBase::AppBase(Init init): mInit(std::move(init)), mDiary({
                     });
                     IOpenAIChat::Response botAnswer = co_await [&]() -> AFuture<IOpenAIChat::Response> {
                         MetricsBreadcumbs::Point metric(self.metricBreadcumbs(), "function", "notification processing loop");
-                        auto response = co_await self.openAI()->chat( {
+                        auto response = self.openAI()->chatStreaming( {
                             .systemPrompt = getSystemPrompt(),
                             .tools = notification.actions.asJson(),
                         }, self.mTemporaryContext);
-                        co_return response;
+                        connect(response->response.changed, self, [&self](IOpenAIChat::Response response) {
+                            self.onResponseAssembling(std::move(response));
+                        });
+                        co_await response->completed;
+                        co_return std::move(*response->response);
                     }();
                     AUI_ASSERT(AThread::current() == self.getThread());
 

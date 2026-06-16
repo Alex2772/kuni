@@ -76,22 +76,6 @@ OpenAITools::Tool tools::sendTelegramMessage(
                 throw AException("Too many messages in a row. Don't spam!");
             }
 
-            auto isTyping = _new<std::atomic_bool>(true);
-            auto typingCoro = [](_weak<ITelegramClient> telegram, int64_t chatId, _<std::atomic_bool> isTyping) -> AFuture<> {
-                while (isTyping->load()) {
-                    {
-                        auto tg = telegram.lock();
-                        if (tg == nullptr) {
-                            // we don't want to prolong lifetime of telegram (mostly because of unit tests)
-                            break;
-                        }
-                        tg->sendQuery(ITelegramClient::toPtr(td::td_api::sendChatAction(chatId, {}, {}, ITelegramClient::toPtr(td::td_api::chatActionTyping()))));
-                    }
-                    co_await AThread::asyncSleep(500ms);
-                }
-            }(telegram, chat->id_, isTyping);
-            AUI_DEFER { isTyping->store(false); };
-
             if (ctx.args.contains("chat_id")) {
                 if (ctx.args["chat_id"].asLongInt() != chat->id_) {
                     co_return "Error: you can't send messages to other chats. Open them first. You are currently in chat \"{}\""_format(chat->title_);
@@ -284,13 +268,6 @@ OpenAITools::Tool tools::sendTelegramMessage(
             }
 
 
-            auto simulateTypingDelay = [](size_t messageLength) {
-                // random wait. You definitely don't want to receive 4 large messages in 1 sec right?
-                static std::default_random_engine re(std::chrono::high_resolution_clock::now().time_since_epoch().count());
-                static std::uniform_int_distribution<int> dist(10, 50);
-                return AThread::asyncSleep((messageLength + 1) * dist(re) * 1ms);
-            };
-
             // actually send a message. we don't really need to wait until tdlib reports message sent
             // successfully (this is exactly when in telegram desktop the message status changes from clock
             // to one tick).
@@ -301,7 +278,6 @@ OpenAITools::Tool tools::sendTelegramMessage(
                 // we will split manually.
 
                 for (auto line : message.split("\n")) {
-                    co_await simulateTypingDelay(line.length());
                     // std::exchange: we want all attachments go to the first message.
                     co_await util::telegramPostMessage(*telegram,
                                                        chat->id_,
@@ -311,7 +287,6 @@ OpenAITools::Tool tools::sendTelegramMessage(
                                                        replyTo);
                 }
             } else {
-                co_await simulateTypingDelay(message.length());
                 co_await util::telegramPostMessage(*telegram, chat->id_, message, std::move(photo), std::move(audioPath), replyTo);
             }
 

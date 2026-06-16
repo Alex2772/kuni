@@ -85,6 +85,26 @@ public:
     [[nodiscard]] _<ITelegramClient> telegram() const { return mTelegram; }
 
 protected:
+    void onOffline() override {
+        mCurrentlyOpenedChat.reset();
+        setOnline(false);
+    }
+
+    void onResponseAssembling(IOpenAIChat::Response response) override {
+        if (!mCurrentlyOpenedChat) {
+            return;
+        }
+        static std::chrono::high_resolution_clock::time_point lastEvent;
+        const auto now = std::chrono::high_resolution_clock::now();
+        if (now - lastEvent < 1s) {
+            // no need to spam.
+            return;
+        }
+        lastEvent = now;
+        mTelegram->sendQuery(ITelegramClient::toPtr(td::td_api::sendChatAction(
+            mCurrentlyOpenedChat->chat->id_, {}, {}, ITelegramClient::toPtr(td::td_api::chatActionTyping()))));
+    }
+
     void updateTools(OpenAITools& actions) override {
         AppBase::updateTools(actions);
         if constexpr (config::CAPABILITY_TAKE_PHOTO) {
@@ -318,11 +338,6 @@ private:
     AOptional<CurrentlyOpenedChat> mCurrentlyOpenedChat;
 
 public:
-    void onOffline() override {
-        mCurrentlyOpenedChat.reset();
-        setOnline(false);
-    }
-
     AFuture<AString> llmuiOpenTelegramChat(OpenAITools& tools, int64_t chatId) {
         // Check lockdown mode - only allow PAPIK_CHAT_ID if lockdown is enabled
         if (!co_await util::isAccessibleFromLockdown(*telegram(), chatId)) {
