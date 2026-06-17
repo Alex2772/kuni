@@ -22,6 +22,7 @@ struct StreamingChunk {
         IOpenAIChat::String finish_reason;
     };
     AVector<Choice> choices;
+    IOpenAIChat::Response::Usage usage;
 
     void collectTo(AVector<IOpenAIChat::Response::Choice>& out) const {
         for (auto& choice : choices) {
@@ -52,6 +53,7 @@ AJSON_FIELDS(util::openai_streaming::StreamingChunk,
     (system_fingerprint, "system_fingerprint", AJsonFieldFlags::OPTIONAL)
     (choices, "choices", AJsonFieldFlags::OPTIONAL)
     (created, "created", AJsonFieldFlags::OPTIONAL)
+    (usage, "usage", AJsonFieldFlags::OPTIONAL)
     )
 
 

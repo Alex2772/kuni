@@ -123,9 +123,9 @@ _<IOpenAIChat::StreamingResponse> OpenAIChatImpl::chatStreaming(Params params, A
         return AJson::toString(json);
     }();
     AFileOutputStream("last_query.json") << query.toStdString();
-    const auto logsDir = APath("logs");
+    static const auto logsDir = APath("logs");
     logsDir.makeDirs();
-    auto now = std::chrono::system_clock::now();
+    const auto now = std::chrono::system_clock::now();
     AFileOutputStream(logsDir / "{}.0query.json"_format(now)) << query.toStdString();
 
     ALOG_TRACE(LOG_TAG) << "QueryStreaming: " << query;
@@ -140,7 +140,9 @@ _<IOpenAIChat::StreamingResponse> OpenAIChatImpl::chatStreaming(Params params, A
                          }
                      });
 
-    result->completed = [](AString query, _<StreamingResponse> result, Params params, _<TuiStreamingPrinter> printer) -> AFuture<> {
+    result->completed =
+        [](AString query, _<StreamingResponse> result, Params params, _<TuiStreamingPrinter> printer, std::chrono::system_clock::time_point now)
+        -> AFuture<> {
         const auto caller = AThread::current();
         auto processJson = [=](AJson json) {
             caller->enqueue([=, json = std::move(json)] {
@@ -150,6 +152,7 @@ _<IOpenAIChat::StreamingResponse> OpenAIChatImpl::chatStreaming(Params params, A
                 out->created = chunk.created;
                 out->model = chunk.model;
                 out->system_fingerprint = chunk.system_fingerprint;
+                out->usage = chunk.usage;
                 chunk.collectTo(out->choices);
             });
         };
@@ -209,7 +212,8 @@ _<IOpenAIChat::StreamingResponse> OpenAIChatImpl::chatStreaming(Params params, A
 #endif
         AThread::processMessages();
         printer->finish();
-    }(std::move(query), result, std::move(params), std::move(printer));
+        AFileOutputStream(logsDir / "{}.1response.json"_format(now)) << AJson::toString(aui::to_json(*result->response));
+    }(std::move(query), result, std::move(params), std::move(printer), now);
     return result;
 }
 

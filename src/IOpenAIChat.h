@@ -89,7 +89,10 @@ struct IOpenAIChat {
         AString object;
         int64_t created;
         AString model;
+        AString provider;
         AOptional<AString> system_fingerprint;
+        AOptional<double> cost;
+        AJson cost_details;
         struct Choice {
             int64_t index;
             Message message;
@@ -188,13 +191,22 @@ AJSON_FIELDS(IOpenAIChat::Response::Choice,
              AJSON_FIELDS_ENTRY(index) AJSON_FIELDS_ENTRY(message) AJSON_FIELDS_ENTRY(finish_reason))
 
 AJSON_FIELDS(IOpenAIChat::Response,
-             AJSON_FIELDS_ENTRY(id) AJSON_FIELDS_ENTRY(object) AJSON_FIELDS_ENTRY(created) AJSON_FIELDS_ENTRY(model)
-                 (system_fingerprint, "system_fingerprint", AJsonFieldFlags::OPTIONAL) AJSON_FIELDS_ENTRY(choices)
-                 (usage, "usage", AJsonFieldFlags::OPTIONAL))
+             AJSON_FIELDS_ENTRY(id)
+             AJSON_FIELDS_ENTRY(object)
+             AJSON_FIELDS_ENTRY(created)
+             AJSON_FIELDS_ENTRY(model)
+             (system_fingerprint, "system_fingerprint", AJsonFieldFlags::OPTIONAL)
+             AJSON_FIELDS_ENTRY(choices)
+             (usage, "usage", AJsonFieldFlags::OPTIONAL)
+             (provider, "provider", AJsonFieldFlags::OPTIONAL)
+             (cost, "cost", AJsonFieldFlags::OPTIONAL)
+             (cost_details, "cost_details", AJsonFieldFlags::OPTIONAL)
+             )
 
 template<>
 struct AJsonConv<IOpenAIChat::Response::Usage> {
     static void fromJson(const AJson& v, IOpenAIChat::Response::Usage& dst);
+    static AJson toJson(const IOpenAIChat::Response::Usage& from);
 };
 
 template<>
@@ -202,3 +214,14 @@ struct AJsonConv<AVector<IOpenAIChat::Message>> {
     static AJson toJson(const AVector<IOpenAIChat::Message>& v);
     static void fromJson(AJson json, AVector<IOpenAIChat::Message>& dst);
 };
+
+template<>
+struct AJsonConv<AJson> {
+    static AJson toJson(const AJson& json) {
+        return json;
+    }
+    static void fromJson(const AJson& from, AJson& dst) {
+        dst = from;
+    }
+};
+

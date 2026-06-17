@@ -20,10 +20,10 @@ _<IOpenAIChat::StreamingResponse> OpenAIChatMeasurable::chatStreaming(Params par
         if (!lock1) return;
         auto lock2 = result.lock();
         if (!lock2) return;
-        AThread::main()->enqueue([this, lock1, lock2, model] {
+        AThread::main()->enqueue([this, lock1, usage = std::move(lock2->response->usage), model] {
             emit responseMetrics({
                 .model = model,
-                .usage = lock2->response->usage,
+                .usage = std::move(usage),
             });
         });
     });

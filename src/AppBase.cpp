@@ -61,7 +61,7 @@ AFuture<std::valarray<double>> contextEmbedding(IOpenAIChat& openAI, ranges::ran
 AppBase::AppBase(Init init): mInit(std::move(init)), mDiary({
     .diaryDir = mInit.workingDir / "diary",
     .openAI = mInit.openAI,
-}), mWakeupTimer(_new<ATimer>(200min)) {
+}), mWakeupTimer(_new<ATimer>(27min)) {
     // mTools.addTool({
     //     .name = "send_telegram_message",
     //     .description = "Sends a message to a Telegram user.",
@@ -124,9 +124,9 @@ AppBase::AppBase(Init init): mInit(std::move(init)), mDiary({
                         // 2. reduce resource usage:
                         //    - less conversations would be made
                         //    - in case of group chats and telegram channels, messages would be processed in batches
-                        const auto minutes = std::uniform_int_distribution(15, 120)(re);
-                        ALogger::info(LOG_TAG) << "Going to sleep for " << minutes << " minutes";
-                        for (int i = 0; i < minutes; ++i) {
+                        const auto seconds = std::uniform_int_distribution(15, 120)(re) * 60;
+                        ALogger::info(LOG_TAG) << "Going to sleep for " << seconds / 60 << " minutes";
+                        for (int i = 0; i < seconds; ++i) {
                             // костыль ну да сойдёт
                             if (!self.mNotifications.empty()) {
                                 if (self.mNotifications.front().message.contains("{}"_format(config::PAPIK_CHAT_ID))) {
@@ -134,7 +134,7 @@ AppBase::AppBase(Init init): mInit(std::move(init)), mDiary({
                                     break;
                                 }
                             }
-                            co_await AThread::asyncSleep(1min);
+                            co_await AThread::asyncSleep(1s);
                         }
                     }
                 }

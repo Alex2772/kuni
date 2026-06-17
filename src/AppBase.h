@@ -8,7 +8,7 @@
 #include "MetricsBreadcumbs.h"
 #include "OpenAITools.h"
 
-class AppBase: public AObject {
+class AppBase : public AObject {
 public:
     struct Init {
         APath workingDir = "test_data";
@@ -23,8 +23,6 @@ public:
         AFuture<> onStartedProcessing;
         AFuture<> onProcessed;
     };
-
-    virtual void onOffline() {}
 
 
     /**
@@ -64,7 +62,6 @@ public:
         return mMetricBreadcumbs;
     }
 
-
 protected:
     AAsyncHolder mAsync;
     aui::float_within_0_1 mRelevanceThreshold = 0.5f;
@@ -74,13 +71,25 @@ protected:
 
     virtual AFuture<AString> onCleanContext();
 
+
+    /**
+     * @brief Called by the main coroutine when a notification was processed.
+     */
+    virtual void onOffline() {}
+
+    /**
+     * @brief Called by the main coroutine during LLM inference streaming to observe which tool calls LLM is about to
+     * perform.
+     * @details
+     * Can be used to send typing action as soon as send_telegram_message tool call appears in tools.
+     */
+    virtual void onResponseAssembling(IOpenAIChat::Response response) {}
+
     /**
      *
      * @return @brief Called before LLM's processing loop.
      */
-    virtual AFuture<> onBeforeMainLoop() {
-        co_return;
-    }
+    virtual AFuture<> onBeforeMainLoop() { co_return; }
 
     /**
      * @brief Adds always available actions
@@ -96,7 +105,6 @@ protected:
     void removeNotifications(const AString& substring);
 
     AVector<IOpenAIChat::Message> mTemporaryContext {};
-
 
     /**
      * @brief Performs needed adjustments to the diary page and removes the page from listing. Formatted contents are
@@ -133,4 +141,3 @@ private:
 
     Diary mDiary;
 };
-

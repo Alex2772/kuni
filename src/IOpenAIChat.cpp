@@ -82,3 +82,15 @@ void AJsonConv<IOpenAIChat::Response::Usage, void>::fromJson(const AJson& v, IOp
             .valueOr(dst.prompt_tokens - dst.prompt_cache_hit_tokens); // openrouter
     }
 }
+
+AJson AJsonConv<IOpenAIChat::Response::Usage, void>::toJson(const IOpenAIChat::Response::Usage& from) {
+    AJson dst;
+    dst["prompt_tokens"] = from.prompt_tokens;
+    dst["completion_tokens"] = from.completion_tokens;
+    dst["total_tokens"] = from.total_tokens;
+    if (from.prompt_cache_hit_tokens > 0 || from.prompt_cache_miss_tokens > 0) {
+        dst["prompt_cache_miss_tokens"] = from.prompt_cache_miss_tokens;
+        dst["prompt_cache_hit_tokens"] = from.prompt_cache_hit_tokens;
+    }
+    return dst;
+}
