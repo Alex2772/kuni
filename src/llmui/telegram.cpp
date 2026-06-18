@@ -11,6 +11,7 @@
 #include "AUI/Util/kAUI.h"
 #include "tools/stickers.h"
 #include "util/is_accessible_from_lockdown.h"
+#include "util/time_ago.h"
 
 #include <range/v3/algorithm/max_element.hpp>
 
@@ -93,8 +94,15 @@ llmui::formatChatSingle(ITelegramClient& telegram, AString& result, td::td_api::
             preview = preview.utf8().substr(0, 30).str + "..." + preview.utf8().substr(preview.utf8().length() - 30).str;
         }
     }
-    result += "<chat chat_id=\"{}\" title=\"{}\" preview=\"{}\" type=\"{}\""_format(
-        chat.id_, chat.title_, preview, type);
+    AString lastMessageAgo;
+    if (chat.last_message_) {
+        auto tp = std::chrono::time_point<std::chrono::system_clock, std::chrono::seconds>(
+            std::chrono::seconds(chat.last_message_->date_));
+        lastMessageAgo = util::timeAgo(tp);
+    }
+
+    result += "<chat chat_id=\"{}\" title=\"{}\" preview=\"{}\" type=\"{}\" last_message=\"{}\""_format(
+        chat.id_, chat.title_, preview, type, lastMessageAgo);
     if (chat.unread_count_ > 0) {
         result += " unread_count=\"{}\""_format(chat.unread_count_);
     }
