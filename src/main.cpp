@@ -54,6 +54,8 @@
 #include <range/v3/view/take.hpp>
 #include <proxy_server/proxy_server.h>
 #include "tools/ask.h"
+#include "tools/remove_message.h"
+
 #include <Diary.h>
 
 using namespace std::chrono_literals;
@@ -554,6 +556,7 @@ Some channels have reactions enabled. In that case, you can sometimes react with
                 telegram(), openAI(), chat, _new<td::td_api::array<td::td_api::object_ptr<td::td_api::message>>>(std::move(messages))),
             tools::getChatPhoto(telegram(), openAI(), chat, temporaryContext()),
             tools::reactWithEmoji(telegram(), chat),
+            tools::removeMessage(telegram(), chat),
         };
 
         if constexpr (config::CAPABILITY_USE_STICKERS) {

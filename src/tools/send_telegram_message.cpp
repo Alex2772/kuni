@@ -294,7 +294,17 @@ OpenAITools::Tool tools::sendTelegramMessage(
                 }
                 // random wait. You definitely don't want to receive 4 large messages in 1 sec right?
                 static std::default_random_engine re(std::chrono::high_resolution_clock::now().time_since_epoch().count());
-                static std::uniform_int_distribution<int> dist(10, 50);
+                static constexpr auto MIN_WPM = 120;
+                static constexpr auto MAX_WPM = 150;
+                static constexpr auto wpmToPerCharacterMillis = [](auto wordsPerMinute) {
+                    const auto charactersPerMinute = wordsPerMinute * 5;
+                    const auto charactersPerSecond = charactersPerMinute / 60;
+                    const auto millisecondsPerCharacter = 1000 / charactersPerSecond;
+                    return millisecondsPerCharacter;
+                };
+                static constexpr auto MIN_DELAY = wpmToPerCharacterMillis(MIN_WPM);
+                static constexpr auto MAX_DELAY = wpmToPerCharacterMillis(MAX_WPM);
+                static std::uniform_int_distribution<int> dist(MAX_DELAY, MIN_DELAY);
                 const auto delay = (messageLength + 1) * dist(re) * 1ms;
                 ALogger::info("send_telegram_message") << "Synthetic typing delay: " << delay.count() << "ms";
                 co_await AThread::asyncSleep(delay);
@@ -306,6 +316,7 @@ OpenAITools::Tool tools::sendTelegramMessage(
             // to one tick).
             // however, if something goes wrong, this is reported as an exception to LLM and it will know
             // that a technical issue appeared during sending the message (i.e., LLMs bot was banned)
+            int64_t sentMessageId{};
             if (message.contains("\n") && !messageContainsCode) {
                 // despite the prompt, stupid af LLM still often sends big unnatural messages.
                 // we will split manually.
@@ -313,16 +324,18 @@ OpenAITools::Tool tools::sendTelegramMessage(
                 for (auto line : message.split("\n")) {
                     co_await simulateTypingDelay(line.length());
                     // std::exchange: we want all attachments go to the first message.
-                    co_await util::telegramPostMessage(*telegram,
+                    auto result = co_await util::telegramPostMessage(*telegram,
                                                        chat->id_,
                                                        std::move(line),
                                                        std::exchange(photo, {}),
                                                        std::exchange(audioPath, {}),
                                                        replyTo);
+                    sentMessageId = result->id_;
                 }
             } else {
                 co_await simulateTypingDelay(message.length());
-                co_await util::telegramPostMessage(*telegram, chat->id_, message, std::move(photo), std::move(audioPath), replyTo);
+                auto result = co_await util::telegramPostMessage(*telegram, chat->id_, message, std::move(photo), std::move(audioPath), replyTo);
+                sentMessageId = result->id_;
             }
 
 
@@ -330,20 +343,21 @@ OpenAITools::Tool tools::sendTelegramMessage(
 
             ++state->messagesInARow;
 
+            auto result = "Message sent successfully to \"{}\"; message_id={}."_format(chat->title_, sentMessageId);
+
             if (state->messagesInARow > 5) {
-                co_return "Message sent successfully to \"{}\". Warning: you have sent {} messages in a row! Give your participant space to breathe!"_format(chat->title_, state->messagesInARow);
-            }
-            if (state->messagesInARow < 3) {
+                result += "Warning: you have sent {} messages in a row! Give your participant space to breathe!"_format(state->messagesInARow);
+            } else if (state->messagesInARow < 3) {
                 // in addition to prompt, we'll encourage llm to add a follow-up messages to make dialogs more
                 // natural:
                 // - (1) hi~
                 // - (2) how are you?
                 // it is still up to LLM to decide whether or not to add follow-ups.
-                co_return "Message sent successfully to \"{}\". You should add a follow-up #send_telegram_message."_format(chat->title_);
+                co_return "You should add a follow-up #send_telegram_message.";
             }
 
             // llm really likes success messages.
-            co_return "Message sent successfully to \"{}\"."_format(chat->title_);
+            co_return result;
         },
     };
 }

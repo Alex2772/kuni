@@ -520,6 +520,13 @@ world) in the following format:
         .model = "gemma4:26b",
     };
 
+    static const EndpointAndModel ENDPOINT_ASK_TOOL {
+        .endpoint = {
+            .baseUrl = "https://openrouter.ai/api/v1/",
+            .bearerKey = secrets::OPENROUTER_BEARER_KEY,
+        },
+        .model = "deepseek-v4-flash",
+    };
 
     static const EndpointAndModel ENDPOINT_CHEAP_LLM {
         .endpoint = {

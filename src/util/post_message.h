@@ -6,7 +6,7 @@
 namespace util {
 
 [[nodiscard]]
-AFuture<> telegramPostMessage(
+AFuture<td::td_api::object_ptr<td::td_api::message>> telegramPostMessage(
     ITelegramClient& telegram,
     int64_t chatId,
     AString text,
