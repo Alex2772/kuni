@@ -58,7 +58,13 @@ AJson AJsonConv<AVector<IOpenAIChat::Message>>::toJson(const AVector<IOpenAIChat
 void AJsonConv<AVector<IOpenAIChat::Message>, void>::fromJson(AJson json, AVector<IOpenAIChat::Message>& dst) {
     dst.resize(json.asArray().size());
     for (const auto&[in, out] : ranges::views::zip(json.asArray(), dst)) {
-        aui::from_json(in, out);
+        // for better compat
+        if (in["tool_calls"].isArray()) {
+            aui::from_json(in["tool_calls"], out.tool_calls);
+        }
+        out.reasoning = in["reasoning"].asStringOpt().valueOr("");
+        out.reasoning_content  = in["reasoning_content"].asStringOpt().valueOr("");
+        out.content  = in["content"].asStringOpt().valueOr("");
     }
 }
 
