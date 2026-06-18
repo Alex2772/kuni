@@ -118,7 +118,7 @@ TEST(SendTelegramMessageTest, SuccessSimpleText) {
         .WillRepeatedly(testing::Return(AFuture(std::valarray<double>{-0.2})));
 
     auto tool = tools::sendTelegramMessage(
-        telegram, openAI, chat, std::move(messages), std::valarray<double>{0.2});
+        telegram, openAI, chat, std::move(messages));
 
     OpenAITools tools{};
     auto result = util::await_synchronously(tool.handler({
@@ -151,7 +151,7 @@ TEST(SendTelegramMessageTest, WrongChatId) {
     EXPECT_CALL(*openAI, embedding(testing::_, testing::_)).Times(0);
 
     auto tool = tools::sendTelegramMessage(
-        telegram, openAI, chat, std::move(messages), std::valarray<double>{});
+        telegram, openAI, chat, std::move(messages));
 
     OpenAITools tools{};
     auto result = util::await_synchronously(tool.handler({
@@ -186,7 +186,7 @@ TEST(SendTelegramMessageTest, MissingAllContent) {
     EXPECT_CALL(*openAI, embedding(testing::_, testing::_)).Times(0);
 
     auto tool = tools::sendTelegramMessage(
-        telegram, openAI, chat, std::move(messages), std::valarray<double>{});
+        telegram, openAI, chat, std::move(messages));
 
     OpenAITools tools{};
     auto result = util::await_synchronously(tool.handler({
@@ -221,7 +221,7 @@ TEST(SendTelegramMessageTest, BothPhotoAndAudioError) {
     EXPECT_CALL(*openAI, embedding(testing::_, testing::_)).Times(0);
 
     auto tool = tools::sendTelegramMessage(
-        telegram, openAI, chat, std::move(messages), std::valarray<double>{});
+        telegram, openAI, chat, std::move(messages));
 
     OpenAITools tools{};
     auto result = util::await_synchronously(tool.handler({
@@ -262,7 +262,7 @@ TEST(SendTelegramMessageTest, ReplyToMessageFromAnotherChatThrows) {
     EXPECT_CALL(*openAI, embedding(testing::_, testing::_)).Times(0);
 
     auto tool = tools::sendTelegramMessage(
-        telegram, openAI, chat, std::move(messages), std::valarray<double>{});
+        telegram, openAI, chat, std::move(messages));
 
     OpenAITools tools{};
     EXPECT_THROW(
@@ -301,7 +301,7 @@ TEST(SendTelegramMessageTest, ReplyToExistingMessage) {
         .WillRepeatedly(testing::Return(AFuture(std::valarray<double>{-0.2})));
 
     auto tool = tools::sendTelegramMessage(
-        telegram, openAI, chat, std::move(messages), std::valarray<double>{});
+        telegram, openAI, chat, std::move(messages));
 
     OpenAITools tools{};
     auto result = util::await_synchronously(tool.handler({
@@ -337,7 +337,7 @@ TEST(SendTelegramMessageTest, TooManyMessagesInRowThrows) {
         .WillRepeatedly(testing::Return(AFuture(std::valarray<double>{-0.2})));
 
     auto tool = tools::sendTelegramMessage(
-        telegram, openAI, chat, std::move(messages), std::valarray<double>{});
+        telegram, openAI, chat, std::move(messages));
 
     OpenAITools tools{};
     // Send 11 messages — the 11th should throw
@@ -378,7 +378,7 @@ TEST(SendTelegramMessageTest, MultiLineMessageGetsSplit) {
         .WillRepeatedly(testing::Return(AFuture(std::valarray<double>{-0.2})));
 
     auto tool = tools::sendTelegramMessage(
-        telegram, openAI, chat, std::move(messages), std::valarray<double>{});
+        telegram, openAI, chat, std::move(messages));
 
     OpenAITools tools{};
     auto result = util::await_synchronously(tool.handler({
@@ -410,7 +410,7 @@ TEST(SendTelegramMessageTest, InvalidPhotoFilenameSlash) {
         .WillRepeatedly(testing::Return(AFuture(std::valarray<double>{-0.2})));
 
     auto tool = tools::sendTelegramMessage(
-        telegram, openAI, chat, std::move(messages), std::valarray<double>{});
+        telegram, openAI, chat, std::move(messages));
 
     OpenAITools tools{};
     EXPECT_THROW(
@@ -446,7 +446,7 @@ TEST(SendTelegramMessageTest, InvalidPhotoFilenameDotDot) {
         .WillRepeatedly(testing::Return(AFuture(std::valarray<double>{-0.2})));
 
     auto tool = tools::sendTelegramMessage(
-        telegram, openAI, chat, std::move(messages), std::valarray<double>{});
+        telegram, openAI, chat, std::move(messages));
 
     OpenAITools tools{};
     EXPECT_THROW(
@@ -482,7 +482,7 @@ TEST(SendTelegramMessageTest, InvalidAudioFilenameSlash) {
         .WillRepeatedly(testing::Return(AFuture(std::valarray<double>{-0.2})));
 
     auto tool = tools::sendTelegramMessage(
-        telegram, openAI, chat, std::move(messages), std::valarray<double>{});
+        telegram, openAI, chat, std::move(messages));
 
     OpenAITools tools{};
     EXPECT_THROW(
@@ -517,7 +517,7 @@ TEST(SendTelegramMessageTest, InvalidAudioFilenameDotDot) {
         .Times(0);
 
     auto tool = tools::sendTelegramMessage(
-        telegram, openAI, chat, std::move(messages), std::valarray<double>{});
+        telegram, openAI, chat, std::move(messages));
 
     OpenAITools tools{};
     EXPECT_THROW(
@@ -565,7 +565,7 @@ TEST(SendTelegramMessageTest, RepeatDetectionThrows) {
         });
 
     auto tool = tools::sendTelegramMessage(
-        telegram, openAI, chat, std::move(messages), embeddingVec);
+        telegram, openAI, chat, std::move(messages));
 
     OpenAITools tools{};
     EXPECT_THROW(
@@ -599,7 +599,7 @@ TEST(SendTelegramMessageTest, FirstMessageEncouragesFollowUp) {
         .WillRepeatedly(testing::Return(AFuture(std::valarray<double>{-0.2})));
 
     auto tool = tools::sendTelegramMessage(
-        telegram, openAI, chat, std::move(messages), std::valarray<double>{});
+        telegram, openAI, chat, std::move(messages));
 
     OpenAITools tools{};
     auto result = util::await_synchronously(tool.handler({

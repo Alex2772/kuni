@@ -247,7 +247,7 @@ TEST(DiaryIntegration, RealWorldChatHistorySneakyTopicSwitch) {
 
         ON_CALL(*app, openChat())
             .WillByDefault([&]() noexcept -> AString {
-                return AString(CHAT_HISTORY) + AString(fmt::format(config::INSTRUCTIONS_DM, "Alex2772"));
+                return AString(CHAT_HISTORY) + AString(fmt::format("You are in DM with {}", "Alex2772"));
             });
 
         ON_CALL(*app, telegramPostMessage(testing::_))
@@ -330,7 +330,7 @@ TEST(DiaryIntegration, ConversationNoFollowUp) {
 
         ON_CALL(*app, openChat())
             .WillByDefault([&]() noexcept -> AString {
-                return AString(CHAT_HISTORY) + AString(fmt::format(config::INSTRUCTIONS_DM, "Alex2772"));
+                return AString(CHAT_HISTORY) + AString(fmt::format("You are in DM with {}", "Alex2772"));
             });
 
         ON_CALL(*app, telegramPostMessage(testing::_))

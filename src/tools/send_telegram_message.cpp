@@ -15,6 +15,7 @@
 #include <range/v3/algorithm/count_if.hpp>
 
 #include "util/json_utils.h"
+#include "util/typos.h"
 
 static constexpr auto LOG_TAG = "tools::sendTelegramMessage";
 
@@ -97,9 +98,11 @@ OpenAITools::Tool tools::sendTelegramMessage(
                     co_return "Error: you can't send messages to other chats. Open them first. You are currently in chat \"{}\""_format(chat->title_);
                 }
             }
-            const auto message = ctx.args["text"].asStringOpt().valueOr("").replaceAll("\r", "");
+            auto message = ctx.args["text"].asStringOpt().valueOr("").replaceAll("\r", "");
             const auto photoFilename = ctx.args["photo_filename"].asStringOpt().valueOr("");
             const auto audioFilename = ctx.args["audio_filename"].asStringOpt().valueOr("");
+            // intentionally not listed in arguments, just to disable in tests
+            const auto allowTypos = ctx.args["allow_typos"].asBoolOpt().valueOr(true);
             const auto replyTo = [&]() -> int64_t {
                 const auto value = util::jsonAsLongInt(ctx.args["reply_to_message_id"]).valueOr(0);
                 if (state->lastReplyToMessageId == value) {
@@ -311,12 +314,26 @@ OpenAITools::Tool tools::sendTelegramMessage(
                 co_return;
             };
 
+            auto trySimulateTypos = [&](AString str) {
+                if (!allowTypos) {
+                    return str;
+                }
+                if (std::uniform_real_distribution(0.0, 1.0)(gRandomEngine) < 0.05) {
+                    str = util::swapAdjacentChars(std::move(str), gRandomEngine);
+                }
+                if (std::uniform_real_distribution(0.0, 1.0)(gRandomEngine) < 0.05) {
+                    str = util::replaceWithKeyboardNeighbor(std::move(str), gRandomEngine);
+                }
+                return str;
+            };
+            message = trySimulateTypos(std::move(message));
+
+            AString result;
             // actually send a message. we don't really need to wait until tdlib reports message sent
             // successfully (this is exactly when in telegram desktop the message status changes from clock
             // to one tick).
             // however, if something goes wrong, this is reported as an exception to LLM and it will know
             // that a technical issue appeared during sending the message (i.e., LLMs bot was banned)
-            int64_t sentMessageId{};
             if (message.contains("\n") && !messageContainsCode) {
                 // despite the prompt, stupid af LLM still often sends big unnatural messages.
                 // we will split manually.
@@ -324,18 +341,19 @@ OpenAITools::Tool tools::sendTelegramMessage(
                 for (auto line : message.split("\n")) {
                     co_await simulateTypingDelay(line.length());
                     // std::exchange: we want all attachments go to the first message.
-                    auto result = co_await util::telegramPostMessage(*telegram,
+                    auto sent = co_await util::telegramPostMessage(*telegram,
                                                        chat->id_,
                                                        std::move(line),
                                                        std::exchange(photo, {}),
                                                        std::exchange(audioPath, {}),
                                                        replyTo);
-                    sentMessageId = result->id_;
+                    result += "Message sent successfully to \"{}\"; message_id={}, text=\"{}\".\n"_format(chat->title_, sent->id_, llmui::extractMessageTypeAndText(*sent));
                 }
             } else {
                 co_await simulateTypingDelay(message.length());
-                auto result = co_await util::telegramPostMessage(*telegram, chat->id_, message, std::move(photo), std::move(audioPath), replyTo);
-                sentMessageId = result->id_;
+                auto sent = co_await util::telegramPostMessage(
+                    *telegram, chat->id_, message, std::move(photo), std::move(audioPath), replyTo);
+                result += "Message sent successfully to \"{}\"; message_id={}, text=\"{}\"."_format(chat->title_, sent->id_, llmui::extractMessageTypeAndText(*sent));
             }
 
 
@@ -343,17 +361,15 @@ OpenAITools::Tool tools::sendTelegramMessage(
 
             ++state->messagesInARow;
 
-            auto result = "Message sent successfully to \"{}\"; message_id={}."_format(chat->title_, sentMessageId);
-
             if (state->messagesInARow > 5) {
-                result += "Warning: you have sent {} messages in a row! Give your participant space to breathe!"_format(state->messagesInARow);
+                result += "\n\nWarning: you have sent {} messages in a row! Give your participant space to breathe!"_format(state->messagesInARow);
             } else if (state->messagesInARow < 3) {
                 // in addition to prompt, we'll encourage llm to add a follow-up messages to make dialogs more
                 // natural:
                 // - (1) hi~
                 // - (2) how are you?
                 // it is still up to LLM to decide whether or not to add follow-ups.
-                co_return "You should add a follow-up #send_telegram_message.";
+                result += "\n\nYou should add a follow-up #send_telegram_message.";
             }
 
             // llm really likes success messages.

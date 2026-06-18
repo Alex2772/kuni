@@ -48,7 +48,12 @@ struct ITelegramClient {
 
     [[nodiscard]]
     AFuture<_<td::td_api::chat>> getChat(int64_t id);
+
+    [[nodiscard]]
     AFuture<_<td::td_api::user>> getUser(int64_t id);
+
+    [[nodiscard]]
+    AFuture<_<td::td_api::message>> getMessage(int64_t chatId, int64_t messageId);
 
     [[nodiscard]]
     virtual const AFuture<>& waitForConnection() const noexcept = 0;
@@ -79,4 +84,5 @@ protected:
     using Cache = AMap<int64_t /* id */, _<Cached<TgObject>>>;
     Cache<td::td_api::chat> mChatCache;
     Cache<td::td_api::user> mUserCache;
+    AMap<int64_t /* chatId */, Cache<td::td_api::message>> mMessageCache;
 };

@@ -297,6 +297,32 @@ void TelegramClientImpl::commonHandler(td::tl::unique_ptr<td::td_api::Object> ob
                     dst->second->tg.reply_markup_message_id_ = u.reply_markup_message_->id_;
                 }
             },
+            [this](td::td_api::updateMessageSendSucceeded& u) {
+                const auto oldId = u.old_message_id_;
+                const auto newId  = u.message_->id_;
+                auto& cacheForThisChat = mMessageCache[u.message_->chat_id_];
+                auto dst = cacheForThisChat[newId] = cacheForThisChat[oldId];
+                if (dst == nullptr) {
+                    dst = cacheForThisChat[newId] = cacheForThisChat[oldId] = _new<Cached<td::td_api::message>>();
+                }
+                dst->tg = std::move(*u.message_);
+                if (!dst->populated.hasResult()) {
+                    dst->populated.supplyValue();
+                }
+            },
+            [this](td::td_api::updateMessageSendFailed& u) {
+                const auto oldId = u.old_message_id_;
+                const auto newId  = u.message_->id_;
+                auto& cacheForThisChat = mMessageCache[u.message_->chat_id_];
+                auto dst = cacheForThisChat[newId] = cacheForThisChat[oldId];
+                if (dst == nullptr) {
+                    dst = cacheForThisChat[newId] = cacheForThisChat[oldId] = _new<Cached<td::td_api::message>>();
+                }
+                dst->tg = std::move(*u.message_);
+                if (!dst->populated.hasResult()) {
+                    dst->populated.supplyValue();
+                }
+            },
             [&](auto& i) {
                 onEvent(std::move(object));
             }});

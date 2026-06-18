@@ -39,6 +39,7 @@
 #include "tools/remove_and_ban_chat.h"
 #include "tools/stickers.h"
 #include "tools/send_telegram_message.h"
+#include "tools/edit_message_text.h"
 #include "ui/debug/KuniDebugWindow.h"
 #include "util/is_accessible_from_lockdown.h"
 #include "util/post_message.h"
@@ -557,6 +558,7 @@ Some channels have reactions enabled. In that case, you can sometimes react with
             tools::getChatPhoto(telegram(), openAI(), chat, temporaryContext()),
             tools::reactWithEmoji(telegram(), chat),
             tools::removeMessage(telegram(), chat),
+            tools::editMessageText(telegram(), chat),
         };
 
         if constexpr (config::CAPABILITY_USE_STICKERS) {

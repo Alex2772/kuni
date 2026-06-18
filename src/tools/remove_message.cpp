@@ -10,7 +10,7 @@ OpenAITools::Tool tools::removeMessage(_<ITelegramClient> telegram, _<td::td_api
     return {
         .name = "remove_message",
         .description = "Deletes specified message for both you and participant(s) in \"{}\" chat.\n"
-                       "You should use this when you mistakenly sent a message to a wrong chat."_format(chat->title_),
+                       "You should use this when you mistakenly sent a message to a wrong chat or to remove an inappropriate message in group chats."_format(chat->title_),
         .parameters = {
             .properties = {
                 {"message_id", {.type = "integer|array", .description = "ID(s) of the message(s) to delete. Taken from message_id attribute in <message> tag."}},
@@ -37,6 +37,12 @@ OpenAITools::Tool tools::removeMessage(_<ITelegramClient> telegram, _<td::td_api
             }
 
             const auto result = "Messages {} were deleted successfully."_format(std::span(messages));
+
+            for (auto& i : messages) {
+                // remap client-side messageId (which was reported to llm to server-side messageId)
+                i = (co_await telegram->getMessage(chat->id_, i))->id_;
+            }
+
             auto ok = co_await telegram->sendQueryWithResult(ITelegramClient::toPtr(td::td_api::deleteMessages(chat->id_, std::move(messages), true)));
             co_return result;
         },

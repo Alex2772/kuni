@@ -456,8 +456,7 @@ AFuture<AString> llmui::formatChatHistoryMessage(
         if (msg.reply_to_ && msg.reply_to_->get_id() == td::td_api::messageReplyToMessage::ID) {
             try {
                 auto reply = td::td_api::move_object_as<td::td_api::messageReplyToMessage>(std::move(msg.reply_to_));
-                auto replyToMsg = co_await telegram.sendQueryWithResult(
-                    ITelegramClient::toPtr(td::td_api::getMessage(msg.chat_id_, reply->message_id_)));
+                auto replyToMsg = co_await telegram.getMessage(msg.chat_id_, reply->message_id_);
                 result += co_await llmui::formatChatHistoryMessage(telegram, *replyToMsg, chat, openAI, temporaryContext, "reply_to");
             } catch (const AException& e) {
                 if (e.getMessage().contains("Not Found")) {
