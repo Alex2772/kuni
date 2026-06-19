@@ -321,10 +321,10 @@ OpenAITools::Tool tools::sendTelegramMessage(
                 if (!allowTypos) {
                     return str;
                 }
-                if (std::uniform_real_distribution(0.0, 1.0)(gRandomEngine) < 0.05) {
+                if (std::uniform_real_distribution(0.0, 1.0)(gRandomEngine) < 0.02) {
                     str = util::swapAdjacentChars(std::move(str), gRandomEngine);
                 }
-                if (std::uniform_real_distribution(0.0, 1.0)(gRandomEngine) < 0.05) {
+                if (std::uniform_real_distribution(0.0, 1.0)(gRandomEngine) < 0.02) {
                     str = util::replaceWithKeyboardNeighbor(std::move(str), gRandomEngine);
                 }
                 return str;

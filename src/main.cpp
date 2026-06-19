@@ -361,8 +361,9 @@ public:
 
         AString result;
 
+        // loaded messages. first goes the newest, last goes the oldest
         td::td_api::array<td::td_api::object_ptr<td::td_api::message>> messages;
-        {
+        co_await [&]() -> AFuture<> {
             int64_t fromMessage = 0;
             for (;;) {
                 auto response = co_await mTelegram->sendQueryWithResult(
@@ -375,7 +376,16 @@ public:
 #if AUI_DEBUG
                     AUI_ASSERT(!ranges::any_of(messages, [&](const auto& m) { return m->id_ == msg->id_; }));
 #endif
+                    const auto msgFormatting = R"(<message message_id="{}")"_format(msg->id_);
                     messages.push_back(std::move(msg));
+                    if (ranges::any_of(temporaryContext(), [&](const IOpenAIChat::Message& msg) {
+                        return msg.content.contains(msgFormatting);
+                    })) {
+                        // this message is already in context, which means we don't need to load further.
+                        // we'll just reassure this one, so the continuation of a dialogue in context won't feel
+                        // detached, and stop at this point.
+                        co_return;
+                    }
                 }
                 const auto length = ranges::accumulate(
                     messages, size_t(0), std::plus {}, [](const td::td_api::object_ptr<td::td_api::message>& msg) {
@@ -384,26 +394,8 @@ public:
                 if (length >= config::CHAT_MAX_CHARS_LENGTH) {
                     break;
                 }
-
-                if (length < config::CHAT_MIN_CHARS_LENGTH) {
-                    continue;
-                }
-
-                const auto& lastMessage = messages.back();
-                if (chat->last_read_inbox_message_id_ > lastMessage->id_) {
-                    // no need to load more messages because we reached read ones.
-                    break;
-                }
-
-                const auto msgFormatting = R"(<message message_id="{}")"_format(lastMessage->id_);
-                if (ranges::any_of(temporaryContext(), [&](const IOpenAIChat::Message& msg) {
-                    return msg.content.contains(msgFormatting);
-                })) {
-                    // the last message is in the context already; we don't need to reassure it again.
-                    break;
-                }
             }
-        }
+        }();
         ALOG_DEBUG(LOG_TAG) << "Loaded " << messages.size() << " message(s): " << chat->title_;
 
         // Compute response-time metadata for Prometheus. messages[0] is the most recent.
@@ -471,7 +463,7 @@ public:
                           [&](td::td_api::messageText& text) {
                               llmui::checkForMaliciousPayloads(text.text_->text_);
                               if (text.link_preview_) {
-                                  result += "\n\n" + to_string(text.link_preview_) + "\n";
+                                  result += "\n" + llmui::formatLinkPreview(*text.link_preview_);
                               }
                           },
                           [](auto& i) {},

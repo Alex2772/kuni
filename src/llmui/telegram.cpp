@@ -125,7 +125,7 @@ AString llmui::extractMessageTypeAndText(td::td_api::message& msg) {
               checkForMaliciousPayloads(text.text_->text_);
               out += text.text_->text_;
               if (text.link_preview_) {
-                  out += "\n\n" + to_string(text.link_preview_) + "\n";
+                  out += "\n" + formatLinkPreview(*text.link_preview_);
               }
           },
           [&](td::td_api::messagePhoto& photo) {
@@ -546,4 +546,27 @@ AFuture<AString> llmui::formatChatHistoryMessage(
 
     result += "\n</{}>\n"_format(formattedXmlTag);
     co_return result;
+}
+
+AString llmui::formatLinkPreview(const td::td_api::linkPreview& preview) {
+    AString out = "<link_preview";
+    if (!preview.url_.empty()) {
+        out += " url=\"{}\""_format(preview.url_);
+    }
+    if (!preview.site_name_.empty()) {
+        out += " site=\"{}\""_format(preview.site_name_);
+    }
+    if (!preview.title_.empty()) {
+        out += " title=\"{}\""_format(preview.title_);
+    }
+    if (!preview.author_.empty()) {
+        out += " author=\"{}\""_format(preview.author_);
+    }
+    if (preview.description_ && !preview.description_->text_.empty()) {
+        out += ">\n{}\n</link_preview>"_format(preview.description_->text_);
+    } else {
+        out += " />";
+    }
+    out += "\n";
+    return out;
 }
