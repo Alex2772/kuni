@@ -150,6 +150,7 @@ AppBase::AppBase(Init init): mInit(std::move(init)), mDiary({
                 }
                 auto notification = std::move(self.mNotifications.front());
                 self.mNotifications.pop_front();
+                self.mAskCalledThisTurn = false;
                 notification.message += "\nCurrent time: {} UTC"_format(std::chrono::system_clock::now());
                 notification.onStartedProcessing.supplyValue();
                 AUI_DEFER { notification.onProcessed.supplyValue(); };
@@ -224,6 +225,14 @@ AppBase::AppBase(Init init): mInit(std::move(init)), mDiary({
 
                     naxyi_preserve_ctx:
                     self.updateTools(notification.actions);
+                    if (!self.mAskCalledThisTurn) {
+                        // remind LLM to call #ask before responding.
+                        // Injected as a system-level checkpoint so LLM sees it right before generating its next action.
+                        self.mTemporaryContext.last().content +=
+                            "\n[system] Have you called #ask yet this turn? "
+                            "If the message involves personal topics, past events, questions, or people you know — "
+                            "call #ask BEFORE send_telegram_message.";
+                    }
                     auto escape = [&](OpenAITools::Ctx ctx) -> AFuture<AString> {
                         pauseFlag = true;
                         if (self.mActingProactively) {
@@ -340,6 +349,14 @@ AppBase::AppBase(Init init): mInit(std::move(init)), mDiary({
                         self.mTemporaryContext.last().content += "\nWhat's your next action? Use a `tool` to act. Use #ask to consult with your knowledge database. The following tools available: " + AStringVector(notification.actions.handlers().keyVector()).join(", ");
                     }
                     if (ranges::any_of(botAnswer.choices.at(0).message.tool_calls, [](const IOpenAIChat::Message::ToolCall& t){ return t.function.name == "send_telegram_message"; })) {
+                        // if LLM sent a message without ever calling #ask this turn,
+                        // inject a reminder into the next turn's context.
+                        if (!self.mAskCalledThisTurn) {
+                            self.mTemporaryContext.last().content +=
+                                "\n[system] Note: you sent a message without consulting #ask this turn. "
+                                "Next time, call #ask before send_telegram_message to enrich your response "
+                                "with memories and context.";
+                        }
                         goto naxyi_preserve_ctx;
                     } else {
                         goto naxyi_populate_ctx;
@@ -451,6 +468,9 @@ void AppBase::updateTools(OpenAITools& actions) {
         }
         if (toolName == "pause") {
             return;
+        }
+        if (toolName == "ask") {
+            mAskCalledThisTurn = true;
         }
         auto labels = metricBreadcumbs()->value();
         emit toolCallFired(AppBase::ToolCallEvent{

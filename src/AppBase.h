@@ -139,5 +139,11 @@ private:
      */
     bool mActingProactively = false;
 
+    /**
+     * @brief True if #ask was called at least once during the current notification processing turn.
+     * Reset at the start of each notification, set via onAfterToolCall.
+     */
+    bool mAskCalledThisTurn = false;
+
     Diary mDiary;
 };

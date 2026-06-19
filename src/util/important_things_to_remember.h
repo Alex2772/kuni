@@ -53,6 +53,7 @@ AFuture<AString> importantThingsToRemember(IOpenAIChat& openAI, AVector<IOpenAIC
         .role = IOpenAIChat::Message::Role::USER,
         .content = std::move(prompt),
     };
+    bool shitCheckTriggered = false;
     for (;;) {
         auto content = (co_await openAI.chat({
             .systemPrompt = AppBase::getSystemPrompt(),
@@ -60,7 +61,10 @@ AFuture<AString> importantThingsToRemember(IOpenAIChat& openAI, AVector<IOpenAIC
         }, context)).choices.at(0).message.content;
         if (content.contains("tool_calls") || content.contains("ask")) {
             // deepseek bug - attempts to use DSML to make a tool call.
-            continue;
+            if (!shitCheckTriggered) {
+                shitCheckTriggered = true;
+                continue;
+            }
         }
         content.removeAll("<things_to_remember>");  // sometimes llm wraps with xml tags by itself, we don't need
         content.removeAll("</things_to_remember>"); // that

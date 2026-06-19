@@ -41,7 +41,7 @@ AFuture<AString> proxy_server::ContextBridge::processChatHistoryMessage(
 
         AString workItemsStr;
         for (auto workItem : co_await collectAndSaveSessionsNotNewerThan(std::chrono::system_clock::from_time_t(msg.date_))) {
-            workItemsStr += "<work_item>\n{}\n</work_item>\n"_format(workItem);
+            workItemsStr += "<work_item>\n{}\n</work_item instructions=\"This describes a project or a task you were working together with {}\">\n"_format(workItem, chat.title_);
         }
 
         formatted.insert(0, workItemsStr);
