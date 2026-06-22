@@ -30,10 +30,7 @@ OpenAITools::Tool tools::sendTelegramMessage(
 
     struct State {
         int messagesInARow = 0;
-        int textMessagesInARow = 0;
         int64_t lastReplyToMessageId = 0;
-        AMap<AString, std::valarray<double>> embeddings;
-        double giveAHeadStart = 0.0;
     };
 
     return {
@@ -75,7 +72,7 @@ OpenAITools::Tool tools::sendTelegramMessage(
                     state = _new<State>(0),
                     messages = std::move(messages)
                     ](OpenAITools::Ctx ctx) -> AFuture<AString> {
-            if (state->textMessagesInARow > 10) {
+            if (state->messagesInARow > 10) {
                 // stupid AI can't recognize it spams messages despite the warning
                 throw AException("Too many messages in a row. Don't spam!");
             }
@@ -213,11 +210,11 @@ OpenAITools::Tool tools::sendTelegramMessage(
             // important
             if (!message.empty() && photoFilename.empty()) {
                 auto target = co_await openAI->embedding({ .config = config::ENDPOINT_EMBEDDING }, message);
-                auto& embeddings = state->embeddings;
+                static AMap<AString, std::valarray<double>> embeddings;
                 double maxSimilarity = 0.0;
                 double avgSimilarity = 0.0;
 
-                auto& giveAHeadStart = state->giveAHeadStart;
+                static double giveAHeadStart = 0.0;
                 size_t countOfKunisMessages = 0;
                 for (auto& i : *messages) {
                     if (i->sender_id_->get_id() != td::td_api::messageSenderUser::ID) {
@@ -363,14 +360,9 @@ OpenAITools::Tool tools::sendTelegramMessage(
             ALOG_DEBUG(LOG_TAG) << "Sent message: " << message;
 
             ++state->messagesInARow;
-            if (!audioFilename.empty() || !photoFilename.empty() || message.empty()) {
-                // non-text messages (photo, audio) don't count as "spammy" text
-            } else {
-                ++state->textMessagesInARow;
-            }
 
-            if (state->textMessagesInARow > 5) {
-                result += "\n\nWarning: you have sent {} text messages in a row! Give your participant space to breathe!"_format(state->textMessagesInARow);
+            if (state->messagesInARow > 5) {
+                result += "\n\nWarning: you have sent {} messages in a row! Give your participant space to breathe!"_format(state->messagesInARow);
             } else if (state->messagesInARow < 3) {
                 // in addition to prompt, we'll encourage llm to add a follow-up messages to make dialogs more
                 // natural:
