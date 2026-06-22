@@ -10,6 +10,14 @@ namespace config {
 
     static constexpr bool SHOULD_BEGIN_DIALOGS = true;
 
+    /**
+     * @brief If true, the pinned chats will wake up Kuni as soon as a message receives. If set to false, only the
+     * PAPIK_CHAT_ID will be able to do so.
+     *
+     * The instance owner (also known as PAPIK) can pin chats from Kuni's Telegram account with his friends so Kuni's
+     * tokens preservation mechanisms (sleep) are not applied to them.
+     */
+    static constexpr bool WAKE_UP_ON_PINNED_CHAT = true;
     static constexpr bool RANDOMLY_GO_SLEEP = true;
 
     // Every time the AI calls #send_telegram_message, it will be reminded that it can generate images and voice notes.
@@ -547,6 +555,13 @@ world) in the following format:
         .baseUrl = "http://localhost:7860/",
     };
 
+    /**
+     * @brief Chat id of the instance owner.
+     * Kuni's kernel gives several benefits to the "instance owner user":
+     * - Kuni can't ban instance owner
+     * - Messages from instance owner are prioritized (processed ASAP)
+     * - Message from instance owner wakes up Kuni if she sleeps
+     */
     static constexpr auto PAPIK_CHAT_ID = 625207005;
 
     enum class LockdownMode {

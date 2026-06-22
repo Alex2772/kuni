@@ -124,15 +124,14 @@ AppBase::AppBase(Init init): mInit(std::move(init)), mDiary({
                         // 2. reduce resource usage:
                         //    - less conversations would be made
                         //    - in case of group chats and telegram channels, messages would be processed in batches
-                        const auto seconds = std::uniform_int_distribution(15, 120)(re) * 60;
-                        ALogger::info(LOG_TAG) << "Going to sleep for " << seconds / 60 << " minutes";
-                        for (int i = 0; i < seconds; ++i) {
+                        const auto duration = std::chrono::minutes(std::uniform_int_distribution(15, 120)(re));
+                        ALogger::info(LOG_TAG) << "Going to sleep for " << std::chrono::duration_cast<std::chrono::minutes>(duration).count() << " minutes";
+                        self.mWakeup = false;
+                        for (int i = 0; i < std::chrono::duration_cast<std::chrono::seconds>(duration).count(); ++i) {
                             // костыль ну да сойдёт
-                            if (!self.mNotifications.empty()) {
-                                if (self.mNotifications.front().message.contains("{}"_format(config::PAPIK_CHAT_ID))) {
-                                    ALogger::info(LOG_TAG) << "Daddy woke me up";
-                                    break;
-                                }
+                            if (self.mWakeup) {
+                                ALogger::info(LOG_TAG) << "Early wake up";
+                                break;
                             }
                             co_await AThread::asyncSleep(1s);
                         }
