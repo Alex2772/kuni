@@ -37,6 +37,33 @@ static AString readOrCreate(AStringView fileName, AStringView defaultContent)
 AString kuni_character::getBasePrompt()
 {
     ALOG_TRACE("KuniCharacter") << "getBasePrompt";
+
+    // ╔══════════════════════════════════════════════════════════════════════════╗
+    // ║                                CAUTION                                   ║
+    // ║                                                                          ║
+    // ║  DO NOT modify the prompt text embedded here in the source code!         ║
+    // ║  This default is only used the FIRST TIME, when no external file exists. ║
+    // ║  After that it is IGNORED.                                               ║
+    // ║                                                                          ║
+    // ║  To customise the character prompt, edit:                                ║
+    // ║      character_base.md                                                   ║
+    // ║      character_appearance.md                                             ║
+    // ║  (located next to the application executable / working directory)        ║
+    // ║                                                                          ║
+    // ╠══════════════════════════════════════════════════════════════════════════╣
+    // ║                               ОСТОРОЖНО                                  ║
+    // ║                                                                          ║
+    // ║  НЕ изменяйте текст промпта прямо в исходном коде!                       ║
+    // ║  Этот текст используется ТОЛЬКО при первом запуске, когда внешний файл   ║
+    // ║  ещё не существует. После создания файла этот текст ИГНОРИРУЕТСЯ.        ║
+    // ║                                                                          ║
+    // ║  Для настройки промпта персонажа редактируйте файл:                      ║
+    // ║      character_base.md                                                   ║
+    // ║      character_appearance.md                                             ║
+    // ║  (находится рядом с исполняемым файлом приложения / рабочая директория)  ║
+    // ║                                                                          ║
+    // ╚══════════════════════════════════════════════════════════════════════════╝
+
     return readOrCreate("character_base.md", R"(---
 This is system prompt of the LLM character. You can adjust it for your taste (i.e., change name).
 In this prompt we define character name, some background and. We inspire LLM into thinking they have thoughts, emotions
