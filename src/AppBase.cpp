@@ -294,7 +294,8 @@ AppBase::AppBase(Init init): mInit(std::move(init)), mDiary({
                                 self.mTemporaryContext << IOpenAIChat::Message{
                                     .role = IOpenAIChat::Message::Role::USER,
                                     .content = "Nice thoughts! However you should be tool-centric. Make sure you "
-                                    "made tool calls. The message you provided is not visible to anyone but you.",
+                                    "made tool calls. The message you provided is not visible to anyone but you. Call "
+                                    "#wait if you are unsure.",
                                 };
                                 goto naxyi_preserve_ctx;
                             }
@@ -303,7 +304,8 @@ AppBase::AppBase(Init init): mInit(std::move(init)), mDiary({
                         self.mTemporaryContext << IOpenAIChat::Message{
                             .role = IOpenAIChat::Message::Role::USER,
                             .content = "Nice thoughts! However you should be tool-centric. Make sure you "
-                            "made tool calls. The message you provided is not visible to anyone but you.",
+                            "made tool calls. The message you provided is not visible to anyone but you. Call #wait if "
+                            "you are unsure.",
                         };
                         goto naxyi_preserve_ctx;
                     }
@@ -452,7 +454,24 @@ AFuture<AString> AppBase::onCleanContext() {
     if ((mInit.workingDir / WORKING_MEMORY_PATH).isRegularFileExists()) {
         AByteBuffer workingMemory;
         workingMemory << AFileInputStream(mInit.workingDir / WORKING_MEMORY_PATH);
-        co_return "<things_to_remember>\n{}\n</things_to_remember>\n"_format(AStringView(workingMemory.data(), workingMemory.size()));
+        co_return R"(<things_to_remember>
+{}
+</things_to_remember>
+<instructions>
+Your behaviour must be highly influenced by "physical state" and "emotional state" mentioned above.
+
+<example>
+Emotional state: anger
+...
+send_telegram_message("text":"иди нахуй заебал")
+</example>
+<example>
+Emotional state: amused
+...
+send_telegram_message("text":"мррр~")
+</example>
+</instruction>
+)"_format(AStringView(workingMemory.data(), workingMemory.size()));
     }
     co_return "";
 }
