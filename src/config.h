@@ -530,10 +530,12 @@ world) in the following format:
 
     static const EndpointAndModel ENDPOINT_ASK_TOOL {
         .endpoint = {
-            .baseUrl = "https://openrouter.ai/api/v1/",
-            .bearerKey = secrets::OPENROUTER_BEARER_KEY,
+            .baseUrl = "http://localhost:11434/v1/",
+            // .baseUrl = "https://openrouter.ai/api/v1/",
+            // .bearerKey = secrets::OPENROUTER_BEARER_KEY,
         },
-        .model = "deepseek-v4-flash",
+        .model = "qwen3.5:9b",
+        // .model = "deepseek-v4-flash",
     };
 
     static const EndpointAndModel ENDPOINT_CHEAP_LLM {
