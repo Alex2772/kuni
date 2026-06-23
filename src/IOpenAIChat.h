@@ -123,7 +123,7 @@ struct IOpenAIChat {
         static AString nextSessionId();
     };
 
-    virtual AFuture<Response> chat(Params params, IOpenAIChat::Session messages) = 0;
+    AFuture<Response> chat(Params params, IOpenAIChat::Session messages);
     virtual _<StreamingResponse> chatStreaming(Params params, IOpenAIChat::Session messages) = 0;
     virtual AFuture<std::valarray<double>> embedding(Params params, AString input) = 0;
 };

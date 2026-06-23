@@ -15,11 +15,7 @@ namespace {
 // ---------------------------------------------------------------------------
 class OpenAIMock : public IOpenAIChat {
 public:
-    MOCK_METHOD(AFuture<Response>, chat, (Params params, IOpenAIChat::Session messages), (override));
-
-    ::_<StreamingResponse> chatStreaming(Params params, IOpenAIChat::Session messages) override {
-        return nullptr;
-    }
+    MOCK_METHOD(_<StreamingResponse>, chatStreaming, (Params params, IOpenAIChat::Session messages), (override));
     MOCK_METHOD(AFuture<std::valarray<double>>, embedding, (Params params, AString input), (override));
 };
 
@@ -42,7 +38,7 @@ TEST(TakePhotoTest, MissingPhotoDescThrows) {
 
     // No calls expected — handler should throw before reaching any API
     EXPECT_CALL(*sd, txt2img(testing::_)).Times(0);
-    EXPECT_CALL(*openAI, chat(testing::_, testing::_)).Times(0);
+    EXPECT_CALL(*openAI, chatStreaming(testing::_, testing::_)).Times(0);
 
     auto tool = tools::takePhoto(std::move(sd), std::move(openAI));
 
@@ -65,7 +61,7 @@ TEST(TakePhotoTest, PhotoDescNotStringThrows) {
     auto openAI = _new<OpenAIMock>();
 
     EXPECT_CALL(*sd, txt2img(testing::_)).Times(0);
-    EXPECT_CALL(*openAI, chat(testing::_, testing::_)).Times(0);
+    EXPECT_CALL(*openAI, chatStreaming(testing::_, testing::_)).Times(0);
 
     auto tool = tools::takePhoto(std::move(sd), std::move(openAI));
 

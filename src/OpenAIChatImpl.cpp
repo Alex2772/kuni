@@ -112,11 +112,7 @@ AFuture<AJson> OpenAIChatImpl::makeHttpRequest(Endpoint endpoint, std::string qu
     co_return response;
 }
 
-AFuture<IOpenAIChat::Response> OpenAIChatImpl::chat(Params params, IOpenAIChat::Session messages) {
-    auto streaming = chatStreaming(std::move(params), std::move(messages));
-    co_await streaming->completed;
-    co_return *streaming->response;
-}
+
 _<IOpenAIChat::StreamingResponse> OpenAIChatImpl::chatStreaming(Params params, IOpenAIChat::Session messages) {
     messages.insert(messages.begin(), {Message::Role::SYSTEM_PROMPT, params.systemPrompt});
     AString query = [&] {
@@ -190,7 +186,7 @@ _<IOpenAIChat::StreamingResponse> OpenAIChatImpl::chatStreaming(Params params, I
         if (!params.config.endpoint.bearerKey.empty()) {
             headers << "Authorization: Bearer {}"_format(params.config.endpoint.bearerKey);
         }
-        co_await ACurl::Builder(params.config.endpoint.baseUrl + "chat/completions")
+        auto httpResponse = co_await ACurl::Builder(params.config.endpoint.baseUrl + "chat/completions")
                                                .withMethod(ACurl::Method::HTTP_POST)
                                                .withTimeout(config::REQUEST_TIMEOUT)
                                                .withHeaders(std::move(headers))
@@ -206,6 +202,9 @@ _<IOpenAIChat::StreamingResponse> OpenAIChatImpl::chatStreaming(Params params, I
                                                    return buffer.size();
                                                })
                                                .runAsync();
+        if (httpResponse.code != ACurl::ResponseCode::HTTP_200_OK) {
+            ALogger::warn(LOG_TAG) << "chatStreaming: status=" << httpResponse.code;
+        }
         // finalize
         parseBuffer();
 

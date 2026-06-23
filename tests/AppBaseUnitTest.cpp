@@ -21,11 +21,7 @@
 // ============================================================================
 class OpenAIMock : public IOpenAIChat {
 public:
-    MOCK_METHOD(AFuture<Response>, chat, (Params params, IOpenAIChat::Session messages), (override));
-
-    _<StreamingResponse> chatStreaming(Params params, IOpenAIChat::Session messages) override {
-        return nullptr;
-    }
+    MOCK_METHOD(_<StreamingResponse>, chatStreaming, (Params params, IOpenAIChat::Session messages), (override));
 
     MOCK_METHOD(AFuture<std::valarray<double>>, embedding, (Params params, AString input), (override));
 };
@@ -33,7 +29,7 @@ public:
 // ============================================================================
 // Helper: create a minimal chat response that calls #wait (pause)
 // ============================================================================
-static AFuture<IOpenAIChat::Response> makeWaitResponse() {
+static _<IOpenAIChat::StreamingResponse> makeWaitResponse() {
     IOpenAIChat::Message msg;
     msg.role = IOpenAIChat::Message::Role::ASSISTANT;
     msg.content = "";
@@ -49,16 +45,19 @@ static AFuture<IOpenAIChat::Response> makeWaitResponse() {
         },
     };
 
-    IOpenAIChat::Response resp;
-    resp.choices = {
-        IOpenAIChat::Response::Choice{
-            .index = 0,
-            .message = std::move(msg),
-            .finish_reason = "tool_calls",
+    auto result = _new<IOpenAIChat::StreamingResponse>();
+    result->response.raw = {
+        .choices = {
+            IOpenAIChat::Response::Choice{
+                .index = 0,
+                .message = std::move(msg),
+                .finish_reason = "tool_calls",
+            },
         },
+        .usage = { .prompt_tokens = 10, .completion_tokens = 5, .total_tokens = 15 },
     };
-    resp.usage = { .prompt_tokens = 10, .completion_tokens = 5, .total_tokens = 15 };
-    co_return resp;
+    result->completed.supplyValue();
+    return result;
 }
 
 // ============================================================================
@@ -148,9 +147,8 @@ TEST_F(AppBaseUnitTest, PassNotificationToAIBasic) {
     AEventLoop loop;
     IEventLoop::Handle h(&loop);
 
-    auto openAI = _cast<IOpenAIChat>(_new<OpenAIMock>());
-    EXPECT_CALL(*static_cast<OpenAIMock*>(openAI.get()), chat(::testing::_, ::testing::_))
-        .WillOnce(::testing::Return(makeWaitResponse()));
+    auto openAI = _new<OpenAIMock>();
+    EXPECT_CALL(*openAI.get(), chatStreaming(::testing::_, ::testing::_)).WillOnce(::testing::Return(makeWaitResponse()));
 
     AppTestHarness app(openAI);
     async << app.passNotificationToAI("Test notification message").onProcessed;
@@ -170,8 +168,8 @@ TEST_F(AppBaseUnitTest, PassNotificationToAIMultiple) {
     AEventLoop loop;
     IEventLoop::Handle h(&loop);
 
-    auto openAI = _cast<IOpenAIChat>(_new<OpenAIMock>());
-    EXPECT_CALL(*static_cast<OpenAIMock*>(openAI.get()), chat(::testing::_, ::testing::_))
+    auto openAI = _new<OpenAIMock>();
+    EXPECT_CALL(*static_cast<OpenAIMock*>(openAI.get()), chatStreaming(::testing::_, ::testing::_))
         .WillOnce(::testing::Return(makeWaitResponse()))
         .WillOnce(::testing::Return(makeWaitResponse()))
     ;
@@ -200,9 +198,8 @@ TEST_F(AppBaseUnitTest, PassNotificationToAIFirst) {
     AEventLoop loop;
     IEventLoop::Handle h(&loop);
 
-    auto openAI = _cast<IOpenAIChat>(_new<OpenAIMock>());
-    EXPECT_CALL(*static_cast<OpenAIMock*>(openAI.get()), chat(::testing::_, ::testing::_))
-        .WillOnce(::testing::Return(makeWaitResponse()))
+    auto openAI = _new<OpenAIMock>();
+    EXPECT_CALL(*openAI.get(), chatStreaming(::testing::_, ::testing::_)).WillOnce(::testing::Return(makeWaitResponse()))
     ;
 
     AppTestHarness app(openAI);
@@ -224,9 +221,8 @@ TEST_F(AppBaseUnitTest, RemoveNotificationsBySubstring) {
     AEventLoop loop;
     IEventLoop::Handle h(&loop);
 
-    auto openAI = _cast<IOpenAIChat>(_new<OpenAIMock>());
-    EXPECT_CALL(*static_cast<OpenAIMock*>(openAI.get()), chat(::testing::_, ::testing::_))
-        .WillOnce(::testing::Return(makeWaitResponse()));
+    auto openAI = _new<OpenAIMock>();
+    EXPECT_CALL(*static_cast<OpenAIMock*>(openAI.get()), chatStreaming(::testing::_, ::testing::_)).WillOnce(::testing::Return(makeWaitResponse()));
 
     AppTestHarness app(openAI);
 
@@ -252,8 +248,8 @@ TEST_F(AppBaseUnitTest, RemoveNotificationsNoMatch) {
     AEventLoop loop;
     IEventLoop::Handle h(&loop);
 
-    auto openAI = _cast<IOpenAIChat>(_new<OpenAIMock>());
-    EXPECT_CALL(*static_cast<OpenAIMock*>(openAI.get()), chat(::testing::_, ::testing::_))
+    auto openAI = _new<OpenAIMock>();
+    EXPECT_CALL(*static_cast<OpenAIMock*>(openAI.get()), chatStreaming(::testing::_, ::testing::_))
         .WillOnce(::testing::Return(makeWaitResponse()))
         .WillOnce(::testing::Return(makeWaitResponse()))
     ;
@@ -457,7 +453,7 @@ TEST_F(AppBaseUnitTest, UpdateToolsCalledDuringProcessing) {
     IEventLoop::Handle h(&loop);
 
     auto openAI = _cast<IOpenAIChat>(_new<OpenAIMock>());
-    EXPECT_CALL(*static_cast<OpenAIMock*>(openAI.get()), chat(::testing::_, ::testing::_))
+    EXPECT_CALL(*static_cast<OpenAIMock*>(openAI.get()), chatStreaming(::testing::_, ::testing::_))
         .WillOnce(::testing::Return(makeWaitResponse()));
 
     AppTestHarness app(openAI);
@@ -502,7 +498,7 @@ TEST_F(AppBaseUnitTest, TemporaryContextAccumulatesMessages) {
     IEventLoop::Handle h(&loop);
 
     auto openAI = _cast<IOpenAIChat>(_new<OpenAIMock>());
-    EXPECT_CALL(*static_cast<OpenAIMock*>(openAI.get()), chat(::testing::_, ::testing::_))
+    EXPECT_CALL(*static_cast<OpenAIMock*>(openAI.get()), chatStreaming(::testing::_, ::testing::_))
         .WillOnce(::testing::Return(makeWaitResponse()));
 
     AppTestHarness app(openAI);

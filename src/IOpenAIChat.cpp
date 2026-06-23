@@ -75,6 +75,12 @@ AString IOpenAIChat::Session::nextSessionId() {
     return r.nextUuid().toString();
 }
 
+AFuture<IOpenAIChat::Response> IOpenAIChat::chat(Params params, IOpenAIChat::Session messages) {
+    auto streaming = chatStreaming(std::move(params), std::move(messages));
+    co_await streaming->completed;
+    co_return *streaming->response;
+}
+
 void AJsonConv<IOpenAIChat::Response::Usage, void>::fromJson(const AJson& v, IOpenAIChat::Response::Usage& dst) {
     aui::zero(dst);
     dst.prompt_tokens = v["prompt_tokens"].asLongIntOpt().valueOr(0);

@@ -36,11 +36,7 @@ public:
 // ---------------------------------------------------------------------------
 class OpenAIMock : public IOpenAIChat {
 public:
-    MOCK_METHOD(AFuture<Response>, chat, (Params params, IOpenAIChat::Session messages), (override));
-
-    _<IOpenAIChat::StreamingResponse> chatStreaming(Params params, IOpenAIChat::Session messages) override {
-        return nullptr;
-    }
+    MOCK_METHOD(_<IOpenAIChat::StreamingResponse>, chatStreaming, (Params params, IOpenAIChat::Session messages), (override));
     MOCK_METHOD(AFuture<std::valarray<double>>, embedding, (Params params, AString input), (override));
 };
 }

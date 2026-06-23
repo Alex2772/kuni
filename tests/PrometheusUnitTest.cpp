@@ -30,15 +30,14 @@ using namespace std::chrono_literals;
 // ============================================================================
 class PrometheusOpenAIMock : public IOpenAIChat {
 public:
-    MOCK_METHOD(AFuture<Response>, chat, (Params params, IOpenAIChat::Session messages), (override));
-    _<StreamingResponse> chatStreaming(Params params, IOpenAIChat::Session messages) override { return nullptr; }
+    MOCK_METHOD(_<StreamingResponse>, chatStreaming, (Params params, IOpenAIChat::Session messages), (override));
     MOCK_METHOD(AFuture<std::valarray<double>>, embedding, (Params params, AString input), (override));
 };
 
 // ============================================================================
 // Helper: build a canned LLM response that dispatches the named tool
 // ============================================================================
-static AFuture<IOpenAIChat::Response> makeToolCallResponse(AString toolName, AString args = "{}") {
+static _<IOpenAIChat::StreamingResponse> makeToolCallResponse(AString toolName, AString args = "{}") {
     IOpenAIChat::Message msg;
     msg.role = IOpenAIChat::Message::Role::ASSISTANT;
     msg.content = "";
@@ -54,25 +53,28 @@ static AFuture<IOpenAIChat::Response> makeToolCallResponse(AString toolName, ASt
         },
     };
 
-    IOpenAIChat::Response resp;
-    resp.choices = {
-        IOpenAIChat::Response::Choice{
-            .index = 0,
-            .message = std::move(msg),
-            .finish_reason = "tool_calls",
+    auto result = _new<IOpenAIChat::StreamingResponse>();
+    result->response.raw = {
+        .choices = {
+            IOpenAIChat::Response::Choice{
+                .index = 0,
+                .message = std::move(msg),
+                .finish_reason = "tool_calls",
+            },
         },
+        .usage = { .prompt_tokens = 5, .completion_tokens = 3, .total_tokens = 8 },
     };
-    resp.usage = { .prompt_tokens = 5, .completion_tokens = 3, .total_tokens = 8 };
-    co_return resp;
+    result->completed.supplyValue();
+    return result;
 }
 
 // Helper: LLM stops with "wait" (ends the processing loop)
-static AFuture<IOpenAIChat::Response> makeWaitResponse() {
+static _<IOpenAIChat::StreamingResponse> makeWaitResponse() {
     return makeToolCallResponse("wait");
 }
 
 // Helper: LLM first calls my_tool, then wait
-static AFuture<IOpenAIChat::Response> makeMyToolResponse() {
+static _<IOpenAIChat::StreamingResponse> makeMyToolResponse() {
     return makeToolCallResponse("my_tool");
 }
 
@@ -158,7 +160,7 @@ TEST_F(PrometheusUnitTest, ToolCallFiredOnSuccessfulToolCall) {
 
     auto openAI = _cast<IOpenAIChat>(_new<PrometheusOpenAIMock>());
     // LLM calls my_tool, then wait
-    EXPECT_CALL(*static_cast<PrometheusOpenAIMock*>(openAI.get()), chat(::testing::_, ::testing::_))
+    EXPECT_CALL(*static_cast<PrometheusOpenAIMock*>(openAI.get()), chatStreaming(::testing::_, ::testing::_))
         .WillOnce(::testing::Return(makeMyToolResponse()))
         .WillOnce(::testing::Return(makeWaitResponse()));
 
@@ -189,7 +191,7 @@ TEST_F(PrometheusUnitTest, ToolCallFiredCarriesCorrectToolName) {
     AAsyncHolder async;
 
     auto openAI = _cast<IOpenAIChat>(_new<PrometheusOpenAIMock>());
-    EXPECT_CALL(*static_cast<PrometheusOpenAIMock*>(openAI.get()), chat(::testing::_, ::testing::_))
+    EXPECT_CALL(*static_cast<PrometheusOpenAIMock*>(openAI.get()), chatStreaming(::testing::_, ::testing::_))
         .WillOnce(::testing::Return(makeMyToolResponse()))
         .WillOnce(::testing::Return(makeWaitResponse()));
 
@@ -217,7 +219,7 @@ TEST_F(PrometheusUnitTest, ToolCallFiredNotEmittedOnToolException) {
 
     auto openAI = _cast<IOpenAIChat>(_new<PrometheusOpenAIMock>());
     // LLM calls "unknown_tool" (not registered) -> handler is not found, no onAfterToolCall
-    EXPECT_CALL(*static_cast<PrometheusOpenAIMock*>(openAI.get()), chat(::testing::_, ::testing::_))
+    EXPECT_CALL(*static_cast<PrometheusOpenAIMock*>(openAI.get()), chatStreaming(::testing::_, ::testing::_))
         .WillOnce(::testing::Return(makeToolCallResponse("unknown_tool")))
         .WillOnce(::testing::Return(makeWaitResponse()));
 
@@ -266,7 +268,7 @@ TEST_F(PrometheusUnitTest, ToolCallFiredBreadcrumbLabelsSnapshot) {
     AAsyncHolder async;
 
     auto openAI = _cast<IOpenAIChat>(_new<PrometheusOpenAIMock>());
-    EXPECT_CALL(*static_cast<PrometheusOpenAIMock*>(openAI.get()), chat(::testing::_, ::testing::_))
+    EXPECT_CALL(*static_cast<PrometheusOpenAIMock*>(openAI.get()), chatStreaming(::testing::_, ::testing::_))
         .WillOnce(::testing::Return(makeMyToolResponse()))
         .WillOnce(::testing::Return(makeWaitResponse()));
 
@@ -301,7 +303,7 @@ TEST_F(PrometheusUnitTest, ToolCallFiredlastOpenedChatLastMessageTime) {
     AAsyncHolder async;
 
     auto openAI = _cast<IOpenAIChat>(_new<PrometheusOpenAIMock>());
-    EXPECT_CALL(*static_cast<PrometheusOpenAIMock*>(openAI.get()), chat(::testing::_, ::testing::_))
+    EXPECT_CALL(*static_cast<PrometheusOpenAIMock*>(openAI.get()), chatStreaming(::testing::_, ::testing::_))
         .WillOnce(::testing::Return(makeMyToolResponse()))
         .WillOnce(::testing::Return(makeWaitResponse()));
 
@@ -358,7 +360,7 @@ TEST_F(PrometheusUnitTest, MultipleToolCallsAllCaptured) {
 
     auto openAI = _cast<IOpenAIChat>(_new<PrometheusOpenAIMock>());
     // Two separate notifications, each dispatching my_tool then wait
-    EXPECT_CALL(*static_cast<PrometheusOpenAIMock*>(openAI.get()), chat(::testing::_, ::testing::_))
+    EXPECT_CALL(*static_cast<PrometheusOpenAIMock*>(openAI.get()), chatStreaming(::testing::_, ::testing::_))
         .WillOnce(::testing::Return(makeMyToolResponse()))
         .WillOnce(::testing::Return(makeWaitResponse()))
         .WillOnce(::testing::Return(makeMyToolResponse()))

@@ -36,11 +36,7 @@ public:
 // ---------------------------------------------------------------------------
 class OpenAIMock : public IOpenAIChat {
 public:
-    MOCK_METHOD(AFuture<Response>, chat, (Params params, IOpenAIChat::Session messages), (override));
-
-    ::_<StreamingResponse> chatStreaming(Params params, IOpenAIChat::Session messages) override {
-        return nullptr;
-    }
+    MOCK_METHOD(_<StreamingResponse>, chatStreaming, (Params params, IOpenAIChat::Session messages), (override));
     MOCK_METHOD(AFuture<std::valarray<double>>, embedding, (Params params, AString input), (override));
 };
 }
@@ -93,7 +89,7 @@ TEST(GetChatPhotoTest, NoPhoto) {
     auto chat = makeChatWithoutPhoto(12345, "No Photo Chat");
 
     EXPECT_CALL(*telegram, sendQuery(testing::_)).Times(0);
-    EXPECT_CALL(*openAI, chat(testing::_, testing::_)).Times(0);
+    EXPECT_CALL(*openAI, chatStreaming(testing::_, testing::_)).Times(0);
 
     IOpenAIChat::Session temporaryContext;
     auto tool = tools::getChatPhoto(std::move(telegram), std::move(openAI), std::move(chat), temporaryContext);
@@ -136,22 +132,26 @@ TEST(GetChatPhotoTest, HasPhotoSuccess) {
         });
 
     // Expect chat call for image description
-    IOpenAIChat::Response fakeResponse;
-    fakeResponse.choices = {
-        IOpenAIChat::Response::Choice{
-            .index = 0,
-            .message = {
-                .role = IOpenAIChat::Message::Role::ASSISTANT,
-                .content = "A profile photo with a cute cat.",
-            },
-            .finish_reason = "stop",
-        },
-    };
-    fakeResponse.usage = { .prompt_tokens = 10, .completion_tokens = 5, .total_tokens = 15 };
+    IOpenAIChat::Message fakeMsg;
+    fakeMsg.role = IOpenAIChat::Message::Role::ASSISTANT;
+    fakeMsg.content = "A profile photo with a cute cat.";
 
-    EXPECT_CALL(*openAI, chat(testing::_, testing::_))
+    auto fakeStreaming = _new<IOpenAIChat::StreamingResponse>();
+    fakeStreaming->response.raw = IOpenAIChat::Response{
+        .choices = {
+            IOpenAIChat::Response::Choice{
+                .index = 0,
+                .message = std::move(fakeMsg),
+                .finish_reason = "stop",
+            },
+        },
+        .usage = { .prompt_tokens = 10, .completion_tokens = 5, .total_tokens = 15 },
+    };
+    fakeStreaming->completed.supplyValue();
+
+    EXPECT_CALL(*openAI, chatStreaming(testing::_, testing::_))
         .Times(1)
-        .WillOnce(testing::Return(testing::ByMove(AFuture(std::move(fakeResponse)))));
+        .WillOnce(testing::Return(std::move(fakeStreaming)));
 
     IOpenAIChat::Session temporaryContext;
     auto tool = tools::getChatPhoto(std::move(telegram), std::move(openAI), std::move(chat), temporaryContext);

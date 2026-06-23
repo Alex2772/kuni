@@ -6,7 +6,6 @@
  *        an OpenAI-compatible API endpoint (e.g., Ollama, OpenRouter).
  */
 struct OpenAIChatImpl: IOpenAIChat {
-    AFuture<Response> chat(Params params, IOpenAIChat::Session messages) override;
     _<StreamingResponse> chatStreaming(Params params, IOpenAIChat::Session messages) override;
 
     AFuture<std::valarray<double>> embedding(Params params, AString input) override;

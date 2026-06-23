@@ -4,15 +4,6 @@
 
 #include "OpenAIChatMeasurable.h"
 
-AFuture<IOpenAIChat::Response> OpenAIChatMeasurable::chat(Params params, IOpenAIChat::Session messages) {
-    auto result = co_await mWrapped->chat(params, std::move(messages));
-    emit responseMetrics({
-        .model = std::move(params.config.model),
-        .usage = result.usage,
-    });
-    co_return result;
-}
-
 _<IOpenAIChat::StreamingResponse> OpenAIChatMeasurable::chatStreaming(Params params, IOpenAIChat::Session messages) {
     auto result = mWrapped->chatStreaming(params, std::move(messages));
     result->completed.onSuccess([this, self = weak_from_this(), result = result.weak(), model = params.config.model] {
