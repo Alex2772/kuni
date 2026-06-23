@@ -39,7 +39,7 @@ struct OpenAITools {
      */
     std::function<void(const AString& toolName)> onAfterToolCall;
 
-    AFuture<AVector<IOpenAIChat::Message>> handleToolCalls(const AVector<IOpenAIChat::Message::ToolCall>& toolCalls, const _<MetricsBreadcumbs>& metricsBreadCumbs = nullptr);
+    AFuture<IOpenAIChat::Session> handleToolCalls(const AVector<IOpenAIChat::Message::ToolCall>& toolCalls, const _<MetricsBreadcumbs>& metricsBreadCumbs = nullptr);
 
     AJson asJson() const;
 

@@ -232,7 +232,7 @@ struct ProxyServerTest : ::testing::Test {
         };
     }
 
-    void startProxy(proxy_server::ToolFactory factory = [](const AVector<IOpenAIChat::Message>&) { return OpenAITools{}; }) {
+    void startProxy(proxy_server::ToolFactory factory = [](const IOpenAIChat::Session&) { return OpenAITools{}; }) {
         proxy = proxy_server::init(
             {
                 .upstreamEndpoint = {
@@ -247,7 +247,7 @@ struct ProxyServerTest : ::testing::Test {
     }
 
     // Runs chatStreaming and blocks until completed. Returns the final accumulated response.
-    IOpenAIChat::Response awaitStreaming(AVector<IOpenAIChat::Message> messages) {
+    IOpenAIChat::Response awaitStreaming(IOpenAIChat::Session messages) {
         auto sr = client->chatStreaming(clientParams(), std::move(messages));
         util::await_synchronously(std::move(sr->completed));
         return *sr->response;
@@ -279,7 +279,7 @@ TEST_F(ProxyServerTest, ToolInjection) {
 
     int toolCallCount = 0;
 
-    startProxy([&toolCallCount](const AVector<IOpenAIChat::Message>&) {
+    startProxy([&toolCallCount](const IOpenAIChat::Session&) {
         return OpenAITools {{
             .name = "test_tool",
             .description = "A test tool",
@@ -299,7 +299,7 @@ TEST_F(ProxyServerTest, ToolInjection) {
 
     // Proxy should have made 2 requests to the mock LLM
     ASSERT_EQ(llm.receivedRequests.size(), 2u);
-    EXPECT_EQ(aui::from_json<AVector<IOpenAIChat::Message>>(llm.receivedRequests.at(1)["messages"]).last().content, "pong");
+    EXPECT_EQ(aui::from_json<IOpenAIChat::Session>(llm.receivedRequests.at(1)["messages"]).last().content, "pong");
 
     EXPECT_EQ(toolCallCount, 1);
 
@@ -330,7 +330,7 @@ TEST_F(ProxyServerTest, HiddenContextInjection) {
 
     int ctxToolCallCount = 0;
 
-    startProxy([&ctxToolCallCount](const AVector<IOpenAIChat::Message>&) {
+    startProxy([&ctxToolCallCount](const IOpenAIChat::Session&) {
         return OpenAITools {{
             .name = "ctx_tool",
             .description = "ctx tool",
@@ -390,7 +390,7 @@ TEST_F(ProxyServerTest, NewChatAfterToolSession) {
 
     int ncToolCallCount = 0;
 
-    startProxy([&ncToolCallCount](const AVector<IOpenAIChat::Message>&) {
+    startProxy([&ncToolCallCount](const IOpenAIChat::Session&) {
         return OpenAITools {{
             .name = "nc_tool",
             .description = "nc tool",
@@ -482,7 +482,7 @@ TEST_F(ProxyServerTest, SentRequestToLLMSignalAfterToolCall) {
     llm.enqueue(MockLlmService::makeSseToolCall("sig_tool", R"({"val":"42"})"));
     llm.enqueue(MockLlmService::makeSseText("Tool done."));
 
-    startProxy([](const AVector<IOpenAIChat::Message>&) {
+    startProxy([](const IOpenAIChat::Session&) {
         return OpenAITools {{
             .name = "sig_tool",
             .description = "sig tool",
@@ -523,7 +523,7 @@ TEST_F(ProxyServerTest, SentRequestToLLMSignalAfterToolCall) {
 
 // Regression test: tool results must not be duplicated when passed through the proxy.
 TEST_F(ProxyServerTest, ClientToolResultsNotDuplicated) {
-    AVector<IOpenAIChat::Message> clientSideMessages;
+    IOpenAIChat::Session clientSideMessages;
 
     // Session 1: User suggests using proxy's tool
     clientSideMessages << IOpenAIChat::Message{
@@ -537,7 +537,7 @@ TEST_F(ProxyServerTest, ClientToolResultsNotDuplicated) {
     ));
     llm.enqueue(MockLlmService::makeSseText("I'm an AI character."));
 
-    startProxy([](const AVector<IOpenAIChat::Message>&) {
+    startProxy([](const IOpenAIChat::Session&) {
         return OpenAITools{
             {
                 .name = "kuni_ask",

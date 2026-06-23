@@ -222,7 +222,7 @@ Negative prompt is what to avoid in the image.
     )";
 
         message += "\nGenerate SD prompt:";
-        return AVector<IOpenAIChat::Message>{
+        return IOpenAIChat::Session{
             IOpenAIChat::Message{
                 .role = IOpenAIChat::Message::Role::USER,
                 .content = message,
@@ -314,7 +314,7 @@ Output your assessment in JSON format with the following fields:
 )";
     params.systemPrompt = params.systemPrompt.format(description);
 
-    AVector<IOpenAIChat::Message> messages = {
+    IOpenAIChat::Session messages = {
         IOpenAIChat::Message{
             .role = IOpenAIChat::Message::Role::USER,
             .content = "Assess this image: " + IOpenAIChat::embedImage(image)

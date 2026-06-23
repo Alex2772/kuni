@@ -40,10 +40,10 @@ static AString removeControlCharacters(AString input) {
     return input;
 }
 
-AFuture<AVector<IOpenAIChat::Message>> OpenAITools::handleToolCalls(const AVector<IOpenAIChat::Message::ToolCall>& toolCalls,
+AFuture<IOpenAIChat::Session> OpenAITools::handleToolCalls(const AVector<IOpenAIChat::Message::ToolCall>& toolCalls,
     const _<MetricsBreadcumbs>& metricsBreadCumbs) {
     ALOG_TRACE("OpenAITools") << "handleToolCalls";
-    AVector<IOpenAIChat::Message> result;
+    IOpenAIChat::Session result;
     for (const auto& toolCall : toolCalls) {
         result << IOpenAIChat::Message{
             .role = IOpenAIChat::Message::Role::TOOL,

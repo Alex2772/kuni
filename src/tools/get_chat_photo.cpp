@@ -10,7 +10,7 @@
 OpenAITools::Tool tools::getChatPhoto(_<ITelegramClient> telegram,
                                       _<IOpenAIChat> openAI,
                                       _<td::td_api::chat> chat,
-                                      const AVector<IOpenAIChat::Message>& temporaryContext) {
+                                      const IOpenAIChat::Session& temporaryContext) {
     return {
         .name = "get_chat_photo",
         .description = "Retrieves photo of \"{}\" chat. Use this to get basic idea of a person or group chat "

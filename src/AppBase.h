@@ -41,7 +41,7 @@ public:
 
     void actProactively();
 
-    [[nodiscard]] const AVector<IOpenAIChat::Message>& temporaryContext() const { return mTemporaryContext; }
+    [[nodiscard]] const IOpenAIChat::Session& temporaryContext() const { return mTemporaryContext; }
 
     [[nodiscard]] Diary& diary() { return mDiary; }
 
@@ -111,7 +111,11 @@ protected:
      */
     void removeNotifications(const AString& substring);
 
-    AVector<IOpenAIChat::Message> mTemporaryContext {};
+    IOpenAIChat::Session mTemporaryContext = [] {
+        IOpenAIChat::Session s;
+        s.sessionId = "kuni_main_coro";
+        return s;
+    }();
 
     /**
      * @brief Performs needed adjustments to the diary page and removes the page from listing. Formatted contents are

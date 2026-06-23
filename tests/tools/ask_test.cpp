@@ -21,9 +21,9 @@ namespace {
 // ---------------------------------------------------------------------------
 class OpenAIMock : public IOpenAIChat {
 public:
-    MOCK_METHOD(AFuture<Response>, chat, (Params params, AVector<Message> messages), (override));
+    MOCK_METHOD(AFuture<Response>, chat, (Params params, IOpenAIChat::Session messages), (override));
 
-    ::_<StreamingResponse> chatStreaming(Params params, AVector<Message> messages) override {
+    ::_<StreamingResponse> chatStreaming(Params params, IOpenAIChat::Session messages) override {
         return nullptr;
     }
     MOCK_METHOD(AFuture<std::valarray<double>>, embedding, (Params params, AString input), (override));
@@ -256,7 +256,7 @@ TEST(AskTest, HandlerWithTemporaryContextEnrichesQuery) {
     // Capture the messages passed to chat to verify query enrichment
     AString capturedUserContent;
     EXPECT_CALL(*openAI, chat(testing::_, testing::_))
-        .WillOnce([&](IOpenAIChat::Params, AVector<IOpenAIChat::Message> messages) {
+        .WillOnce([&](IOpenAIChat::Params, IOpenAIChat::Session messages) {
             // First USER message should contain the enriched query with temporaryContext
             for (const auto& m : messages) {
                 if (m.role == IOpenAIChat::Message::Role::USER) {

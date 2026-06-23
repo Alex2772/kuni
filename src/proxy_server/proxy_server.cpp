@@ -131,10 +131,11 @@ struct ProxyServerImpl : AObject, proxy_server::IProxyServer {
                     httplib::ClientImpl::StreamHandle handle;
                     AYieldGenerator<std::string_view> lines;
                     OpenAITools injectedTools{};
-                    AVector<IOpenAIChat::Message> ourToolCalls;
+                    IOpenAIChat::Session ourToolCalls;
                     AOptional<proxy_server::StreamingFilter> sseFilter;
                     AUrl url;
                     RequestTrace trace;
+                    AString sessionId = "kuni_proxy_server";
 
                     httplib::Client upstream { "http://placeholder" };
 
@@ -155,7 +156,7 @@ struct ProxyServerImpl : AObject, proxy_server::IProxyServer {
 
                     void updateTools() {
                         injectedTools = parent.config.toolsFactory(
-                            aui::from_json<AVector<IOpenAIChat::Message>>(requestJson["messages"]));
+                            aui::from_json<IOpenAIChat::Session>(requestJson["messages"]));
 
                         auto tools = originalRequestJson["tools"].asArrayOpt().valueOr(AJson::Array{});
                         tools.insertAll(injectedTools.asJson().asArray());
@@ -171,12 +172,18 @@ struct ProxyServerImpl : AObject, proxy_server::IProxyServer {
                             DATA_DIR.makeDirs();
                         }
 
+                        requestJson["session_id"] = sessionId;
+                        if (!requestJson.contains("cache_control")) {
+                            // for claude caching
+                            requestJson["cache_control"] = AJson::Object { { "type", "ephemeral" }};
+                        }
                         trace.write("kuni -> llm", AJson::toString(requestJson));
 
                         const auto path = "/" + url.path().bytes().substr(url.path().bytes().find("/") + 1);
                         ALOG_TRACE(LOG_TAG) << "open_stream POST " << path;
                         httplib::Headers headers {
                             { "Content-Type", "application/json" },
+                            { "x-session-id", sessionId },
                         };
                         if (!parent.config.upstreamEndpoint.bearerKey.empty()) {
                             headers.emplace("Authorization", "Bearer {}"_format(parent.config.upstreamEndpoint.bearerKey));
@@ -271,7 +278,7 @@ struct ProxyServerImpl : AObject, proxy_server::IProxyServer {
                         auto& injectedMessages = parent.messageInjector.after(lastOriginalMessage);
                         requestJson["messages"].asArray() << injectedMessages.emplace_back(aui::to_json(assistantMsg));
 
-                        const AVector<IOpenAIChat::Message> toolResults = std::exchange(ourToolCalls, {});
+                        const IOpenAIChat::Session toolResults = std::exchange(ourToolCalls, {});
                         for (const auto& result : toolResults) {
                             requestJson["messages"].asArray() << injectedMessages.emplace_back(aui::to_json(result));
                         }

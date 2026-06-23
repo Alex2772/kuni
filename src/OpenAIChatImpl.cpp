@@ -40,8 +40,9 @@ AString IOpenAIChat::embedImage(AImageView image) {
 }
 
 
-AJson OpenAIChatImpl::makeQueryString(Params params, AVector<IOpenAIChat::Message> messages) {
+AJson OpenAIChatImpl::makeQueryString(Params params, const IOpenAIChat::Session& messages) {
     ALOG_TRACE(LOG_TAG) << "makeQueryString";
+    AUI_ASSERT(!messages.sessionId.empty());
     AJson json {
         {
           "messages",
@@ -53,6 +54,7 @@ AJson OpenAIChatImpl::makeQueryString(Params params, AVector<IOpenAIChat::Messag
         { "include_sources", true },
         { "model", params.config.model },
         { "tools", params.tools },
+        { "session_id", messages.sessionId },
     };
 
     if (config::TEMPERATURE) {
@@ -79,9 +81,9 @@ AJson OpenAIChatImpl::makeQueryString(Params params, AVector<IOpenAIChat::Messag
     return json;
 }
 
-AFuture<AJson> OpenAIChatImpl::makeHttpRequest(Endpoint endpoint, std::string query) {
+AFuture<AJson> OpenAIChatImpl::makeHttpRequest(Endpoint endpoint, std::string query, std::string_view sessionId) {
     ALOG_TRACE(LOG_TAG) << "Query: " << query;
-    AVector<AString> headers = {"Content-Type: application/json"};
+    AVector<AString> headers = {"Content-Type: application/json", "x-session-id: {}"_format(sessionId) };
     if (!endpoint.bearerKey.empty()) {
         headers << "Authorization: Bearer {}"_format(endpoint.bearerKey);
     }
@@ -110,12 +112,12 @@ AFuture<AJson> OpenAIChatImpl::makeHttpRequest(Endpoint endpoint, std::string qu
     co_return response;
 }
 
-AFuture<IOpenAIChat::Response> OpenAIChatImpl::chat(Params params, AVector<Message> messages) {
+AFuture<IOpenAIChat::Response> OpenAIChatImpl::chat(Params params, IOpenAIChat::Session messages) {
     auto streaming = chatStreaming(std::move(params), std::move(messages));
     co_await streaming->completed;
     co_return *streaming->response;
 }
-_<IOpenAIChat::StreamingResponse> OpenAIChatImpl::chatStreaming(Params params, AVector<Message> messages) {
+_<IOpenAIChat::StreamingResponse> OpenAIChatImpl::chatStreaming(Params params, IOpenAIChat::Session messages) {
     messages.insert(messages.begin(), {Message::Role::SYSTEM_PROMPT, params.systemPrompt});
     AString query = [&] {
         auto json = makeQueryString(params, messages);
@@ -141,7 +143,7 @@ _<IOpenAIChat::StreamingResponse> OpenAIChatImpl::chatStreaming(Params params, A
                      });
 
     result->completed =
-        [](AString query, _<StreamingResponse> result, Params params, _<TuiStreamingPrinter> printer, std::chrono::system_clock::time_point now)
+        [](AString query, _<StreamingResponse> result, Params params, _<TuiStreamingPrinter> printer, std::chrono::system_clock::time_point now, AString sessionId)
         -> AFuture<> {
         const auto caller = AThread::current();
         auto processJson = [=](AJson json) {
@@ -183,7 +185,8 @@ _<IOpenAIChat::StreamingResponse> OpenAIChatImpl::chatStreaming(Params params, A
             }
         };
 
-        AVector<AString> headers = {"Content-Type: application/json"};
+        AUI_ASSERT(!sessionId.empty());
+        AVector<AString> headers = {"Content-Type: application/json", "x-session-id: {}"_format(sessionId) };
         if (!params.config.endpoint.bearerKey.empty()) {
             headers << "Authorization: Bearer {}"_format(params.config.endpoint.bearerKey);
         }
@@ -212,8 +215,15 @@ _<IOpenAIChat::StreamingResponse> OpenAIChatImpl::chatStreaming(Params params, A
 #endif
         AThread::processMessages();
         printer->finish();
+        if (auto promptTokensDetails = result->response->prompt_tokens_details.asObjectOpt()) {
+            if (auto cacheWriteTokens = (*promptTokensDetails)["cache_write_tokens"].asLongIntOpt()) {
+                if (*cacheWriteTokens == 0) {
+                    ALogger::warn(LOG_TAG) << "Response states that no tokens were written to cache! Provider: \"" << result->response->provider << "\"";
+                }
+            }
+        }
         AFileOutputStream(logsDir / "{}.1response.json"_format(now)) << AJson::toString(aui::to_json(*result->response));
-    }(std::move(query), result, std::move(params), std::move(printer), now);
+    }(std::move(query), result, std::move(params), std::move(printer), now, messages.sessionId);
     return result;
 }
 

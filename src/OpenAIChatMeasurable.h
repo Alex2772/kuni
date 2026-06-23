@@ -7,8 +7,8 @@ public:
     explicit OpenAIChatMeasurable(_unique<IOpenAIChat> wrapped) : mWrapped(std::move(wrapped)) {}
 
     ~OpenAIChatMeasurable() override = default;
-    AFuture<Response> chat(Params params, AVector<Message> messages) override;
-    _<StreamingResponse> chatStreaming(Params params, AVector<Message> messages) override;
+    AFuture<Response> chat(Params params, IOpenAIChat::Session messages) override;
+    _<StreamingResponse> chatStreaming(Params params, IOpenAIChat::Session messages) override;
     AFuture<std::valarray<double>> embedding(Params params, AString input) override;
 
     struct Metrics {

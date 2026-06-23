@@ -36,9 +36,9 @@ public:
 // ---------------------------------------------------------------------------
 class OpenAIMock : public IOpenAIChat {
 public:
-    MOCK_METHOD(AFuture<Response>, chat, (Params params, AVector<Message> messages), (override));
+    MOCK_METHOD(AFuture<Response>, chat, (Params params, IOpenAIChat::Session messages), (override));
 
-    ::_<StreamingResponse> chatStreaming(Params params, AVector<Message> messages) override {
+    ::_<StreamingResponse> chatStreaming(Params params, IOpenAIChat::Session messages) override {
         return nullptr;
     }
     MOCK_METHOD(AFuture<std::valarray<double>>, embedding, (Params params, AString input), (override));
@@ -95,7 +95,7 @@ TEST(GetChatPhotoTest, NoPhoto) {
     EXPECT_CALL(*telegram, sendQuery(testing::_)).Times(0);
     EXPECT_CALL(*openAI, chat(testing::_, testing::_)).Times(0);
 
-    AVector<IOpenAIChat::Message> temporaryContext;
+    IOpenAIChat::Session temporaryContext;
     auto tool = tools::getChatPhoto(std::move(telegram), std::move(openAI), std::move(chat), temporaryContext);
 
     OpenAITools tools{};
@@ -153,7 +153,7 @@ TEST(GetChatPhotoTest, HasPhotoSuccess) {
         .Times(1)
         .WillOnce(testing::Return(testing::ByMove(AFuture(std::move(fakeResponse)))));
 
-    AVector<IOpenAIChat::Message> temporaryContext;
+    IOpenAIChat::Session temporaryContext;
     auto tool = tools::getChatPhoto(std::move(telegram), std::move(openAI), std::move(chat), temporaryContext);
 
     OpenAITools tools{};

@@ -92,6 +92,7 @@ struct IOpenAIChat {
         AString provider;
         AOptional<AString> system_fingerprint;
         AOptional<double> cost;
+        AJson prompt_tokens_details;
         AJson cost_details;
         struct Choice {
             int64_t index;
@@ -113,8 +114,17 @@ struct IOpenAIChat {
         AFuture<> completed{};
     };
 
-    virtual AFuture<Response> chat(Params params, AVector<Message> messages) = 0;
-    virtual _<StreamingResponse> chatStreaming(Params params, AVector<Message> messages) = 0;
+    struct Session: AVector<Message> {
+    public:
+        using AVector<Message>::AVector;
+        AString sessionId = nextSessionId();
+
+    private:
+        static AString nextSessionId();
+    };
+
+    virtual AFuture<Response> chat(Params params, IOpenAIChat::Session messages) = 0;
+    virtual _<StreamingResponse> chatStreaming(Params params, IOpenAIChat::Session messages) = 0;
     virtual AFuture<std::valarray<double>> embedding(Params params, AString input) = 0;
 };
 
@@ -201,6 +211,7 @@ AJSON_FIELDS(IOpenAIChat::Response,
              (provider, "provider", AJsonFieldFlags::OPTIONAL)
              (cost, "cost", AJsonFieldFlags::OPTIONAL)
              (cost_details, "cost_details", AJsonFieldFlags::OPTIONAL)
+             (prompt_tokens_details, "prompt_tokens_details", AJsonFieldFlags::OPTIONAL)
              )
 
 template<>
@@ -210,9 +221,9 @@ struct AJsonConv<IOpenAIChat::Response::Usage> {
 };
 
 template<>
-struct AJsonConv<AVector<IOpenAIChat::Message>> {
-    static AJson toJson(const AVector<IOpenAIChat::Message>& v);
-    static void fromJson(AJson json, AVector<IOpenAIChat::Message>& dst);
+struct AJsonConv<IOpenAIChat::Session> {
+    static AJson toJson(const IOpenAIChat::Session& v);
+    static void fromJson(AJson json, IOpenAIChat::Session& dst);
 };
 
 template<>

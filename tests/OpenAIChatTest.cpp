@@ -432,7 +432,7 @@ TEST(OpenAIChat, MessageToJsonSimple) {
         .role = IOpenAIChat::Message::Role::USER,
         .content = "plain text message",
     };
-    auto json = aui::to_json(AVector<IOpenAIChat::Message>{msg});
+    auto json = aui::to_json(IOpenAIChat::Session{msg});
     ASSERT_TRUE(json.isArray());
     ASSERT_EQ(json.asArray().size(), 1);
     EXPECT_EQ(json[0]["role"].asString(), "user");
@@ -445,7 +445,7 @@ TEST(OpenAIChat, MessageToJsonAssistantWithReasoning) {
         .content = "response",
         .reasoning = "thinking process",
     };
-    auto json = aui::to_json(AVector<IOpenAIChat::Message>{msg});
+    auto json = aui::to_json(IOpenAIChat::Session{msg});
     ASSERT_TRUE(json.isArray());
     ASSERT_EQ(json.asArray().size(), 1);
     EXPECT_EQ(json[0]["role"].asString(), "assistant");
@@ -466,7 +466,7 @@ TEST(OpenAIChat, MessageToJsonToolCall) {
             }
         },
     };
-    auto json = aui::to_json(AVector<IOpenAIChat::Message>{msg});
+    auto json = aui::to_json(IOpenAIChat::Session{msg});
     ASSERT_TRUE(json.isArray());
     ASSERT_EQ(json.asArray().size(), 1);
     EXPECT_EQ(json[0]["role"].asString(), "assistant");

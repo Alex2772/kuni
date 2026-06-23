@@ -30,8 +30,8 @@ using namespace std::chrono_literals;
 // ============================================================================
 class PrometheusOpenAIMock : public IOpenAIChat {
 public:
-    MOCK_METHOD(AFuture<Response>, chat, (Params params, AVector<Message> messages), (override));
-    _<StreamingResponse> chatStreaming(Params params, AVector<Message> messages) override { return nullptr; }
+    MOCK_METHOD(AFuture<Response>, chat, (Params params, IOpenAIChat::Session messages), (override));
+    _<StreamingResponse> chatStreaming(Params params, IOpenAIChat::Session messages) override { return nullptr; }
     MOCK_METHOD(AFuture<std::valarray<double>>, embedding, (Params params, AString input), (override));
 };
 

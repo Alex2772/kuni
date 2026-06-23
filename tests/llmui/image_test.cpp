@@ -21,9 +21,9 @@ using namespace testing;
 // ---------------------------------------------------------------------------
 class OpenAIMock : public IOpenAIChat {
 public:
-    MOCK_METHOD(AFuture<Response>, chat, (Params params, AVector<Message> messages), (override));
+    MOCK_METHOD(AFuture<Response>, chat, (Params params, IOpenAIChat::Session messages), (override));
 
-    ::_<StreamingResponse> chatStreaming(Params params, AVector<Message> messages) override {
+    ::_<StreamingResponse> chatStreaming(Params params, IOpenAIChat::Session messages) override {
         return nullptr;
     }
     MOCK_METHOD(AFuture<std::valarray<double>>, embedding, (Params params, AString input), (override));
@@ -38,7 +38,7 @@ TEST(LlmuiImageTest, UnsupportedMediaType) {
     // No chat calls expected — image loading fails first
     EXPECT_CALL(*openAI, chat(testing::_, testing::_)).Times(0);
 
-    AVector<IOpenAIChat::Message> ctx;
+    IOpenAIChat::Session ctx;
     auto result = util::await_synchronously(llmui::image(ctx, *openAI, "/nonexistent/path/to/image.jpg", "photo"));
 
     EXPECT_EQ(result, "<photo description>\nThis media type is not supported\n</photo>");
@@ -65,7 +65,7 @@ TEST(LlmuiImageTest, CacheHit) {
     APath cacheFile = cacheDir / "llmui_image_test_dummy.png.md";
     AFileOutputStream(cacheFile) << CACHED_CONTENT;
 
-    AVector<IOpenAIChat::Message> ctx;
+    IOpenAIChat::Session ctx;
     auto result = util::await_synchronously(llmui::image(ctx, *openAI, imagePath, "photo"));
 
     EXPECT_EQ(result, "<photo description>\n{}\n</photo>"_format(CACHED_CONTENT));
@@ -106,7 +106,7 @@ TEST(LlmuiImageTest, SuccessWithContext) {
         .Times(1)
         .WillOnce(Return(ByMove(AFuture(std::move(fakeResponse)))));
 
-    AVector<IOpenAIChat::Message> ctx = {
+    IOpenAIChat::Session ctx = {
         { .role = IOpenAIChat::Message::Role::USER, .content = "This is context." },
     };
     auto result = util::await_synchronously(llmui::image(ctx, *openAI, imagePath, "photo"));
@@ -150,7 +150,7 @@ TEST(LlmuiImageTest, CustomXmlTag) {
         .Times(1)
         .WillOnce(Return(ByMove(AFuture(std::move(fakeResponse)))));
 
-    AVector<IOpenAIChat::Message> ctx;
+    IOpenAIChat::Session ctx;
     auto result = util::await_synchronously(llmui::image(ctx, *openAI, imagePath, "screenshot"));
 
     EXPECT_EQ(result, "<screenshot description>\nA scenic view.\n</screenshot>");

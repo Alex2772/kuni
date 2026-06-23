@@ -49,7 +49,7 @@ struct ContextBridge : AObject, IChatHistoryMessageProcessor {
      *
      * Identifies session by the request["messages"] JSON array.
      *
-     * We use AJson instead of i.e., AVector<IOpenAIChat::Message> in order to preserve client's original arguments
+     * We use AJson instead of i.e., IOpenAIChat::Session in order to preserve client's original arguments
      * (like top_k) and avoid expensive cache misses.
      */
     void collectRequestToLLM(AJson request);

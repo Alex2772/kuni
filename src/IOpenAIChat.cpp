@@ -4,9 +4,11 @@
 
 #include "IOpenAIChat.h"
 
+#include "AUI/Util/ARandom.h"
+
 #include <range/v3/view/zip.hpp>
 
-AJson AJsonConv<AVector<IOpenAIChat::Message>>::toJson(const AVector<IOpenAIChat::Message>& v) {
+AJson AJsonConv<IOpenAIChat::Session>::toJson(const IOpenAIChat::Session& v) {
     AJson::Array result;
     for (const auto& message: v) {
         // reverse engineered from vscode copilot plugin
@@ -55,7 +57,7 @@ AJson AJsonConv<AVector<IOpenAIChat::Message>>::toJson(const AVector<IOpenAIChat
     return result;
 }
 
-void AJsonConv<AVector<IOpenAIChat::Message>, void>::fromJson(AJson json, AVector<IOpenAIChat::Message>& dst) {
+void AJsonConv<IOpenAIChat::Session, void>::fromJson(AJson json, IOpenAIChat::Session& dst) {
     dst.resize(json.asArray().size());
     for (const auto&[in, out] : ranges::views::zip(json.asArray(), dst)) {
         // for better compat
@@ -66,6 +68,11 @@ void AJsonConv<AVector<IOpenAIChat::Message>, void>::fromJson(AJson json, AVecto
         out.reasoning_content  = in["reasoning_content"].asStringOpt().valueOr("");
         out.content  = in["content"].asStringOpt().valueOr("");
     }
+}
+
+AString IOpenAIChat::Session::nextSessionId() {
+    static ARandom r;
+    return r.nextUuid().toString();
 }
 
 void AJsonConv<IOpenAIChat::Response::Usage, void>::fromJson(const AJson& v, IOpenAIChat::Response::Usage& dst) {

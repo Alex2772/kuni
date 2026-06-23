@@ -59,7 +59,7 @@ inline AFuture<AVector<Diary::EntryEx>> diarySaveEntries(Diary& diary, AString l
  * @return Saved diary entries.
  */
 inline AFuture<AVector<Diary::EntryEx>>
-diarySaveEntries(Diary& diary, AVector<IOpenAIChat::Message> context, IOpenAIChat::Params chatParams) {
+diarySaveEntries(Diary& diary, IOpenAIChat::Session context, IOpenAIChat::Params chatParams) {
     context << IOpenAIChat::Message {
         .role = IOpenAIChat::Message::Role::USER,
         .content = config::DIARY_PROMPT,

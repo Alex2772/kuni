@@ -3,7 +3,7 @@
   "kind": "Dashboard",
   "metadata": {
     "name": "adnzl7w",
-    "generation": 140,
+    "generation": 146,
     "creationTimestamp": "2026-05-14T10:05:54Z",
     "labels": {},
     "annotations": {}
@@ -647,9 +647,6 @@
                         "instant": false,
                         "legendFormat": "{{scenario}}",
                         "range": true
-                      },
-                      "labels": {
-                        "grafana.app/export-label": "prometheus-1"
                       }
                     },
                     "refId": "A",
@@ -1009,7 +1006,7 @@
                     },
                     "thresholdsStyle": {
                       "mode": "off"
-                    }
+                    pro}
                   }
                 },
                 "overrides": []
@@ -1417,7 +1414,7 @@
                       "version": "v0",
                       "spec": {
                         "editorMode": "builder",
-                        "expr": "sum by(function) (increase(llm_usage_input[$__rate_interval]))",
+                        "expr": "sum by(function) (increase(llm_usage_input_cache_miss[$__rate_interval]))",
                         "legendFormat": "{{label_name}}",
                         "range": true
                       }
@@ -1448,7 +1445,7 @@
                 "color": {
                   "exponent": 0.5,
                   "fill": "dark-orange",
-                  "max": 1000000,
+                  "max": 100000,
                   "min": 0,
                   "mode": "scheme",
                   "reverse": false,
@@ -1546,7 +1543,7 @@
                       "version": "v0",
                       "spec": {
                         "editorMode": "builder",
-                        "expr": "sum by(chat) (increase(llm_usage_input[$__rate_interval]))",
+                        "expr": "sum by(chat) (increase(llm_usage_input_cache_miss[$__rate_interval]))",
                         "legendFormat": "{{chat}}",
                         "range": true
                       }
@@ -1577,7 +1574,7 @@
                 "color": {
                   "exponent": 0.5,
                   "fill": "dark-orange",
-                  "max": 500000,
+                  "max": 100000,
                   "mode": "scheme",
                   "reverse": false,
                   "scale": "exponential",

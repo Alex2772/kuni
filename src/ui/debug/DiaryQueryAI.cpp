@@ -56,7 +56,7 @@ _<AView> spoiler(_<AView> content,
     };
 }
 
-_<AView> messageView(const AVector<IOpenAIChat::Message>& allMessages,
+_<AView> messageView(const IOpenAIChat::Session& allMessages,
                      const IOpenAIChat::Message& msg) {
     const auto bg =
         msg.role == IOpenAIChat::Message::Role::USER
@@ -121,7 +121,7 @@ _<AView> messageView(const AVector<IOpenAIChat::Message>& allMessages,
 struct State {
     _<IOpenAIChat> openAI = _new<OpenAIChatImpl>();
     AAsyncHolder async;
-    AProperty<AVector<IOpenAIChat::Message>> messages;
+    AProperty<IOpenAIChat::Session> messages;
     AProperty<AString> query = "who is alex2772?";
     AProperty<_<IOpenAIChat::StreamingResponse>> lastStreaming;
     Diary diary = Diary::Init{ .diaryDir = "data/diary", .openAI = openAI };

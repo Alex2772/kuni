@@ -156,7 +156,7 @@ TEST(OpenAIChatIntegration, ToolUsage) {
         auto session = _new<OpenAIChatImpl>();
         IOpenAIChat::Params params{ .systemPrompt = SYSTEM_PROMPT, .config = config::ENDPOINT_CHEAP_LLM, .tools = tools.asJson() };
 
-        AVector<IOpenAIChat::Message> messages = {
+        IOpenAIChat::Session messages = {
             {
                 .role = IOpenAIChat::Message::Role::USER,
                 .content = "Answer SHORTLY. What time is it?"
@@ -205,7 +205,7 @@ TEST(OpenAIChatIntegration, BasicStreamingToolCalls) {
             }
         };
 
-        AVector<IOpenAIChat::Message> messages{
+        IOpenAIChat::Session messages{
             {IOpenAIChat::Message::Role::USER, "Answer SHORTLY. What time is it? Do not make up information; if you don't have access to a tool, report it."}
         };
         auto session = _new<OpenAIChatImpl>();
@@ -246,7 +246,7 @@ TEST(OpenAIChatIntegration, ImageRecognition) {
         auto session = _new<OpenAIChatImpl>();
         IOpenAIChat::Params params{ .systemPrompt = SYSTEM_PROMPT, .config = config::ENDPOINT_PHOTO_TO_TEXT, .seed = 3 };
 
-        AVector<IOpenAIChat::Message> messages = {
+        IOpenAIChat::Session messages = {
             {
                 .role = IOpenAIChat::Message::Role::USER,
                 .content = "{}\nWhat is it?"_format(IOpenAIChat::embedImage(*AImage::fromFile(TEST_DATA / "sussybaka.jpg") )),
@@ -284,7 +284,7 @@ TEST(OpenAIChatIntegration, ToolAttachments) {
         auto session = _new<OpenAIChatImpl>();
         IOpenAIChat::Params params{ .systemPrompt = SYSTEM_PROMPT, .tools = tools.asJson() };
 
-        AVector<IOpenAIChat::Message> messages = {
+        IOpenAIChat::Session messages = {
             {
                 .role = IOpenAIChat::Message::Role::USER,
                 .content = "Please #open_attachment and describe what is it."

@@ -113,10 +113,10 @@ struct MockLlmEndpoint {
 class MockOpenAI: public IOpenAIChat {
 public:
     ~MockOpenAI() override = default;
-    AFuture<Response> chat(Params params, AVector<Message> messages) override {
+    AFuture<Response> chat(Params params, IOpenAIChat::Session messages) override {
         throw AException("unimplemented");
     }
-    _<StreamingResponse> chatStreaming(Params params, AVector<Message> messages) override {
+    _<StreamingResponse> chatStreaming(Params params, IOpenAIChat::Session messages) override {
         throw AException("unimplemented");
     }
     AFuture<std::valarray<double>> embedding(Params params, AString input) override {

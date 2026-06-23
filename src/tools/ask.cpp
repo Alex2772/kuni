@@ -110,12 +110,13 @@ static AFuture<AString> ask(IOpenAIChat& openAI, Diary& diary, const AString& qu
         },
     };
 
-    AVector<IOpenAIChat::Message> messages = {
+    IOpenAIChat::Session messages = {
         IOpenAIChat::Message {
           .role = IOpenAIChat::Message::Role::USER,
           .content = "<character>\n{}\n</character>\n\n{}"_format(AppBase::getSystemPrompt(), query),
         },
     };
+    messages.sessionId = "ask";
 
     bool toolCallHappened = false;
 

@@ -686,7 +686,7 @@ AUI_ENTRY {
               .upstreamEndpoint = config::ENDPOINT_MAIN.endpoint,
               .port = 10434,
               .toolsFactory =
-                  [openAI, diary](AVector<IOpenAIChat::Message> ctx) {
+                  [openAI, diary](IOpenAIChat::Session ctx) {
                       // Create the tools directly without using an initializer list
                       return OpenAITools {
                           tools::ask([ctx = std::move(ctx)] { return ctx.empty() ? AString {} : AString(ctx.last().content); }, openAI, *diary),
