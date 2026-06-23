@@ -26,7 +26,7 @@ endif()
 
 option(BUILD_SHARED_LIBS OFF)
 
-set(AUI_VERSION v8.0.0-rc.23)
+set(AUI_VERSION v8.0.0-rc.28)
 
 # Use AUI.Boot
 include(aui.boot.cmake)
@@ -50,6 +50,13 @@ auib_import(prometheus-cpp https://github.com/jupp0r/prometheus-cpp
             CMAKE_ARGS -DENABLE_PUSH=OFF -DENABLE_COMPRESSION=OFF -DENABLE_TESTING=OFF
 )
 
+set(AUIB_HTTPLIB_VALIDATE OFF)
+
+auib_import(httplib https://github.com/yhirose/cpp-httplib
+        VERSION v0.43.1
+        CMAKE_ARGS -DHTTPLIB_USE_BROTLI_IF_AVAILABLE=OFF)
+
+
 auib_import(date https://github.com/HowardHinnant/date)
 
 set(AUIB_TD_VALIDATE OFF)
@@ -68,7 +75,8 @@ aui_link(${PROJECT_NAME} PUBLIC
         aui::views
         Td::TdStatic
         toml11::toml11
-        prometheus-cpp::pull)
+        prometheus-cpp::pull
+        httplib::httplib)
 
 aui_compile_assets(${PROJECT_NAME})
 aui_enable_tests(${PROJECT_NAME})
@@ -79,3 +87,41 @@ aui_app(TARGET ${PROJECT_NAME}
         VENDOR "Alex2772"
         ICON "assets/img/icon.svg"
 )
+
+# version info
+find_package(Git QUIET)
+
+set(VERSION_TAG "${CMAKE_PROJECT_VERSION}")
+set(GIT_REMOTE_URL "unknown")
+set(GIT_BRANCH "unknown")
+if (GIT_EXECUTABLE)
+    execute_process(COMMAND ${GIT_EXECUTABLE} describe --tags --dirty
+            OUTPUT_VARIABLE VERSION_TAG
+    )
+    string(STRIP "${VERSION_TAG}" VERSION_TAG)
+
+    execute_process(COMMAND ${GIT_EXECUTABLE} remote get-url origin
+            OUTPUT_VARIABLE GIT_REMOTE_URL
+            ERROR_QUIET
+    )
+    string(STRIP "${GIT_REMOTE_URL}" GIT_REMOTE_URL)
+
+    execute_process(COMMAND ${GIT_EXECUTABLE} rev-parse --abbrev-ref HEAD
+            OUTPUT_VARIABLE GIT_BRANCH
+            ERROR_QUIET
+    )
+    string(STRIP "${GIT_BRANCH}" GIT_BRANCH)
+endif()
+
+file(WRITE ${CMAKE_CURRENT_BINARY_DIR}/version_info.cpp
+"#include <AUI/Common/AStringView.h>\n"
+"extern \"C\" AStringView project_version_info() {"
+"return R\"("
+"Project name: ${CMAKE_PROJECT_NAME}\n"
+"Version: ${VERSION_TAG}\n"
+"Git remote: ${GIT_REMOTE_URL}\n"
+"Branch: ${GIT_BRANCH}\n"
+")\";"
+"}"
+)
+target_sources(${PROJECT_NAME} PRIVATE ${CMAKE_CURRENT_BINARY_DIR}/version_info.cpp)
