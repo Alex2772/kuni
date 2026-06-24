@@ -84,17 +84,21 @@ struct MockLlmEndpoint {
 
     MockLlmEndpoint() {
         server.Post("/v1/chat/completions", [this](const httplib::Request& req, httplib::Response& res) {
-            receivedRequests.push_back(AJson::fromString(req.body));
-            EXPECT_FALSE(responseQueue.empty()) << "MockLlmEndpoint: unexpected request (queue empty)";
-            if (responseQueue.empty()) {
-                res.status = 500;
-                res.set_content("no responses enqueued", "text/plain");
-                return;
+            try {
+                receivedRequests.push_back(AJson::fromString(req.body));
+                EXPECT_FALSE(responseQueue.empty()) << "MockLlmEndpoint: unexpected request (queue empty)";
+                if (responseQueue.empty()) {
+                    res.status = 500;
+                    res.set_content("no responses enqueued", "text/plain");
+                    return;
+                }
+                auto body = std::move(responseQueue.front());
+                responseQueue.pop();
+                res.status = 200;
+                res.set_content(body, "application/json");
+            } catch (const AException& e) {
+                ALogger::err("MockLlmEndpoint") << "POST /v1/chat/completions: failed to process request" << e;
             }
-            auto body = std::move(responseQueue.front());
-            responseQueue.pop();
-            res.status = 200;
-            res.set_content(body, "application/json");
         });
 
         port = server.bind_to_any_port("127.0.0.1");
@@ -222,7 +226,7 @@ TEST_F(ContextBridgeTest, SessionUpdateNoDuplicate) {
     bridge->collectRequestToLLM(makeRequest({"hi", "how are you"}));
 
     // Only one session should be pending → one LLM call on flush
-    llm.enqueue(makeChatResponseJson("Summary"));
+    llm.enqueue(makeChatResponseJson("Loooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooong summary"));
     auto result = flushAll();
 
     EXPECT_EQ(llm.receivedRequests.size(), 1u) << "Extended session must not create a second pending session";
@@ -230,8 +234,8 @@ TEST_F(ContextBridgeTest, SessionUpdateNoDuplicate) {
 
 // 4. Two unrelated sessions (different salts) flush independently.
 TEST_F(ContextBridgeTest, TwoIndependentSessionsFlushed) {
-    llm.enqueue(makeChatResponseJson("Summary1"));
-    llm.enqueue(makeChatResponseJson("Summary2"));
+    llm.enqueue(makeChatResponseJson("Loooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooong summary1"));
+    llm.enqueue(makeChatResponseJson("Loooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooong summary2"));
 
     bridge->collectRequestToLLM(makeRequest({"session A - message 1"}));
     bridge->collectRequestToLLM(makeRequest({"session B - different message entirely"}));
@@ -291,7 +295,7 @@ TEST_F(ContextBridgeTest, ProcessMessageNonPapikPassThrough) {
 
 // 7. processChatHistoryMessage: PAPIK chat flushes sessions and prepends work items.
 TEST_F(ContextBridgeTest, ProcessMessagePapikFlushesAndPrepends) {
-    llm.enqueue(makeChatResponseJson("Work item summary"));
+    llm.enqueue(makeChatResponseJson("Work item looooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooong summary"));
 
     bridge->collectRequestToLLM(makeRequest({"some request about work"}));
 

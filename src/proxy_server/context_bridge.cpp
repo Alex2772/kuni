@@ -76,7 +76,9 @@ AFuture<AVector<AString>> proxy_server::ContextBridge::collectAndSaveSessionsNot
             return pair.first == "tools";
         });
         naxyi:
-        auto response = aui::from_json<IOpenAIChat::Response>(co_await OpenAIChatImpl::makeHttpRequest(mConfig.endpoint, AJson::toString(session), session["session_id"].asString()));
+        auto sessionId = session["session_id"].asStringOpt().valueOr("context_save");
+        session["session_id"] = sessionId;
+        auto response = aui::from_json<IOpenAIChat::Response>(co_await OpenAIChatImpl::makeHttpRequest(mConfig.endpoint, AJson::toString(session), sessionId));
         auto savedEntries = co_await util::diarySaveEntries(*mConfig.diary, response.choices.at(0).message.content);
         if (savedEntries.empty()) {
             ALogger::warn(LOG_TAG) << "LLM returned empty response";
