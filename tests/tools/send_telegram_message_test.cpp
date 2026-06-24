@@ -77,8 +77,19 @@ static _<td::td_api::array<td::td_api::object_ptr<td::td_api::message>>> makeMes
  */
 static AFuture<ITelegramClient::Object> dispatchSendQuery(td::td_api::object_ptr<td::td_api::Function> f) {
     switch (f->get_id()) {
-    case td::td_api::sendMessage::ID:
-        co_return td::td_api::make_object<td::td_api::message>();
+    case td::td_api::sendMessage::ID: {
+        auto msg = td::td_api::make_object<td::td_api::message>();
+        msg->content_ = [] {
+            auto content = td::td_api::make_object<td::td_api::messageText>();
+            content->text_ = [] {
+                auto text = td::td_api::make_object<td::td_api::formattedText>();
+                text->text_ = "Ololo";
+                return text;
+            }();
+            return content;
+        }();
+        co_return msg;
+    }
     default:
         co_return td::td_api::make_object<td::td_api::ok>();
     }

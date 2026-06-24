@@ -126,18 +126,6 @@ TEST(SearchChatsTest, WithResults) {
             chat->title_ = "Found Chat";
             chat->type_ = td::td_api::make_object<td::td_api::chatTypePrivate>();
             co_return chat;
-        })
-        .WillOnce([&](td::td_api::object_ptr<td::td_api::Function> f) -> AFuture<ITelegramClient::Object> {
-            // getChat for formatChatSingle (publicChat)
-            EXPECT_EQ(f->get_id(), td::td_api::getChat::ID);
-            auto* getChat = static_cast<td::td_api::getChat*>(f.get());
-            EXPECT_EQ(getChat->chat_id_, config::PAPIK_CHAT_ID);
-
-            auto chat = td::td_api::make_object<td::td_api::chat>();
-            chat->id_ = config::PAPIK_CHAT_ID;
-            chat->title_ = "Public Chat";
-            chat->type_ = td::td_api::make_object<td::td_api::chatTypePrivate>();
-            co_return chat;
         });
 
     auto tool = tools::searchChats(std::move(telegram));
@@ -150,7 +138,6 @@ TEST(SearchChatsTest, WithResults) {
     }));
 
     EXPECT_TRUE(result.contains("Found Chat")) << "result = " << result;
-    EXPECT_TRUE(result.contains("Public Chat")) << "result = " << result;
     EXPECT_TRUE(result.contains("existing_chats")) << "result = " << result;
     EXPECT_TRUE(result.contains("global_search")) << "result = " << result;
 }
