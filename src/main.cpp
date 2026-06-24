@@ -40,6 +40,7 @@
 #include "tools/stickers.h"
 #include "tools/send_telegram_message.h"
 #include "tools/edit_message_text.h"
+#include "tools/forward_message.h"
 #include "ui/debug/KuniDebugWindow.h"
 #include "util/is_accessible_from_lockdown.h"
 #include "util/post_message.h"
@@ -616,12 +617,19 @@ Pay close attention to these messages. Acquire context from them. You can't resp
 (#send_telegram_message tool is not available). Instead, do what you usually do when reading newsletters: reflect and reason
 on them.
 Some channels have reactions enabled. In that case, you can sometimes react with #react_with_emoji to express your feelings about a message, but you can't send a full reply.
+
+Forwarding posts:
+If you find a post genuinely interesting, funny, or relevant to someone you know — you can forward it to another chat
+using #forward_message. Be selective: only forward posts that are truly worth sharing. You can add a short comment
+expressing your reaction. Use #get_telegram_chats to find the destination chat_id if needed.
+Do NOT forward ads, sponsored posts, or low-value content.
 </instructions>
 )"_format(chat->title_);
                     tools = OpenAITools {
                         tools::reactWithEmoji(telegram(), chat),
+                        tools::forwardMessage(telegram(), chat),
                     };
-                    co_return result;   // no tools for channels
+                    co_return result;   // no send_telegram_message for channels
                 }
             }
         }
@@ -634,6 +642,7 @@ Some channels have reactions enabled. In that case, you can sometimes react with
             tools::reactWithEmoji(telegram(), chat),
             tools::removeMessage(telegram(), chat),
             tools::editMessageText(telegram(), chat),
+            tools::forwardMessage(telegram(), chat),
         };
 
         if constexpr (config::CAPABILITY_USE_STICKERS) {
