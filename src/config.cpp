@@ -307,6 +307,8 @@ static Config load(bool saveBack = false) {
     toml.at("capabilities").comments() = std::vector<std::string> { " Optional builtin modules" };
     toml.at("misc").comments() = std::vector<std::string> { " Technical stuff you probably don't want to adjust" };
 
+
+#ifndef AUI_TESTS_MODULE
     if (aNewFile) {
         save(toml);
         ALogger::err(LOG_TAG) << R"(
@@ -319,6 +321,7 @@ static Config load(bool saveBack = false) {
         std::exit(-1);
         return {};
     }
+#endif
 
     Config out;
 #define X(cppType, cppName, cppDefaultValue, tomlPath)    \
@@ -338,6 +341,7 @@ static Config load(bool saveBack = false) {
         save(toml);
     }
 
+#ifndef AUI_TESTS_MODULE
     // validation
     {
         const auto& value = toml["general"]["telegram_api_id"];
@@ -355,6 +359,7 @@ static Config load(bool saveBack = false) {
             std::exit(-1);
         }
     }
+#endif
     ALogger::info(LOG_TAG) << CONFIG_TOML << " loaded";
     return out;
 }
