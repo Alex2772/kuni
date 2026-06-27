@@ -2,24 +2,7 @@
 #include <chrono>
 
 #include "Endpoint.h"
-#include "../build/secrets/secrets.h"
 #include "AUI/Common/ASignal.h"
-
-namespace config_old {
-
-
-    static constexpr bool WAKE_UP_ON_PINNED_CHAT = true;
-    static constexpr bool RANDOMLY_GO_SLEEP = true;
-
-    // Every time the AI calls #send_telegram_message, it will be reminded that it can generate images and voice notes.
-    // This will happen with TOOL_REMINDER_CHANCE * 100%. E.g. 0.1f -> 10% chance every time a message is sent, 0f for no reminders at all.
-    // If a CAPABILITY (refer to config:7-8) is off, it will be skipped for the reminder, of course.
-    static constexpr float TOOL_REMINDER_CHANCE = 0.02f;
-
-    static constexpr auto SYSTEM_PROMPT = R"(
-)";
-
-} // namespace config
 
 // clang-format off
 #define CONFIG_MODEL \
