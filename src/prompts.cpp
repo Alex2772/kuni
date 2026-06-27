@@ -5,7 +5,7 @@
 #include "prompts.h"
 
 #include "config.h"
-#include "../../../.aui/repo/aui-v8.0.0-rc.24/aui.core/src/AUI/Util/kAUI.h"
+#include "AUI/Util/kAUI.h"
 #include "AUI/Common/AByteBuffer.h"
 #include "AUI/IO/AFileInputStream.h"
 #include "AUI/IO/AFileOutputStream.h"
