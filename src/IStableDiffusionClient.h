@@ -26,7 +26,7 @@ struct IStableDiffusionClient {
         AString sampler_name = "DPM++ 2M";
         AString scheduler = "Automatic";
         AMap<AString, AString> override_settings {
-            {"sd_model_checkpoint", config::SD_CHECKPOINT }
+            {"sd_model_checkpoint", config().sdCheckpoint }
         };
         int64_t batch_size = 1;
         int64_t n_iter = 1;

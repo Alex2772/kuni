@@ -16,6 +16,7 @@
 #include <range/v3/all.hpp>
 
 #include "OpenAITools.h"
+#include "prompts.h"
 #include "AUI/Traits/parallel.h"
 
 using namespace std::chrono_literals;
@@ -127,7 +128,7 @@ AFuture<double> Diary::entryIsRelated(const std::valarray<double>& context, Entr
     }
     if (entry.metadata.embedding.size() != context.size()) {
         try {
-            entry.metadata.embedding = co_await openAI()->embedding({ .config = config::ENDPOINT_EMBEDDING },
+            entry.metadata.embedding = co_await openAI()->embedding({ .config = config().embedding },
                 entry.freeformBody.replaceAll("\t", "  "));
             save(entry);
         } catch (const AException&) {
@@ -205,7 +206,7 @@ AFuture<> Diary::sleepingConsolidation() {
         const auto count = mCachedDiary->size();
         const auto sleepStartTime = std::chrono::steady_clock::now();
         while (!mCachedDiary->empty()) { // we'll remove considered diary entries from mCachedDiary and save them to disk.
-            if (std::chrono::steady_clock::now() - sleepStartTime >= config::SLEEP_MAX_TIME) {
+            if (std::chrono::steady_clock::now() - sleepStartTime >= Config::SLEEP_MAX_TIME) {
                 // we reached sleep max time.
                 // how many memory pieces did we cover? this depends on LLM's processing speed.
                 // both cloud deepseek-chat and (qwen3.5:9b on a RTX4090) can process about 500 Kuni's diary entries per
@@ -249,7 +250,7 @@ AFuture<> Diary::sleepingConsolidation() {
                 return asValue;
             }();
             if (target.metadata.embedding.size() == 0) {
-                target.metadata.embedding = co_await openAI()->embedding({ .config = config::ENDPOINT_EMBEDDING }, target.freeformBody);
+                target.metadata.embedding = co_await openAI()->embedding({ .config = config().embedding }, target.freeformBody);
             }
             tryAgain:
             AVector<EntryExAndRelatedness> results;
@@ -268,7 +269,7 @@ AFuture<> Diary::sleepingConsolidation() {
             auto body = [&] {
                 AString body;
                 for (const auto&[i, entry] : results | ranges::view::enumerate) {
-                    if (body.length() > config::DIARY_SLEEP_MAX_LENGTH && i >= 2) {
+                    if (body.length() > config().diaryTokenCountTrigger && i >= 2) {
                         break;
                     }
                     if (!body.empty()) {
@@ -294,8 +295,8 @@ AFuture<> Diary::sleepingConsolidation() {
             IOpenAIChat::Response response;
             try {
                 response = co_await openAI()->chat({
-                .systemPrompt = config::SLEEP_CONSOLIDATOR_PROMPT,
-                .config = config::ENDPOINT_SLEEPING,
+                .systemPrompt = prompts().sleepConsolidator,
+                .config = config().llm,
             }, { { .role = IOpenAIChat::Message::Role::USER, .content = body }});
             } catch (const AException& e) {
                 ALogger::err("Diary") << "sleepingConsolidation can't chat " << e;

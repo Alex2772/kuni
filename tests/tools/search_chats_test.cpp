@@ -104,13 +104,13 @@ TEST(SearchChatsTest, WithResults) {
         .WillOnce([&](td::td_api::object_ptr<td::td_api::Function> f) -> AFuture<ITelegramClient::Object> {
             EXPECT_EQ(f->get_id(), td::td_api::searchChatsOnServer::ID);
             auto result = td::td_api::make_object<td::td_api::chats>();
-            result->chat_ids_ = { config::PAPIK_CHAT_ID };
+            result->chat_ids_ = { config().papikChatId };
             co_return result;
         })
         .WillOnce([&](td::td_api::object_ptr<td::td_api::Function> f) -> AFuture<ITelegramClient::Object> {
             EXPECT_EQ(f->get_id(), td::td_api::searchPublicChat::ID);
             auto result = td::td_api::make_object<td::td_api::chat>();
-            result->id_ = config::PAPIK_CHAT_ID;
+            result->id_ = config().papikChatId;
             result->title_ = "Public Chat";
             result->type_ = td::td_api::make_object<td::td_api::chatTypePrivate>();
             co_return result;
@@ -119,10 +119,10 @@ TEST(SearchChatsTest, WithResults) {
             // getChat for formatChatList
             EXPECT_EQ(f->get_id(), td::td_api::getChat::ID);
             auto* getChat = static_cast<td::td_api::getChat*>(f.get());
-            EXPECT_EQ(getChat->chat_id_, config::PAPIK_CHAT_ID);
+            EXPECT_EQ(getChat->chat_id_, config().papikChatId);
 
             auto chat = td::td_api::make_object<td::td_api::chat>();
-            chat->id_ = config::PAPIK_CHAT_ID;
+            chat->id_ = config().papikChatId;
             chat->title_ = "Found Chat";
             chat->type_ = td::td_api::make_object<td::td_api::chatTypePrivate>();
             co_return chat;

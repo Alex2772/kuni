@@ -46,7 +46,7 @@ public:
 // ---------------------------------------------------------------------------
 static _<td::td_api::chat> makeChat(const AString& title) {
     auto chat = _new<td::td_api::chat>();
-    chat->id_ = config::PAPIK_CHAT_ID;
+    chat->id_ = config().papikChatId;
     chat->title_ = title.toStdString();
     chat->type_ = td::td_api::make_object<td::td_api::chatTypePrivate>();
     return chat;

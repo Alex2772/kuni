@@ -20,7 +20,6 @@
 #include "IOpenAIChat.h"
 #include "OpenAIChatImpl.h"
 #include "config.h"
-#include "KuniCharacter.h"
 #include "MetricsBreadcumbs.h"
 #include "WebSearch.h"
 #include "AUI/IO/AFileInputStream.h"
@@ -55,7 +54,7 @@ AFuture<std::valarray<double>> contextEmbedding(IOpenAIChat& openAI, ranges::ran
         basePrompt += message.content;
         basePrompt += "\n\n---\n\n";
     }
-    co_return co_await openAI.embedding({ .config = config::ENDPOINT_EMBEDDING }, basePrompt);
+    co_return co_await openAI.embedding({ .config = config().embedding }, basePrompt);
 }
 
 AppBase::AppBase(Init init): mInit(std::move(init)), mDiary({
@@ -118,7 +117,7 @@ AppBase::AppBase(Init init): mInit(std::move(init)), mDiary({
                     }
                 }
     #ifndef AUI_TESTS_MODULE
-                if constexpr (config::RANDOMLY_GO_SLEEP) {
+                if (config().randomlyGoSleep) {
                     if (std::uniform_real_distribution(0.0, 1.0)(re) < 0.1) {
                         // 1. randomly go afk is humane
                         // 2. reduce resource usage:
@@ -207,7 +206,7 @@ AppBase::AppBase(Init init): mInit(std::move(init)), mDiary({
                                     }
                                     break;
                                 }
-                                if (diary.length() >= config::DIARY_INJECTION_MAX_LENGTH) {
+                                if (diary.length() >= config().diaryInjectionMaxLength) {
                                     // set the minimum constraint for the future queries
                                     self.mRelevanceThreshold = relatedness;
                                     break;
@@ -324,7 +323,7 @@ AppBase::AppBase(Init init): mInit(std::move(init)), mDiary({
                             // standard AException workflow which is used for technical errors (such as you were banned, or
                             // no internet connection) whose are meaningful to LLM and it can adopt to.
 
-                            if (botAnswer.usage.prompt_tokens > config::DIARY_TOKEN_COUNT_TRIGGER) {
+                            if (botAnswer.usage.prompt_tokens > config().diaryTokenCountTrigger) {
                                 // we are stuck; ignore the event
                                 ALogger::warn("AppBase") << "LLM can't find proper response to the notification; "
                                                             "context is overflown. Ignoring event and dumping context";
@@ -341,7 +340,7 @@ AppBase::AppBase(Init init): mInit(std::move(init)), mDiary({
 
                     if (pauseFlag) {
                         finish:
-                        if (botAnswer.usage.total_tokens >= config::DIARY_TOKEN_COUNT_TRIGGER) {
+                        if (botAnswer.usage.total_tokens >= config().diaryTokenCountTrigger) {
                             co_await self.diaryDumpMessages();
                         }
                         continue;
@@ -532,8 +531,8 @@ AString AppBase::takeDiaryEntry(const Diary::EntryExAndRelatedness& i) {
 
 AString AppBase::getSystemPrompt()
 {
-    auto prompt = "{}\n\n<your_appearance>\n{}\n</your_appearance>"_format(kuni_character::getBasePrompt(), kuni_character::getAppearancePrompt());
-    if (config::LOCKDOWN_MODE != config::LockdownMode::NONE) {
+    auto prompt = "{}\n\n{}\n\n<your_appearance>\n{}\n</your_appearance>"_format(prompts().system, prompts().characterBase, prompts().characterAppearance);
+    if (config().lockdown != Config::LockdownMode::NONE) {
         prompt += "\nYou are currently under lockdown mode. This means you can access to subset of chats only.";
     }
     return prompt;

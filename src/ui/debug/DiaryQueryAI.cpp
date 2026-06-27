@@ -122,7 +122,7 @@ struct State {
     _<IOpenAIChat> openAI = _new<OpenAIChatImpl>();
     AAsyncHolder async;
     AProperty<IOpenAIChat::Session> messages;
-    AProperty<AString> query = "who is alex2772?";
+    AProperty<AString> query = "who is {}?"_format(config().papikName);
     AProperty<_<IOpenAIChat::StreamingResponse>> lastStreaming;
     Diary diary = Diary::Init{ .diaryDir = "data/diary", .openAI = openAI };
 
@@ -153,7 +153,7 @@ struct State {
                 },
                 .handler = [this, opts, &includedIds](OpenAITools::Ctx ctx) -> AFuture<AString> {
                     auto cue = ctx.args["text"].asStringOpt().valueOrException("text is required string");
-                    auto diaryResponse = co_await diary.query(co_await openAI->embedding({ .config = config::ENDPOINT_EMBEDDING }, cue), opts);
+                    auto diaryResponse = co_await diary.query(co_await openAI->embedding({ .config = config().embedding }, cue), opts);
                     AString formattedResponse;
                     ALOG_DEBUG("Diary")
                         << "queryAI cue=\""

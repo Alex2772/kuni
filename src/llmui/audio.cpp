@@ -15,7 +15,7 @@ AFuture<AString> llmui::voiceMessage(AStringView pathToVoice) {
     ALOG_TRACE(LOG_TAG) << "voiceMessage pathToVoice=" << pathToVoice;
     try {
         AJson payload;
-        payload["model"] = config::ENDPOINT_SPEECH_TO_TEXT.model;
+        payload["model"] = config().llmAudioToText.model;
 
         AFileInputStream stream(pathToVoice);
         AByteBuffer audio = AByteBuffer::fromStream(stream);
@@ -25,16 +25,16 @@ AFuture<AString> llmui::voiceMessage(AStringView pathToVoice) {
         payload["input_audio"] = inputAudio;
 
         AVector<AString> headers = {
-            "Authorization: Bearer {}"_format(config::ENDPOINT_SPEECH_TO_TEXT.endpoint.bearerKey),
+            "Authorization: Bearer {}"_format(config().llmAudioToText.endpoint.bearerKey),
             "Content-Type: application/json"
         };
 
         auto response =
-            co_await ACurl::Builder(config::ENDPOINT_SPEECH_TO_TEXT.endpoint.baseUrl + "audio/transcriptions")
+            co_await ACurl::Builder(config().llmAudioToText.endpoint.baseUrl + "audio/transcriptions")
                 .withMethod(ACurl::Method::HTTP_POST)
                 .withBody(AJson::toString(payload))
                 .withHeaders(std::move(headers))
-                .withTimeout(config::REQUEST_TIMEOUT)
+                .withTimeout(Config::REQUEST_TIMEOUT)
                 .runAsync();
 
         AJson responseJson = AJson::fromBuffer(response.body);

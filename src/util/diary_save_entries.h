@@ -4,6 +4,7 @@
 #include <Diary.h>
 #include <config.h>
 #include "AUI/Logging/ALogger.h"
+#include <prompts.h>
 
 namespace util {
 
@@ -20,12 +21,12 @@ inline AFuture<AVector<Diary::EntryEx>> diarySaveEntries(Diary& diary, AString l
         if (take.length() < 20) {
             continue;   // random shit
         }
-        auto embedding = co_await diary.openAI()->embedding({ .config = config::ENDPOINT_EMBEDDING }, take);
+        auto embedding = co_await diary.openAI()->embedding({ .config = config().embedding }, take);
         if (auto query = co_await diary.query(embedding, { .confidenceFactor = 0 }); !query.empty()) {
             ALogger::info("diarySaveEntries")
                 << "{}.md"_format(id) << ": plagiarism factor other_id=\"" << query.first().entry->id
                 << "\" relatedness =" << float(query.first().relatedness);
-            if (query.first().relatedness > config::DIARY_PLAGIARISM_THRESHOLD) {
+            if (query.first().relatedness > config().diaryPlagiarismThreshold) {
                 ALogger::info("diarySaveEntries")
                     << "{}.md"_format(id) << ": won't store because it's plagiarism other_id=\"" << query.first().entry->id << "\"";
                 continue;
@@ -62,7 +63,7 @@ inline AFuture<AVector<Diary::EntryEx>>
 diarySaveEntries(Diary& diary, IOpenAIChat::Session context, IOpenAIChat::Params chatParams) {
     context << IOpenAIChat::Message {
         .role = IOpenAIChat::Message::Role::USER,
-        .content = config::DIARY_PROMPT,
+        .content = prompts().diarySave,
     };
 
 naxyi:

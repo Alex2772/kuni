@@ -23,7 +23,7 @@ struct IOpenAIChat {
     struct Params {
         AString systemPrompt;
         int maxOutputTokens = 8192;
-        EndpointAndModel config = ::config::ENDPOINT_MAIN;
+        EndpointAndModel config = ::config().llm;
         AOptional<int64_t> seed;
         AJson tools = AJson::Array{};
     };

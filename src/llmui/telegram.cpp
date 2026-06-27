@@ -18,7 +18,7 @@
 static AFuture<AString> extractSenderName(ITelegramClient& telegram, int64_t senderId) {
     AString senderName;
     if (senderId == telegram.myId()) {
-        senderName = "You (Kuni)";
+        senderName = "You ({})"_format(config().characterName);
     } else if (senderId != 0) {
         try {
             auto sender = co_await telegram.getUser(senderId);
@@ -491,7 +491,7 @@ AFuture<AString> llmui::formatChatHistoryMessage(
                 checkForMaliciousPayloads(sticker.sticker_->emoji_);
                 xmlTag += " emoji=\"{}\""_format(sticker.sticker_->emoji_);
             }
-            if constexpr (config::CAPABILITY_USE_STICKERS) {
+            if (config().capabilityUseStickers) {
                 xmlTag += " sticker_id=\"{}\""_format(sticker.sticker_->id_);
             }
             if (sticker.sticker_->sticker_) {

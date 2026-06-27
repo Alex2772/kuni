@@ -4,7 +4,7 @@
 
 #include "image.h"
 
-#include "KuniCharacter.h"
+#include "prompts.h"
 #include "AUI/IO/AFileInputStream.h"
 #include "AUI/Util/kAUI.h"
 
@@ -24,9 +24,9 @@ AFuture<AString> llmui::image(std::span<const IOpenAIChat::Message> temporaryCon
         }
 
         AString context = "<context>\n";
-        context += "<character name=\"Kuni\">\n";
-        context += kuni_character::getAppearancePrompt();
-        context += "\n</character name=\"Kuni\">\n";
+        context += "<character name=\"{}\">\n"_format(config().characterName);
+        context += prompts().characterAppearance;
+        context += "\n</character name=\"{}\">\n"_format(config().characterName);
         for (const auto& i : temporaryContext) {
             context += "<context_item>\n";
             context += i.content;
@@ -44,14 +44,14 @@ AFuture<AString> llmui::image(std::span<const IOpenAIChat::Message> temporaryCon
         // hack: ask for shorter descriptions for stickers.
         AString prompt = [&] {
             if (xmlTag.contains("sticker")) {
-                return config::STICKER_TO_TEXT_PROMPT;
+                return prompts().stickerToText;
             }
-            return config::PHOTO_TO_TEXT_PROMPT;
+            return prompts().photoToText;
         }();
         tryAgain:
         auto response = co_await openAI.chat({
             .systemPrompt = prompt,
-            .config = config::ENDPOINT_PHOTO_TO_TEXT,
+            .config = config().llmImageToText,
         }, { { .role = IOpenAIChat::Message::Role::USER, .content = context }});
         auto content = std::move(response.choices.at(0).message.content);
         if (content.trim().empty()) {

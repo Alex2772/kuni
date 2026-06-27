@@ -18,7 +18,7 @@ AFuture<td::td_api::object_ptr<td::td_api::message>> util::telegramPostMessage(
     // Check lockdown mode - only allow PAPIK_CHAT_ID if lockdown is enabled
     if (! co_await util::isAccessibleFromLockdown(telegram, chatId)) {
         throw AException("Lockdown mode is enabled. You can only send messages to chat with ID {} (PAPIK_CHAT_ID)."_format(
-            config::PAPIK_CHAT_ID));
+            config().papikChatId));
     }
 
     co_return co_await telegram.sendQueryWithResult([&] {

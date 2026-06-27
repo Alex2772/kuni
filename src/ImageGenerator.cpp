@@ -3,7 +3,6 @@
 #include <random>
 #include <range/v3/algorithm/count_if.hpp>
 
-#include "KuniCharacter.h"
 #include "AUI/Logging/ALogger.h"
 #include "AUI/Util/kAUI.h"
 #include <range/v3/view/transform.hpp>
@@ -13,6 +12,7 @@
 
 #include "IOpenAIChat.h"
 #include "OpenAIChatImpl.h"
+#include "prompts.h"
 #include "AUI/Image/png/PngImageLoader.h"
 #include "AUI/IO/AFileInputStream.h"
 
@@ -31,7 +31,6 @@ static AJson parseResponse(AString content) {
 
 AFuture<ImageGenerator::GalleryImage> ImageGenerator::generate(AString description) {
     ALOG_TRACE(LOG_TAG) << "generate: " << description;
-    AString appearancePrompt = kuni_character::getAppearancePrompt();
     int trialIndex = 0;
 
     naxyi:
@@ -40,10 +39,10 @@ AFuture<ImageGenerator::GalleryImage> ImageGenerator::generate(AString descripti
         .positive = "",
         .negative = "(text:2), (signature:2), raw photo",
     };
-    co_await engineerPrompt(currentPrompt, description, appearancePrompt);
+    co_await engineerPrompt(currentPrompt, description, prompts().characterAppearance);
     AString firstFeedback;
 
-    AString descriptionWithAppearance = "<character name=\"Kuni\" canonical_description>\n{}\n</character canonical_description>\n<user_description overrides_canonical=\"true\">\n{}\n</user_description overrides_canonical=\"true\">"_format(appearancePrompt, description);
+    AString descriptionWithAppearance = "<character name=\"{}\" canonical_description>\n{}\n</character canonical_description>\n<user_description overrides_canonical=\"true\">\n{}\n</user_description overrides_canonical=\"true\">"_format(config().characterName, prompts().characterAppearance, description);
 
     while (trialIndex <= TRIAL_COUNT) {
         try {
@@ -100,7 +99,7 @@ AFuture<ImageGenerator::GalleryImage> ImageGenerator::generate(AString descripti
                 }
 
                 ALogger::info(LOG_TAG) << "Not satisfied. Feedback: " << assessment.feedback;
-                co_await engineerPrompt(currentPrompt, description, appearancePrompt, assessment.feedback);
+                co_await engineerPrompt(currentPrompt, description, prompts().characterAppearance, assessment.feedback);
             }
 
 
@@ -167,9 +166,9 @@ Guidelines:
 
 # Characters
 
-<character name="Kuni">
+<character name="{}">
 {}
-</character name="Kuni">
+</character name="{}">
 
 # Desired photo description
 
@@ -184,7 +183,7 @@ Respond in JSON object format with the following fields:
 - "positivePrompt": string, positive prompt
 - "negativePrompt": string, negative prompt
 
-)"_format(appearancePrompt, safeDescription);
+)"_format(config().characterName, appearancePrompt, config().characterName, safeDescription);
 
     auto messages = [&] {
         AString message;

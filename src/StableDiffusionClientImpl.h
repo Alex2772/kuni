@@ -6,7 +6,7 @@
  *        with a Stable Diffusion WebUI API endpoint.
  */
 struct StableDiffusionClientImpl: IStableDiffusionClient {
-    Endpoint endpoint = config::ENDPOINT_SD;
+    Endpoint endpoint = config().sdEndpoint;
 
     AFuture<Txt2ImgResponse> txt2img(const Txt2ImgRequest& request) override;
     AFuture<> unloadCheckpoint() override;

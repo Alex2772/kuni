@@ -4,9 +4,9 @@
 
 #include "TelegramClientImpl.h"
 
+#include "config.h"
 #include "AUI/Common/ATimer.h"
 #include "AUI/Util/kAUI.h"
-#include "util/secrets.h"
 
 using namespace std::chrono_literals;
 
@@ -121,8 +121,8 @@ void TelegramClientImpl::commonHandler(td::tl::unique_ptr<td::td_api::Object> ob
                             parameters->use_message_database_ = true;
                             parameters->use_secret_chats_ = true;
 
-                            parameters->api_id_ = util::secrets()["telegram_api"]["id"].as_integer();
-                            parameters->api_hash_ = util::secrets()["telegram_api"]["hash"].as_string();
+                            parameters->api_id_ = config().telegramApiId;
+                            parameters->api_hash_ = config().telegramApiHash;
                             parameters->system_language_code_ = "en";
                             parameters->device_model_ = "Desktop";
                             parameters->application_version_ = AUI_PP_STRINGIZE(AUI_CMAKE_PROJECT_VERSION);

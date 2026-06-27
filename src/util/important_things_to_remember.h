@@ -57,7 +57,7 @@ AFuture<AString> importantThingsToRemember(IOpenAIChat& openAI, IOpenAIChat::Ses
     for (;;) {
         auto content = (co_await openAI.chat({
             .systemPrompt = AppBase::getSystemPrompt(),
-            .config = config::ENDPOINT_MAIN,
+            .config = config().llm,
         }, context)).choices.at(0).message.content;
         if (content.contains("tool_calls") || content.contains("ask")) {
             // deepseek bug - attempts to use DSML to make a tool call.

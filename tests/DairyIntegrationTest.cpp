@@ -146,11 +146,11 @@ TEST(DiaryIntegration, Query1) {
     async << [&]() -> AFuture<> {
         auto chat = _new<OpenAIChatImpl>();
         {
-            auto result = co_await diary.query(co_await chat->embedding({ .config = config::ENDPOINT_EMBEDDING }, "crypto"), {});
+            auto result = co_await diary.query(co_await chat->embedding({ .config = config().embedding }, "crypto"), {});
             EXPECT_TRUE(result.first().entry->freeformBody.contains("btc"));
         }
         {
-            auto result = co_await diary.query(co_await chat->embedding({ .config = config::ENDPOINT_EMBEDDING }, "John"), {});
+            auto result = co_await diary.query(co_await chat->embedding({ .config = config().embedding }, "John"), {});
             EXPECT_TRUE(result.last().entry->freeformBody.contains("btc"));
         }
     }();

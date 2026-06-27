@@ -57,23 +57,23 @@ AJson OpenAIChatImpl::makeQueryString(Params params, const IOpenAIChat::Session&
         { "session_id", messages.sessionId },
     };
 
-    if (config::TEMPERATURE) {
-        json["temperature"] = *config::TEMPERATURE;
+    if (config().llmTemperature) {
+        json["temperature"] = *config().llmTemperature;
     }
-    if (config::TOP_P) {
-        json["top_p"] = *config::TOP_P;
+    if (config().llmTopP) {
+        json["top_p"] = *config().llmTopP;
     }
-    if (config::TOP_K) {
-        json["top_k"] = *config::TOP_K;
+    if (config().llmTopK) {
+        json["top_k"] = *config().llmTopK;
     }
-    if (config::MIN_P) {
-        json["min_p"] = *config::MIN_P;
+    if (config().llmMinP) {
+        json["min_p"] = *config().llmMinP;
     }
-    if (config::PRESENCE_PENALTY) {
-        json["presence_penalty"] = *config::PRESENCE_PENALTY;
+    if (config().llmPresencePenalty) {
+        json["presence_penalty"] = *config().llmPresencePenalty;
     }
-    if (config::REPETITION_PENALTY) {
-        json["repeat_penalty"] = *config::REPETITION_PENALTY;
+    if (config().llmRepetitionPenalty) {
+        json["repeat_penalty"] = *config().llmRepetitionPenalty;
     }
     if (params.seed) {
         json["seed"] = *params.seed;
@@ -91,7 +91,7 @@ AFuture<AJson> OpenAIChatImpl::makeHttpRequest(Endpoint endpoint, std::string qu
     tryAgain:
     auto response = AJson::fromBuffer((co_await ACurl::Builder(endpoint.baseUrl + "chat/completions")
                                            .withMethod(ACurl::Method::HTTP_POST)
-                                           .withTimeout(config::REQUEST_TIMEOUT)
+                                           .withTimeout(Config::REQUEST_TIMEOUT)
                                            .withHeaders(headers)
                                            .withBody(query)
                                            .runAsync())
@@ -188,7 +188,7 @@ _<IOpenAIChat::StreamingResponse> OpenAIChatImpl::chatStreaming(Params params, I
         }
         auto httpResponse = co_await ACurl::Builder(params.config.endpoint.baseUrl + "chat/completions")
                                                .withMethod(ACurl::Method::HTTP_POST)
-                                               .withTimeout(config::REQUEST_TIMEOUT)
+                                               .withTimeout(Config::REQUEST_TIMEOUT)
                                                .withHeaders(std::move(headers))
                                                .withBody(query.toStdString())
                                                .withWriteCallback([&parseBuffer, &jsonTempBuffer](AByteBufferView buffer) -> size_t {
@@ -238,7 +238,7 @@ AFuture<std::valarray<double>> OpenAIChatImpl::embedding(Params params, AString 
     tryAgain:
     auto response = AJson::fromBuffer((co_await ACurl::Builder(params.config.endpoint.baseUrl + "embeddings")
                                            .withMethod(ACurl::Method::HTTP_POST)
-                                           .withTimeout(config::REQUEST_TIMEOUT)
+                                           .withTimeout(Config::REQUEST_TIMEOUT)
                                            .withHeaders(headers)
                                            .withBody(AJson::toString(AJson::Object{
                                                {"model", params.config.model},

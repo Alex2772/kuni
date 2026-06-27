@@ -7,7 +7,6 @@
 #include "AUI/Curl/ACurl.h"
 #include "AUI/Logging/ALogger.h"
 #include "config.h"
-#include "util/secrets.h"
 
 #include <range/v3/view/transform.hpp>
 
@@ -30,7 +29,7 @@ AFuture<AVector<web::Result>> web::search(AString query, int maxResults) {
     }
     AVector<AString> headers = {
         "Content-Type: application/json",
-        "Authorization: Bearer {}"_format(util::secrets()["ollama"]["bearer_key"].as_string()),
+        "Authorization: Bearer {}"_format(config().webSearchOllamaKey),
     };
     auto response = AJson::fromBuffer((co_await ACurl::Builder("https://ollama.com/api/web_search")
                                            .withMethod(ACurl::Method::HTTP_POST)

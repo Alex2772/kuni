@@ -59,7 +59,7 @@ namespace {
                 }
                 return true;
             };
-            queryEmbedding.raw = co_await chat->embedding({ .config = config::ENDPOINT_EMBEDDING }, query);
+            queryEmbedding.raw = co_await chat->embedding({ .config = config().embedding }, query);
             queryEmbedding.notify();
             queriedEntries = co_await diary.raw.query(queryEmbedding, { .confidenceFactor = 0.f, .filter = filter });
         }

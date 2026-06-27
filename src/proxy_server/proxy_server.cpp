@@ -28,6 +28,7 @@
 #include "util/openai_streaming.h"
 #include "streaming_filter.h"
 #include "message_injector.h"
+#include "prompts.h"
 #include "AUI/Thread/AEventLoop.h"
 #include "util/await_synchronously.h"
 
@@ -336,7 +337,7 @@ What do I know about them and songs? Do they participate in a band? Which songs 
 
 Example: User says "привет" → no need for #ask, just greet back.
 </instructions>
-)" + AppBase::getSystemPrompt();
+)" + prompts().characterBase;
 
                 // insert hidden messages (tool calls belonging to proxy server)
                 service->requestJson["messages"] = messageInjector.merge(std::move(service->requestJson["messages"].asArray()));

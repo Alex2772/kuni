@@ -5,7 +5,6 @@
 #include "record_audio.h"
 
 #include "VoiceGenerator.h"
-#include "util/secrets.h"
 
 OpenAITools::Tool tools::recordAudio() {
     return {
@@ -33,12 +32,7 @@ OpenAITools::Tool tools::recordAudio() {
                 throw AException("Skip introductions in voice message. Instead, send the message content directly. For example, if you want to say \"Kuni says hello in a playful tone\" in a voice message, just send \"hello\".");
             }
 
-            auto ttsApiKey = util::secrets()["elevenlabs"]["api_key"].as_string();
-            AString voiceId = "pPdl9cQBQq4p6mRkZy2Z";
-            if (util::secrets()["elevenlabs"].contains("voice_id")) {
-                voiceId = util::secrets()["elevenlabs"]["voice_id"].as_string();
-            }
-            VoiceGenerator generator(ttsApiKey, voiceId);
+            VoiceGenerator generator(config().recordVoiceElevenLabsKey, config().recordVoiceElevenLabsVoice);
             auto voiceMessage = co_await generator.generate(audioDesc, "ru", 1.2);
 
             co_return "Filename: {}"_format(voiceMessage.path.filename());

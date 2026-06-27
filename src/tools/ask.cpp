@@ -5,6 +5,7 @@
 #include "ask.h"
 
 #include "AppBase.h"
+#include "prompts.h"
 
 #include <WebSearch.h>
 #include <range/v3/all.hpp>
@@ -13,7 +14,7 @@ static constexpr auto LOG_TAG = "ask";
 
 static AFuture<AString>
 queryDiary(IOpenAIChat& openAI, Diary& diary, ASet<AString> includedIds, const AString& cue, const Diary::QueryOpts& opts) {
-    auto diaryResponse = co_await diary.query(co_await openAI.embedding({ .config = config::ENDPOINT_EMBEDDING }, cue), [&] {
+    auto diaryResponse = co_await diary.query(co_await openAI.embedding({ .config = config().embedding }, cue), [&] {
         auto optsCopy = opts;
         optsCopy.maxEntryCount *= 10;
         return optsCopy;
@@ -52,6 +53,9 @@ queryDiary(IOpenAIChat& openAI, Diary& diary, ASet<AString> includedIds, const A
 }
 
 static AFuture<AString> queryWeb(const AString& cue) {
+    if (!config().capabilityWebSearch) {
+        co_return "No web search available";
+    }
     AString out;
 
     auto webResponse = co_await web::search(cue);
@@ -113,7 +117,7 @@ static AFuture<AString> ask(IOpenAIChat& openAI, Diary& diary, const AString& qu
     IOpenAIChat::Session messages = {
         IOpenAIChat::Message {
           .role = IOpenAIChat::Message::Role::USER,
-          .content = "<character>\n{}\n</character>\n\n{}"_format(AppBase::getSystemPrompt(), query),
+          .content = "<character>\n{}\n</character>\n\n{}"_format(prompts().characterBase, query),
         },
     };
     messages.sessionId = "ask";
@@ -137,7 +141,7 @@ Do not alter facts.
 
 Do not make up facts. Rely exclusively on provided context.
 )",
-                   .config =  config::ENDPOINT_ASK_TOOL,
+                   .config =  config().llm,
                    .tools = tools.asJson(),
                  },
                  messages))

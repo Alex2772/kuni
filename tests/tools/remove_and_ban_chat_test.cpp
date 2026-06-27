@@ -45,7 +45,7 @@ TEST(RemoveAndBanChatTest, PapikChatIdReturnsFailed) {
     OpenAITools tools{};
     auto result = util::await_synchronously(tool.handler({
         .tools = tools,
-        .args = AJson::Object{{"chat_id", config::PAPIK_CHAT_ID}},
+        .args = AJson::Object{{"chat_id", config().papikChatId}},
         .allToolCalls = {},
     }));
 

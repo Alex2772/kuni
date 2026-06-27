@@ -317,9 +317,9 @@ TEST(OpenAIChatIntegration, Embeddings) {
     AAsyncHolder async;
     async << []() -> AFuture<> {
         auto session = _new<OpenAIChatImpl>();
-        auto arcWarden = co_await session->embedding({ .config = config::ENDPOINT_EMBEDDING }, "Arc Warden");
-        auto dota = co_await session->embedding({ .config = config::ENDPOINT_EMBEDDING }, "Dota");
-        auto fart = co_await session->embedding({ .config = config::ENDPOINT_EMBEDDING }, "fart");
+        auto arcWarden = co_await session->embedding({ .config = config().embedding }, "Arc Warden");
+        auto dota = co_await session->embedding({ .config = config().embedding }, "Dota");
+        auto fart = co_await session->embedding({ .config = config().embedding }, "fart");
         auto isDota = util::cosine_similarity(arcWarden, dota);
         auto isFart = util::cosine_similarity(arcWarden, fart);
         EXPECT_GT(isDota, isFart) << "Arc Warden should be Dota hero";

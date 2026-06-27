@@ -300,7 +300,7 @@ TEST_F(ContextBridgeTest, ProcessMessagePapikFlushesAndPrepends) {
     bridge->collectRequestToLLM(makeRequest({"some request about work"}));
 
     td::td_api::chat chat;
-    chat.id_ = config::PAPIK_CHAT_ID;
+    chat.id_ = config().papikChatId;
     td::td_api::message msg;
     // set msg.date_ to "now" so collectAndSaveSessionsNotNewerThan(from_time_t(now)) flushes
     msg.date_ = static_cast<int32_t>(

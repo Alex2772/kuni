@@ -111,7 +111,7 @@ OpenAITools::Tool tools::stickers::send(_<ITelegramClient> telegram, _<td::td_ap
 
             if (! co_await util::isAccessibleFromLockdown(*telegram, chat->id_)) {
                 ALogger::err(LOG_TAG) << "Lockdown mode is enabled. You can only send messages to chat with ID {} (PAPIK_CHAT_ID)."_format(
-                    config::PAPIK_CHAT_ID);
+                    config().papikChatId);
                 co_return "Error: lockdown mode is enabled.";
             }
 

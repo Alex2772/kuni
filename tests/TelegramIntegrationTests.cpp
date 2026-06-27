@@ -26,7 +26,7 @@ TEST(TelegramIntegration, PostMessage) {
     [](_<ITelegramClient> telegram, AEventLoop& loop) -> AFuture<> {
         try {
             co_await telegram->waitForConnection();
-            co_await util::telegramPostMessage(*telegram, config::PAPIK_CHAT_ID, "Hello");
+            co_await util::telegramPostMessage(*telegram, config().papikChatId, "Hello");
         } catch (const AException& e) {
             ALogger::err("TelegramTests") << "Unhandled exception: " << e;
             GTEST_NONFATAL_FAILURE_("Unhandled exception");

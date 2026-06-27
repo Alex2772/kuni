@@ -34,7 +34,7 @@ AFuture<> proxy_server::ContextBridge::update() {
 AFuture<AString> proxy_server::ContextBridge::processChatHistoryMessage(
     const td::td_api::chat& chat, const td::td_api::message& msg, AString formatted) {
     try {
-        if (chat.id_ != config::PAPIK_CHAT_ID) {
+        if (chat.id_ != config().papikChatId) {
             // early return - this feature is locked down to the papik only.
             co_return formatted;
         }
@@ -70,7 +70,7 @@ AFuture<AVector<AString>> proxy_server::ContextBridge::collectAndSaveSessionsNot
         session["stream"] = false;
         session["messages"].asArray() << aui::to_json(IOpenAIChat::Message {
             .role = IOpenAIChat::Message::Role::USER,
-            .content = config::DIARY_PROMPT,
+            .content = prompts().diarySave,
         });
         session.asObject().removeIf([](const auto& pair) {
             return pair.first == "tools";
