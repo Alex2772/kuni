@@ -17,9 +17,9 @@ TEST(ImageGeneratorIntegration, Generate)
 
     async << []() -> AFuture<> {
         auto sdClient = _new<StableDiffusionClientImpl>();
-        sdClient->endpoint = config::ENDPOINT_SD;
+        sdClient->endpoint = config().sdEndpoint;
         IOpenAIChat::Params chatParams{
-            .config = config::ENDPOINT_PHOTO_TO_TEXT,
+            .config = config().llmImageToText,
         };
 
         ImageGenerator generator(std::move(sdClient), _new<OpenAIChatImpl>(), std::move(chatParams));

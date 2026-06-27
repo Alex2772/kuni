@@ -20,7 +20,7 @@ TEST(StableDiffusionIntegrationClient, Txt2Img)
 
     async << []() -> AFuture<> {
         auto client = _new<StableDiffusionClientImpl>();
-        client->endpoint = config::ENDPOINT_SD;
+        client->endpoint = config().sdEndpoint;
 
         try {
             auto response = co_await client->txt2img({
