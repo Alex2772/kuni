@@ -217,12 +217,26 @@ In my deployment, I use local vision models to process visual information. (24GB
 
 You will need a server or an always-on PC to host Kuni instance (hosting your own catgirl is an expensive hobby).
 
-You can tinker with my setup by adjusting `docker-compose.yml`, `ollama_setup.sh` and `src/config.h`.
+You can tinker with my setup by adjusting `docker-compose.yml`, `ollama_setup.sh` and `config.toml`.
 
 
-### 4. Adjust Secrets File
+### 4. Populate `config.toml`
 
-Update `data/secrets.toml` and restart the program.
+On the first run, Kuni will generate a `config.toml` file in the working directory and exit, asking you to fill it in.
+Open it and populate at minimum the `[general]` section:
+
+```toml
+[general]
+character_name = "Kuni"          # your character's name
+character_nickname = "@kunii_chan"
+papik_name = "Alex2772"          # your nickname — the instance owner
+papik_chat_id = 625207005        # your Telegram user ID
+telegram_api_id = 0              # get from https://my.telegram.org
+telegram_api_hash = ""           # get from https://my.telegram.org
+```
+
+All other sections (`[capabilities]`, `[misc]`) are optional and come with inline comments explaining each field.
+The file is **hot-reloaded** — Kuni picks up changes without a restart.
 
 ## Run Instructions
 
@@ -268,11 +282,27 @@ cd build/bin
 - `CMakeLists.txt` - Build configuration
 - `docker-compose.yml` - AI services configuration
 - `ollama_setup.sh` - Ollama startup script
-- `src/config.h` - System prompt and configuration
+- `config.toml` - Runtime configuration and secrets (created on first run, **hot-reloaded**)
 - `character_base.md` - Character personality and background definition (created on first run)
 - `character_appearance.md` - Character visual description and Stable Diffusion prompts (created on first run)
 
-## Character Configuration
+## Customizing character
+
+### `config.toml` — name and owner
+
+The quickest way to rename your instance or set yourself as the owner is via `config.toml`:
+
+```toml
+[general]
+character_name = "Kuni"     # the name the character uses for herself
+character_nickname = "@kunii_chan"
+papik_name = "Alex2772"     # the instance owner's nickname
+papik_chat_id = 625207005   # the instance owner's Telegram user ID
+```
+
+Changes are picked up **without a rebuild or restart** — Kuni hot-reloads `config.toml` automatically.
+
+### Character prompt files
 
 Kuni uses two character definition files that are automatically created on first run:
 
@@ -470,12 +500,12 @@ The dashboard includes:
 
 ## Q: How can I rename my Kuni instance?
 
-A: replace `Kuni` with `CuteAnimeGirlName` across whole project, including `character_base.md` and `character_appearance.md`. Rebuild and restart.
+A: Set `character_name = "CuteAnimeGirlName"` in `config.toml` (hot-reloaded, no rebuild needed). Also update `character_base.md` and `character_appearance.md` to reflect the new name in the character's self-description.
 
 
 ## Q: How can I make my Kuni treat me as her creator?
 
-A: replace `Alex2772` with `YourNerdyNickname` across whole project, including `character_base.md` and `character_appearance.md`. Rebuild and restart.
+A: Set `papik_name = "YourNerdyNickname"` and `papik_chat_id = <your Telegram user ID>` in `config.toml`. Also update `character_base.md` and `character_appearance.md` to mention your nickname.
 
 ## Q: Can I disable some of her functionality, i.e. stable diffusion and web search?
 
