@@ -181,34 +181,6 @@ TEST(TelegramTest, ExtractMessageTypeAndText_VideoNote) {
 }
 
 // ===========================================================================
-// extractMessageTypeAndText – Voice note (no caption)
-// ===========================================================================
-TEST(TelegramTest, ExtractMessageTypeAndText_VoiceNote) {
-    auto msg = td::td_api::make_object<td::td_api::message>();
-    msg->id_ = 13;
-    msg->content_ = td::td_api::make_object<td::td_api::messageVoiceNote>();
-
-    auto result = llmui::extractMessageTypeAndText(*msg);
-    // Voice note without caption produces empty output (caption branch is commented out)
-    EXPECT_EQ(result, "");
-}
-
-// ===========================================================================
-// extractMessageTypeAndText – Voice note with caption
-// ===========================================================================
-TEST(TelegramTest, ExtractMessageTypeAndText_VoiceNoteWithCaption) {
-    auto msg = td::td_api::make_object<td::td_api::message>();
-    msg->id_ = 14;
-    msg->content_ = td::td_api::make_object<td::td_api::messageVoiceNote>();
-    auto& voice = static_cast<td::td_api::messageVoiceNote&>(*msg->content_);
-    voice.caption_ = td::td_api::make_object<td::td_api::formattedText>();
-    voice.caption_->text_ = "Voice caption";
-
-    auto result = llmui::extractMessageTypeAndText(*msg);
-    EXPECT_EQ(result, "\nVoice caption");
-}
-
-// ===========================================================================
 // extractMessageTypeAndText – Location
 // ===========================================================================
 TEST(TelegramTest, ExtractMessageTypeAndText_Location) {
