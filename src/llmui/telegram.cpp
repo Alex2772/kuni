@@ -8,6 +8,8 @@
 #include "config.h"
 #include "image.h"
 #include "malicious_payloads.h"
+#include "telegram_video_messages.h"
+#include "telegram_voice_messages.h"
 #include "AUI/Util/kAUI.h"
 #include "tools/stickers.h"
 #include "util/is_accessible_from_lockdown.h"
@@ -165,7 +167,7 @@ AString llmui::extractMessageTypeAndText(td::td_api::message& msg) {
           },
           [&](td::td_api::messageVideoNote&) { out += "[video note]"; },
           [&](td::td_api::messageVoiceNote& voice) {
-              //   out += "[voice message]";
+              out += "[voice message]";
               if (voice.caption_) {
                   checkForMaliciousPayloads(voice.caption_->text_);
                   out += "\n" + voice.caption_->text_;
@@ -537,7 +539,14 @@ AFuture<AString> llmui::formatChatHistoryMessage(
         if (msg.content_->get_id() == td::td_api::messageVoiceNote::ID) {
             auto& voiceNote = static_cast<td::td_api::messageVoiceNote&>(*msg.content_);
             if (voiceNote.voice_note_) {
-                result += co_await llmui::voiceMessage(co_await fetchMedia(telegram, voiceNote.voice_note_->voice_));
+                result += co_await llmui::voiceMessageTranscription(telegram, voiceNote, msg.chat_id_, msg.id_);
+            }
+        }
+
+        if (msg.content_->get_id() == td::td_api::messageVideoNote::ID) {
+            auto& videoNote = static_cast<td::td_api::messageVideoNote&>(*msg.content_);
+            if (videoNote.video_note_) {
+                result += co_await llmui::videoNoteTranscription(telegram, videoNote, msg.chat_id_, msg.id_);
             }
         }
     }

@@ -81,9 +81,11 @@ public:
     App(_<ITelegramClient> telegram, _<IOpenAIChat> openAI)
       : AppBase({ .workingDir = "data", .openAI = std::move(openAI) }), mTelegram(std::move(telegram)) {
         ALOG_TRACE(LOG_TAG) << "App::App";
-        mTelegram->onEvent = [this](td::td_api::object_ptr<td::td_api::Object> event) {
-            td::td_api::downcast_call(*event, [this](auto& u) { mAsync << this->handleTelegramEvent(std::move(u)); });
-        };
+        connect(mTelegram->onEvent, [this](AArc<const td::td_api::Object> event) {
+            td::td_api::downcast_call(const_cast<td::td_api::Object&>(*event), [this](const auto& u) {
+                mAsync << this->handleTelegramEvent(u);
+            });
+        });
     }
 
     [[nodiscard]] _<ITelegramClient> telegram() const { return mTelegram; }
@@ -219,7 +221,7 @@ private:
         }
     }
 
-    AFuture<> handleTelegramEvent(auto u) {
+    AFuture<> handleTelegramEvent(const auto& u) {
         TelegramClientImpl::StubHandler {}(u);
         co_return;
     }
@@ -242,14 +244,11 @@ private:
         co_return std::nullopt;
     }
 
-    AFuture<> handleTelegramEvent(td::td_api::updateNewMessage u) {
+    AFuture<> handleTelegramEvent(const td::td_api::updateNewMessage& u) {
         int64_t userId = 0;
-        td::td_api::downcast_call(
-            *u.message_->sender_id_,
-            aui::lambda_overloaded {
-              [&](td::td_api::messageSenderUser& user) { userId = user.user_id_; },
-              [&](auto&) {},
-            });
+        if (auto user = ITelegramClient::tryCastTo<const td::td_api::messageSenderUser>(*u.message_->sender_id_)) {
+            userId = user->user_id_;
+        }
         if (userId == mTelegram->myId()) {
             co_return;
         }
@@ -288,7 +287,7 @@ private:
         auto notification = "<notification chat_id=\"{}\">\n"_format(chat->id_);
 
         if (userId == u.message_->chat_id_) {
-            if (auto cmdResponse = co_await tryHandleCmd(userId, llmui::extractMessageTypeAndText(*u.message_))) {
+            if (auto cmdResponse = co_await tryHandleCmd(userId, llmui::extractMessageTypeAndText(const_cast<td::td_api::message&>(*u.message_)))) {
                 co_await util::telegramPostMessage(*telegram(), userId, std::move(*cmdResponse), std::nullopt, std::nullopt, u.message_->id_);
                 co_return;
             }

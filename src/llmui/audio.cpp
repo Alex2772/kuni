@@ -13,6 +13,9 @@ static constexpr auto LOG_TAG = "llmui";
 
 AFuture<AString> llmui::voiceMessage(AStringView pathToVoice) {
     ALOG_TRACE(LOG_TAG) << "voiceMessage pathToVoice=" << pathToVoice;
+    if (!config().capabilityHearing) {
+        co_return "";
+    }
     try {
         AJson payload;
         payload["model"] = config().llmAudioToText.model;

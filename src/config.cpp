@@ -171,7 +171,7 @@ static const std::unordered_map<AStringView, AStringView> CONFIG_COMMENTS = {
     },
     {
       "capabilities.hearing.enabled",
-      "Whether Kuni can listen to voice messages.",
+      "Whether Kuni can listen to voice messages if telegram premium is not available.",
     },
     {
       "misc.wake_up_on_pinned_chat",

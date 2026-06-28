@@ -60,11 +60,17 @@ struct ITelegramClient {
 
     [[nodiscard]] virtual int64_t myId() const = 0;
 
-    std::function<void(Object)> onEvent = [](Object o) {};
-
     template<typename T>
     static td::td_api::object_ptr<T> toPtr(T&& t) {
         return td::td_api::make_object<T>(std::forward<T>(t));
+    }
+
+    template<aui::derived_from<td::td_api::Object> To, aui::derived_from<td::td_api::Object> From>
+    static AOptional<To&> tryCastTo(From& from) {
+        if (from.get_id() == To::ID) {
+            return static_cast<To&>(from);
+        }
+        return std::nullopt;
     }
 
     enum class ConnectionState {
@@ -78,6 +84,13 @@ struct ITelegramClient {
 
     emits<> loggedIn;
 
+    /**
+     * @brief Broadcasts events received from tdlib.
+     * @details
+     * The object is const by intention to avoid accidental modification/corruption of the event data.
+     */
+    emits<AArc<const td::td_api::Object>> onEvent;
+
 
 protected:
     template<typename TgObject>
@@ -85,4 +98,5 @@ protected:
     Cache<td::td_api::chat> mChatCache;
     Cache<td::td_api::user> mUserCache;
     AMap<int64_t /* chatId */, Cache<td::td_api::message>> mMessageCache;
+
 };
