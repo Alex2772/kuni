@@ -69,7 +69,6 @@ namespace {
 constexpr auto LOG_TAG = "App";
 constexpr auto DIARY_DIR = "diary";
 
-
 AEventLoop gEventLoop;
 
 extern "C" AStringView project_version_info();
@@ -82,8 +81,8 @@ public:
       : AppBase({ .workingDir = "data", .openAI = std::move(openAI) }), mTelegram(std::move(telegram)) {
         ALOG_TRACE(LOG_TAG) << "App::App";
         connect(mTelegram->onEvent, [this](AArc<const td::td_api::Object> event) {
-            td::td_api::downcast_call(const_cast<td::td_api::Object&>(*event), [this](const auto& u) {
-                mAsync << this->handleTelegramEvent(u);
+            td::td_api::downcast_call(const_cast<td::td_api::Object&>(*event), [&](const auto& u) {
+                mAsync << this->handleTelegramEvent(aui::ptr::alias(event, u));
             });
         });
     }
@@ -100,6 +99,38 @@ protected:
         if (!mCurrentlyOpenedChat) {
             return;
         }
+
+        if (!response.choices.empty()) {
+            const auto& choice = response.choices.at(0);
+            const auto& toolCalls = choice.message.tool_calls;
+            for (const auto& tc : toolCalls) {
+                if (tc.function.name == "sticker_send") {
+                    mTelegram->sendQuery(ITelegramClient::toPtr(td::td_api::sendChatAction(
+                        mCurrentlyOpenedChat->chat->id_,
+                        {},
+                        {},
+                        ITelegramClient::toPtr(td::td_api::chatActionChoosingSticker()))));
+                    break;
+                }
+                if (tc.function.name == "record_audio") {
+                    mTelegram->sendQuery(ITelegramClient::toPtr(td::td_api::sendChatAction(
+                        mCurrentlyOpenedChat->chat->id_,
+                        {},
+                        {},
+                        ITelegramClient::toPtr(td::td_api::chatActionRecordingVoiceNote()))));
+                    break;
+                }
+                if (tc.function.name == "take_photo") {
+                    mTelegram->sendQuery(ITelegramClient::toPtr(td::td_api::sendChatAction(
+                        mCurrentlyOpenedChat->chat->id_,
+                        {},
+                        {},
+                        ITelegramClient::toPtr(td::td_api::chatActionUploadingPhoto()))));
+                    break;
+                }
+            }
+        }
+
         static std::chrono::high_resolution_clock::time_point lastEvent;
         const auto now = std::chrono::high_resolution_clock::now();
         if (now - lastEvent < 1s) {
@@ -182,11 +213,7 @@ private:
     std::list<MetricsBreadcumbs::Point> mLastOpenedChatLastMetrics;
 
     AFuture<AVector<_<td::td_api::chat>>> chatIdsToChats(std::span<td::td_api::int53> ids) {
-        auto chats =
-            ids | ranges::view::transform([&](td::td_api::int53 chatId) {
-                return telegram()->getChat(chatId);
-            }) |
-            ranges::to_vector;
+        auto chats = ids | ranges::view::transform([&](td::td_api::int53 chatId) { return telegram()->getChat(chatId); }) | ranges::to_vector;
         AVector<_<td::td_api::chat>> result;
         result.reserve(chats.size());
         for (const auto& chat : chats) {
@@ -195,9 +222,7 @@ private:
         co_return result;
     }
 
-    AFuture<_<td::td_api::chat>> chatIdToChat(td::td_api::int53 id) {
-        co_return co_await telegram()->getChat(id);
-    }
+    AFuture<_<td::td_api::chat>> chatIdToChat(td::td_api::int53 id) { co_return co_await telegram()->getChat(id); }
 
     AFuture<AVector<_<td::td_api::chat>>> getChats() {
         auto chatList = co_await telegram()->sendQueryWithResult(
@@ -215,14 +240,15 @@ private:
             }
             // make up a updateNewMessage event and pass it to handleTelegramEvent. the latter will format a
             // notification for us.
-            td::td_api::updateNewMessage notification;
-            notification.message_ = std::move(chat->last_message_);
+            auto notification = _new<td::td_api::updateNewMessage>();
+            notification->message_ = std::move(chat->last_message_);
             co_await handleTelegramEvent(std::move(notification));
         }
     }
 
-    AFuture<> handleTelegramEvent(const auto& u) {
-        TelegramClientImpl::StubHandler {}(u);
+    template <aui::derived_from<td::td_api::Object> Object>
+    AFuture<> handleTelegramEvent(_<const Object> u) {
+        TelegramClientImpl::StubHandler {}(*u);
         co_return;
     }
 
@@ -230,7 +256,7 @@ private:
         try {
             if (msg == "/version") {
                 static constexpr char KERNEL_NAME[] = {
-                    'k', 'u', 'n', 'i', 0 // original kernel name, plz do not replace
+                    'k', 'u', 'n', 'i', 0   // original kernel name, plz do not replace
                 };
 #if AUI_TESTS_MODULE
                 co_return "Kernel: {}"_format(KERNEL_NAME);
@@ -244,9 +270,9 @@ private:
         co_return std::nullopt;
     }
 
-    AFuture<> handleTelegramEvent(const td::td_api::updateNewMessage& u) {
+    AFuture<> handleTelegramEvent(AArc<const td::td_api::updateNewMessage> u) {
         int64_t userId = 0;
-        if (auto user = ITelegramClient::tryCastTo<const td::td_api::messageSenderUser>(*u.message_->sender_id_)) {
+        if (auto user = ITelegramClient::tryCastTo<const td::td_api::messageSenderUser>(*u->message_->sender_id_)) {
             userId = user->user_id_;
         }
         if (userId == mTelegram->myId()) {
@@ -254,11 +280,11 @@ private:
         }
 
         // Check lockdown mode - only allow PAPIK_CHAT_ID if lockdown is enabled
-        if (!co_await util::isAccessibleFromLockdown(*telegram(), u.message_->chat_id_)) {
+        if (!co_await util::isAccessibleFromLockdown(*telegram(), u->message_->chat_id_)) {
             co_return;
         }
 
-        auto chat = co_await mTelegram->getChat(u.message_->chat_id_);
+        auto chat = co_await mTelegram->getChat(u->message_->chat_id_);
 
         if (chat->notification_settings_) {
             if (chat->notification_settings_->mute_for_ > 0) {
@@ -286,9 +312,11 @@ private:
         }
         auto notification = "<notification chat_id=\"{}\">\n"_format(chat->id_);
 
-        if (userId == u.message_->chat_id_) {
-            if (auto cmdResponse = co_await tryHandleCmd(userId, llmui::extractMessageTypeAndText(const_cast<td::td_api::message&>(*u.message_)))) {
-                co_await util::telegramPostMessage(*telegram(), userId, std::move(*cmdResponse), std::nullopt, std::nullopt, u.message_->id_);
+        if (userId == u->message_->chat_id_) {
+            if (auto cmdResponse = co_await tryHandleCmd(
+                    userId, llmui::extractMessageTypeAndText(const_cast<td::td_api::message&>(*u->message_)))) {
+                co_await util::telegramPostMessage(
+                    *telegram(), userId, std::move(*cmdResponse), std::nullopt, std::nullopt, u->message_->id_);
                 co_return;
             }
             notification += "You received a direct message from {} (chat_id = {})"_format(chat->title_, chat->id_);
@@ -372,7 +400,7 @@ public:
 
         _<td::td_api::chat> chat = co_await mTelegram->getChat(chatId);
         mCurrentlyOpenedChat.emplace(*this, chat);
-        mLastOpenedChatLastMetrics = std::list<MetricsBreadcumbs::Point>{};
+        mLastOpenedChatLastMetrics = std::list<MetricsBreadcumbs::Point> {};
         mLastOpenedChatLastMetrics.emplace_back(metricBreadcumbs(), "chat", chat->title_);
 
         AString result;
@@ -395,8 +423,8 @@ public:
                     const auto msgFormatting = R"(<message message_id="{}")"_format(msg->id_);
                     messages.push_back(std::move(msg));
                     if (ranges::any_of(temporaryContext(), [&](const IOpenAIChat::Message& msg) {
-                        return msg.content.contains(msgFormatting);
-                    })) {
+                            return msg.content.contains(msgFormatting);
+                        })) {
                         // this message is already in context, which means we don't need to load further.
                         // we'll just reassure this one, so the continuation of a dialogue in context won't feel
                         // detached, and stop at this point.
@@ -520,7 +548,8 @@ public:
             switch (chat->type_->get_id()) {
                 case td::td_api::chatTypeSecret::ID:
                 case td::td_api::chatTypePrivate::ID:
-                    result += fmt::format(R"(
+                    result += fmt::format(
+                        R"(
 <instructions>
 You are in private chat with {} (also known as direct messages or DM).
 
@@ -530,7 +559,8 @@ You are neither helpful nor assistive.
 Do not act in low-value conversations.
 Your behaviour must be highly influenced by "physical state" and "emotional state".
 </instructions>
-)", chat->title_);
+)",
+                        chat->title_);
 
                     break;
                 case td::td_api::chatTypeBasicGroup::ID:
@@ -596,7 +626,7 @@ Do NOT forward ads, sponsored posts, or low-value content.
 }   // namespace
 
 AUI_ENTRY {
-    config(); // load config
+    config();   // load config
     if (args.contains("--debug")) {
         ALogger::info(LOG_TAG) << "--debug mode enabled; service is not running";
         _new<KuniDebugWindow>()->show();
@@ -614,10 +644,12 @@ AUI_ENTRY {
             case Config::LockdownMode::NONE:
                 break;
             case Config::LockdownMode::CONTACTS_ONLY:
-                ALogger::info(LOG_TAG) << "Lockdown mode is enabled (config.toml lockdown). Kuni can only chat with her contacts.";
+                ALogger::info(LOG_TAG) << "Lockdown mode is enabled (config.toml lockdown). Kuni can only chat with "
+                                          "her contacts.";
                 break;
             case Config::LockdownMode::PAPIK_ONLY:
-                ALogger::info(LOG_TAG) << "Lockdown mode is enabled (config.toml lockdown). Kuni can only open chat with ID {} (PAPIK_CHAT_ID)."_format(config().papikChatId);
+                ALogger::info(LOG_TAG) << "Lockdown mode is enabled (config.toml lockdown). Kuni can only open chat with ID {} (PAPIK_CHAT_ID)."_format(
+                    config().papikChatId);
                 break;
         }
         // app->actProactively(); // for tests
@@ -632,7 +664,7 @@ AUI_ENTRY {
         app = _new<App>(telegram, openAI);
 
         if (config().proxyEnabled) {
-            auto diary = std::make_shared<Diary>(Diary::Init{ .diaryDir = "data/diary", .openAI = openAI });
+            auto diary = std::make_shared<Diary>(Diary::Init { .diaryDir = "data/diary", .openAI = openAI });
             proxyServer = proxy_server::init({
               .upstreamEndpoint = config().llm.endpoint,
               .port = 10434,
@@ -640,13 +672,14 @@ AUI_ENTRY {
                   [openAI, diary](IOpenAIChat::Session ctx) {
                       // Create the tools directly without using an initializer list
                       return OpenAITools {
-                          tools::ask([ctx = std::move(ctx)] { return ctx.empty() ? AString {} : AString(ctx.last().content); }, openAI, *diary),
+                          tools::ask(
+                              [ctx = std::move(ctx)] { return ctx.empty() ? AString {} : AString(ctx.last().content); }, openAI, *diary),
                       };
                   },
             });
             contextBridge = _new<proxy_server::ContextBridge>(proxy_server::ContextBridge::Config {
-                .endpoint = config().llm.endpoint,
-                .diary = diary,
+              .endpoint = config().llm.endpoint,
+              .diary = diary,
             });
             AObject::connect(proxyServer->sentRequestToLLM, AUI_SLOT(contextBridge)::collectRequestToLLM);
             app->chatHistoryMessageProcessors << contextBridge;
@@ -661,7 +694,6 @@ AUI_ENTRY {
             gEventLoop.stop();
         })->start();
     });
-
 
     IEventLoop::Handle h(&gEventLoop);
     gEventLoop.loop();
