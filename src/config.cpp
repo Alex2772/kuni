@@ -178,7 +178,7 @@ static const std::unordered_map<AStringView, AStringView> CONFIG_COMMENTS = {
       "Stable diffusion checkpoint. https://civitai.com/models/376130/nova-anime-xl",
     },
     {
-      "capabilities.web_search",
+      "capabilities.web_search.enabled",
       "Whether Kuni can use web search.",
     },
     {
@@ -192,7 +192,7 @@ static const std::unordered_map<AStringView, AStringView> CONFIG_COMMENTS = {
       "This defaults to false to avoid using Kuni as spam bot.",
     },
     {
-      "capabilities.use_stickers",
+      "capabilities.use_stickers.enabled",
       "Allows Kuni to save and send stickers. Requires `vision` capability.",
     },
     {
@@ -206,6 +206,143 @@ static const std::unordered_map<AStringView, AStringView> CONFIG_COMMENTS = {
       "\n"
       "The instance owner (also known as PAPIK) can pin chats from Kuni's Telegram account with his friends so Kuni's\n"
       "tokens preservation mechanisms (sleep) are not applied to them.",
+    },
+    {
+      "misc.randomly_go_sleep",
+      "If true, Kuni will randomly go to sleep after some time of inactivity to save LLM tokens.\n"
+      "While sleeping, Kuni won't respond to messages (except from papik_chat_id).\n",
+    },
+    {
+      "misc.tool_reminder_probability",
+      "Probability (0.0-1.0) that Kuni will be reminded about available tools in a given message.\n"
+      "Helps prevent Kuni from forgetting she has tools like record audio or photo generation.",
+    },
+    {
+      "misc.diary_token_count_trigger",
+      "When the conversation context exceeds this token count, Kuni dumps her memory to the diary\n"
+      "and restarts with a clean context. Keeps context window usage under control.\n"
+      "Requires context window >= this value + some headroom.",
+    },
+    {
+      "misc.diary_injection_max_length",
+      "Maximum number of tokens injected from diary into the context per message.\n"
+      "0 means unlimited. Tune this if diary recall is too verbose.",
+    },
+    {
+      "misc.diary_plagiarism_threshold",
+      "Cosine similarity threshold (0.0-1.0) above which a new diary entry is considered a duplicate\n"
+      "of an existing one and will not be saved. Prevents redundant diary entries.",
+    },
+    {
+      "misc.diary_min_relatedness",
+      "Minimum cosine similarity (0.0-1.0) for a diary entry to be injected into context.\n"
+      "Higher values = only very relevant memories are recalled.",
+    },
+    {
+      "misc.chat_max_history_length",
+      "Maximum number of messages kept in the in-memory chat history per chat.\n"
+      "Older messages beyond this limit are dropped from the active context.",
+    },
+    {
+      "misc.llm_temperature",
+      "LLM sampling temperature. Higher = more creative/random, lower = more deterministic.\n"
+      "\"none\" to use the model's default.",
+    },
+    {
+      "misc.llm_top_p",
+      "LLM nucleus sampling (top-p). Limits token selection to the top cumulative probability mass.\n"
+      "\"none\" to use the model's default.",
+    },
+    {
+      "misc.llm_top_k",
+      "LLM top-k sampling. Limits token selection to the k most likely tokens.\n"
+      "\"none\" to use the model's default.",
+    },
+    {
+      "misc.llm_min_p",
+      "LLM min-p sampling. Filters tokens below a minimum probability relative to the top token.\n"
+      "\"none\" to use the model's default.",
+    },
+    {
+      "misc.presence_penalty",
+      "LLM presence penalty. Positive values discourage the model from repeating topics already mentioned.\n"
+      "\"none\" to use the model's default.",
+    },
+    {
+      "misc.repetition_penalty",
+      "LLM repetition penalty. Values > 1.0 penalize repeated tokens.\n"
+      "\"none\" to use the model's default.",
+    },
+    {
+      "misc.anti_repeat_trigger_max",
+      "Maximum cosine similarity threshold for the anti-repeat mechanism.\n"
+      "If the new response is too similar to a recent one (above this threshold), it is regenerated.",
+    },
+    {
+      "misc.anti_repeat_trigger_avg",
+      "Average cosine similarity threshold for the anti-repeat mechanism.\n"
+      "Works together with anti_repeat_trigger_max to detect repetitive responses.",
+    },
+    {
+      "misc.anti_repeat_max_history",
+      "Number of recent responses kept in history for the anti-repeat similarity check.",
+    },
+    {
+      "capabilities.web_search.ollama_bearer_key",
+      "Bearer key for the Ollama web search integration.\n"
+      "Ollama provides a free web search API key. Leave empty to disable web search via Ollama.",
+    },
+    {
+      "capabilities.vision.llm_image_to_text",
+      "LLM endpoint and model used to transcribe images/stickers to text.\n"
+      "Should be a vision-capable model. Transcriptions are cached to save tokens.",
+    },
+    {
+      "capabilities.hearing.llm_audio_to_text",
+      "LLM endpoint and model used to transcribe voice messages to text.\n"
+      "Used when Telegram Premium (native transcription) is not available.",
+    },
+    {
+      "capabilities.record_voice.enabled",
+      "Whether Kuni can send voice messages (text-to-speech).\n"
+      "Requires configuring a TTS backend (elevenlabs or openai).",
+    },
+    {
+      "capabilities.record_voice.backend",
+      "TTS backend to use for voice message generation.\n"
+      "- \"elevenlabs\" — ElevenLabs API (high quality, requires key)\n"
+      "- \"openai\" — OpenAI TTS API (requires key)/local OpenAI-compatible TTS service",
+    },
+    {
+      "capabilities.record_voice.elevenlabs.key",
+      "ElevenLabs API key for TTS. Required when backend is \"elevenlabs\".\n"
+      "Get your key at https://elevenlabs.io/",
+    },
+    {
+      "capabilities.record_voice.elevenlabs.voice_id",
+      "ElevenLabs voice ID to use for TTS. Find voice IDs in your ElevenLabs account.",
+    },
+    {
+      "capabilities.record_voice.openai.url",
+      "OpenAI-compatible TTS API base URL. Can point to a self-hosted TTS service.",
+    },
+    {
+      "capabilities.record_voice.openai.key",
+      "API key for the OpenAI TTS endpoint. Required when backend is a non-local service.",
+    },
+    {
+      "capabilities.record_voice.openai.model",
+      "OpenAI TTS model name, e.g. \"tts-1\" or \"tts-1-hd\".",
+    },
+    {
+      "capabilities.record_voice.openai.voice",
+      "OpenAI TTS voice name, e.g. \"alloy\", \"echo\", \"fable\", \"onyx\", \"nova\", \"shimmer\".",
+    },
+    {
+      "capabilities.proxy.enabled",
+      "Whether to enable the built-in OpenAI-compatible proxy server.\n"
+      "When enabled, Kuni exposes an API endpoint that forwards requests through her LLM,\n"
+      "allowing external tools (e.g. VS Code Copilot) to use Kuni as a model backend.",
     },
 };
 
