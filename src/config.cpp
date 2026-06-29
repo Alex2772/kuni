@@ -77,6 +77,32 @@ struct toml::into<Config::LockdownMode> {
     }
 };
 
+template <>
+struct toml::from<Config::TTSBackend> {
+    static Config::TTSBackend from_toml(const toml::value& v) {
+        const auto& str = v.as_string();
+        if (str == "elevenlabs")
+            return Config::TTSBackend::ELEVENLABS;
+        if (str == "openai")
+            return Config::TTSBackend::OPENAI;
+        throw AException("Invalid TTS backend: {}"_format(toml::format(v)));
+    }
+};
+
+template <>
+struct toml::into<Config::TTSBackend> {
+    template <typename T>
+    static toml::basic_value<T> into_toml(Config::TTSBackend backend) {
+        switch (backend) {
+            case Config::TTSBackend::ELEVENLABS:
+                return "elevenlabs";
+            case Config::TTSBackend::OPENAI:
+                return "openai";
+        }
+        throw AException("bad");
+    }
+};
+
 // Comments are set separately in config::get(), after toml is parsed.
 static const std::unordered_map<AStringView, AStringView> CONFIG_COMMENTS = {
     {

@@ -1102,6 +1102,11 @@ pieces of memory. Therefore, it is crucial to be proactive in merging pieces tha
 instance, if you come across three pieces that describe the same event (such as a party), you should combine them into a
 single piece that provides a comprehensive view of the event.
 )");
+        reg(prompts.recordAudioSpeech, "record_audio_speech", R"(
+Specifies the message ${CHARACTER_NAME} would like to say. This is a TTS prompt, so the text will be converted directly
+into speech. Do NOT include instructions for the voice message in this field. Instead, write EXACTLY what you would say
+in a #send_telegram_message call. The description only has to include what the user will hear in the final voice
+message.)");
     }
     return prompts;
 }

@@ -44,8 +44,13 @@
   X(bool, capabilityHearing, false, "capabilities.hearing.enabled") \
   X(EndpointAndModel, llmAudioToText, (EndpointAndModel{.endpoint={"http://localhost:11434/v1/"},.model="openai/gpt-4o-mini-transcribe"}), "capabilities.hearing.llm_audio_to_text") \
   X(bool, capabilityRecordVoice, false, "capabilities.record_voice.enabled") \
+  X(::Config::TTSBackend, recordVoiceBackend, ::Config::TTSBackend::ELEVENLABS, "capabilities.record_voice.backend") \
   X(AString, recordVoiceElevenLabsKey, "", "capabilities.record_voice.elevenlabs.key") \
   X(AString, recordVoiceElevenLabsVoice, "pPdl9cQBQq4p6mRkZy2Z", "capabilities.record_voice.elevenlabs.voice_id") \
+  X(AString, recordVoiceOpenAIUrl, "https://api.openai.com/v1/", "capabilities.record_voice.openai.url") \
+  X(AString, recordVoiceOpenAIKey, "", "capabilities.record_voice.openai.key") \
+  X(AString, recordVoiceOpenAIModel, "tts-1", "capabilities.record_voice.openai.model") \
+  X(AString, recordVoiceOpenAIVoice, "alloy", "capabilities.record_voice.openai.voice") \
   X(bool, proxyEnabled, false, "capabilities.proxy.enabled") \
 
 // clang-format on
@@ -59,6 +64,11 @@ struct Config {
         NONE, // public
         CONTACTS_ONLY,
         PAPIK_ONLY,
+    };
+
+    enum class TTSBackend {
+        ELEVENLABS,
+        OPENAI,
     };
 
 #define X(cppType, cppName, cppDefaultValue, tomlPath) cppType cppName = cppDefaultValue;

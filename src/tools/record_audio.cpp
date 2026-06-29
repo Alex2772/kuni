@@ -4,7 +4,8 @@
 
 #include "record_audio.h"
 
-#include "VoiceGenerator.h"
+#include "prompts.h"
+#include "../speech/VoiceGenerator.h"
 
 OpenAITools::Tool tools::recordAudio() {
     return {
@@ -13,17 +14,17 @@ OpenAITools::Tool tools::recordAudio() {
                         "The result of this tool is a filename. The filename can then be sent to someone else using #send_telegram_message.",
         .parameters = {
             .properties = {
-                {"audio_desc", {
+                {"speech", {
                     .type = "string",
-                    .description = "Specifies the message Kuni would like to say. This is a TTS prompt, so the text will be converted directly into speech. Do NOT include instructions for the voice message in this field. Instead, write EXACTLY what you would say in a #send_telegram_message call. The description only has to include what the user will hear in the final voice message.",
+                    .description = prompts().recordAudioSpeech,
                 }},
             },
-            .required = {"audio_desc"},
+            .required = {"speech"},
         },
         .handler = [](OpenAITools::Ctx ctx) -> AFuture<AString> {
-            auto audioDesc = ctx.args["audio_desc"].asStringOpt().valueOrException("audio_desc is required");
+            auto audioDesc = ctx.args["speech"].asStringOpt().valueOrException("speech is required");
             if (audioDesc.trim().empty()) {
-                throw AException("audio_desc must not be empty");
+                throw AException("speech must not be empty");
             }
 
             // really dirty fix: hit Kuni with an exception if it tries to say an introduction in a voice note
@@ -32,7 +33,7 @@ OpenAITools::Tool tools::recordAudio() {
                 throw AException("Skip introductions in voice message. Instead, send the message content directly. For example, if you want to say \"Kuni says hello in a playful tone\" in a voice message, just send \"hello\".");
             }
 
-            VoiceGenerator generator(config().recordVoiceElevenLabsKey, config().recordVoiceElevenLabsVoice);
+            VoiceGenerator generator;
             auto voiceMessage = co_await generator.generate(audioDesc, "ru", 1.2);
 
             co_return "Filename: {}"_format(voiceMessage.path.filename());

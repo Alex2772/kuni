@@ -100,6 +100,15 @@ protected:
             return;
         }
 
+
+        static std::chrono::high_resolution_clock::time_point lastEvent;
+        const auto now = std::chrono::high_resolution_clock::now();
+        if (now - lastEvent < 1s) {
+            // no need to spam.
+            return;
+        }
+        lastEvent = now;
+
         if (!response.choices.empty()) {
             const auto& choice = response.choices.at(0);
             const auto& toolCalls = choice.message.tool_calls;
@@ -130,14 +139,6 @@ protected:
                 }
             }
         }
-
-        static std::chrono::high_resolution_clock::time_point lastEvent;
-        const auto now = std::chrono::high_resolution_clock::now();
-        if (now - lastEvent < 1s) {
-            // no need to spam.
-            return;
-        }
-        lastEvent = now;
         mTelegram->sendQuery(ITelegramClient::toPtr(td::td_api::sendChatAction(
             mCurrentlyOpenedChat->chat->id_, {}, {}, ITelegramClient::toPtr(td::td_api::chatActionTyping()))));
     }

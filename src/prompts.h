@@ -14,6 +14,7 @@ struct Prompts {
     AString antiRepeatPrompt;
     AString diarySave;
     AString sleepConsolidator;
+    AString recordAudioSpeech;
 };
 
 const Prompts& prompts();

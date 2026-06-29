@@ -120,6 +120,9 @@ OpenAITools::Tool tools::sendTelegramMessage(
             if (!photoFilename.empty() && !audioFilename.empty()) {
                 co_return "Error: cannot attach both photo and audio in a single message";
             }
+            if (!audioFilename.empty() && !message.empty()) {
+                co_return "Error: cannot attach both voice message and text in a single message";
+            }
             const bool messageContainsCode = message.contains("```");
             if (!messageContainsCode && ranges::count_if(ctx.allToolCalls, [](const IOpenAIChat::Message::ToolCall& tc) {
                 return tc.function.name == "send_telegram_message";
