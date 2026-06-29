@@ -51,7 +51,7 @@ static AFuture<AOptional<AString>> tryTelegramPremiumTranscription(
         } else if (
             auto error = ITelegramClient::tryCastTo<const td::td_api::speechRecognitionResultError>(
                 *updateVideo->video_note_->speech_recognition_result_)) {
-            transcriptionFuture.supplyException(std::make_exception_ptr(AException(error->error_->message_)));
+            transcriptionFuture.supplyValue(error->error_->message_);
         }
         // speechRecognitionResultPending — keep waiting
     });
