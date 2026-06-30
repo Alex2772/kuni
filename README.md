@@ -347,6 +347,8 @@ Kuni includes a transparent proxy server that sits between an AI client (e.g. a 
 upstream OpenAI-compatible LLM endpoint. It intercepts `/v1/chat/completions` requests, enriches them with Kuni's
 context, and handles tool calls invisibly — the client sees a clean, uninterrupted stream.
 
+If `web_search` is enabled, the proxied session benefits from Kuni's web search capabilities as well.
+
 ### What it does
 
 - **Injects system prompt & hidden context** — prepends the system prompt, hidden tool call history, and Kuni-specific
