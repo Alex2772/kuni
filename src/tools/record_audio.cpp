@@ -5,7 +5,7 @@
 #include "record_audio.h"
 
 #include "prompts.h"
-#include "../speech/VoiceGenerator.h"
+#include "speech/VoiceGenerator.h"
 
 OpenAITools::Tool tools::recordAudio() {
     return {

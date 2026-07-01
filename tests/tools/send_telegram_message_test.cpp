@@ -496,7 +496,6 @@ TEST(SendTelegramMessageTest, InvalidAudioFilenameSlash) {
         util::await_synchronously(tool.handler({
             .tools = tools,
             .args = AJson::Object{
-                {"text", "hello"},
                 {"audio_filename", "subdir/audio.ogg"},
             },
             .allToolCalls = {},
@@ -531,7 +530,6 @@ TEST(SendTelegramMessageTest, InvalidAudioFilenameDotDot) {
         util::await_synchronously(tool.handler({
             .tools = tools,
             .args = AJson::Object{
-                {"text", "hello"},
                 {"audio_filename", "../audio.ogg"},
             },
             .allToolCalls = {},
