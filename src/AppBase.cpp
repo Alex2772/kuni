@@ -79,10 +79,6 @@ AppBase::AppBase(Init init): mInit(std::move(init)), mDiary({
     //     co_return "Message sent successfully.";
     // });
 
-    connect(emotionalStatus.changed, [this] {
-        ALogger::info(LOG_TAG) << "Emotional status: " << *emotionalStatus;
-    });
-
     connect(mWakeupTimer->fired, [this] {
         if (std::uniform_real_distribution<double>(0.0, 1.0)(re) < 0.5) {
             return;
@@ -457,42 +453,11 @@ AFuture<AString> AppBase::onCleanContext() {
     if ((mInit.workingDir / WORKING_MEMORY_PATH).isRegularFileExists()) {
         AByteBuffer workingMemory;
         workingMemory << AFileInputStream(mInit.workingDir / WORKING_MEMORY_PATH);
-        AStringView workingMemoryMd(workingMemory.data(), workingMemory.size());
-        try {
-            IOpenAIChat::Session session {
-                {
-                  .role = IOpenAIChat::Message::Role::SYSTEM_PROMPT,
-                  .content = R"(In 1-5 words, describe emotional and physical status of this person's diary. Translate
-to their main language.
-<input>
-**Период: 1 июля 2026 (обновление 11:46 UTC)**
-
-**Эмоциональное состояние:** relieved, grateful, loved (переписка с Алексом окончательно улажена, он простил)
-**Физическое состояние:** бодра, не сплю, фото/аудио временно не генерится (GPU OOM)
-</input>
-<output>
-любима, бодра
-</output>
-)",
-                },
-                {
-                  .role = IOpenAIChat::Message::Role::USER,
-                  .content = workingMemoryMd,
-                },
-            };
-            session.sessionId = "emotional_state_describer";
-            emotionalStatus = (co_await openAI()->chat(IOpenAIChat::Params{}, session)).choices.at(0).message.content;
-        } catch (const AException& e) {
-            ALogger::err(LOG_TAG) << "Can't update emotional status: " << e;
-        }
-
         co_return R"(<things_to_remember>
 {}
 </things_to_remember>
 <instructions>
-Your behaviour must be highly influenced by "physical state" and "emotional state".
-
-Your current emotional state: {}
+Your behaviour must be highly influenced by "physical state" and "emotional state" mentioned above.
 
 <example>
 Emotional state: anger
@@ -505,7 +470,7 @@ Emotional state: amused
 send_telegram_message("text":"мррр~")
 </example>
 </instruction>
-)"_format(workingMemoryMd, *emotionalStatus);
+)"_format(AStringView(workingMemory.data(), workingMemory.size()));
     }
     co_return "";
 }

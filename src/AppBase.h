@@ -10,13 +10,6 @@
 
 class AppBase : public AObject {
 public:
-    /**
-     * @brief 1-5 words describing Kuni's current emotional/physical state.
-     * @details
-     * Example: "Playful, awake"
-     */
-    AProperty<AString> emotionalStatus;
-
     struct Init {
         APath workingDir = "test_data";
         _<IOpenAIChat> openAI;

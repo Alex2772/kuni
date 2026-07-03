@@ -16,7 +16,6 @@
   X(EndpointAndModel, embedding, (EndpointAndModel{.endpoint={"http://localhost:11434/v1/"},.model="qwen3-embedding"}), "general.embedding") \
   X(::Config::LockdownMode, lockdown, ::Config::LockdownMode::PAPIK_ONLY, "general.lockdown") \
   X(bool, canWriteToANewPerson, false, "misc.can_write_to_a_new_person") \
-  X(bool, showEmotionalStateInBio, false, "misc.show_emotional_state_in_bio") \
   X(bool, wakeUpOnPinnedChat, false, "misc.wake_up_on_pinned_chat") \
   X(bool, randomlyGoSleep, true, "misc.randomly_go_sleep") \
   X(float, toolReminderProbability, 0.02f, "misc.tool_reminder_probability") \
