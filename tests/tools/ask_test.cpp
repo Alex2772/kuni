@@ -6,6 +6,7 @@
 #include "../common.h"
 #include "Diary.h"
 #include "IOpenAIChat.h"
+#include "../OpenAIMock.h"
 #include "OpenAITools.h"
 #include "AUI/Thread/AAsyncHolder.h"
 #include "AUI/Thread/AEventLoop.h"
@@ -16,15 +17,6 @@
 using namespace testing;
 
 namespace {
-// ---------------------------------------------------------------------------
-// Mock IOpenAIChat
-// ---------------------------------------------------------------------------
-class OpenAIMock : public IOpenAIChat {
-public:
-    MOCK_METHOD((AArc<StreamingResponse>), chatStreaming, (Params params, IOpenAIChat::Session messages), (override));
-    MOCK_METHOD(AFuture<std::valarray<double>>, embedding, (Params params, AString input), (override));
-};
-
 // ---------------------------------------------------------------------------
 // Mock Diary
 // ---------------------------------------------------------------------------

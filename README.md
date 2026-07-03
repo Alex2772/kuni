@@ -179,6 +179,8 @@ docker compose up -d
 # This starts:
 # - Ollama (LLM server) on port 11434
 # - Stable Diffusion WebUI on port 7860
+# - Whisper (speech-to-text) on port 9000
+# - OmniVoice (TTS, optional) on port 8880 — see TTS section below
 ```
 
 ### Build Steps
@@ -495,6 +497,50 @@ The dashboard includes:
 | `grafana/datasources/datasource.yml` | Auto-provisioned Prometheus datasource pointing at the `prometheus` container |
 | `grafana/dashboards.yml` | Auto-provisioning config for the dashboard provider |
 | `grafana/dashboards/main.json` | The Grafana dashboard definition (token usage panels) |
+
+## TTS — Speech / Record Voice Messages
+
+Kuni can send voice messages using [OmniVoice](https://github.com/maemreyo/omnivoice-server), an OpenAI-compatible TTS server that supports custom voice cloning.
+
+### 1. Build the Docker image
+
+The image is not published to a registry, so you must build it locally first:
+
+```bash
+# Clone and build according to the repo instructions:
+# https://github.com/maemreyo/omnivoice-server
+```
+
+### 2. Enable the service
+
+Uncomment the `omnivoice-server` section in `docker-compose.yml`, then restart the stack:
+
+```bash
+docker compose up -d
+```
+
+The server will be available at `http://localhost:8880`.
+
+### 3. Prepare a custom voice (optional)
+
+To clone a voice you need a short reference audio clip and its manual transcription.
+
+```bash
+curl -X POST http://127.0.0.1:8880/v1/voices/profiles \
+  -F "profile_id=cute_anime_girl" \
+  -F "ref_text=PROVIDE TRANSCRIPTION HERE" \
+  -F "ref_audio=@cute_anime_girl.wav" \
+  -F "overwrite=true"
+```
+
+### 4. Configure Kuni to use the voice
+
+In `config.toml` set the voice to your profile:
+
+```toml
+[record_voice.openai]
+voice = "clone:cute_anime_girl"
+```
 
 
 

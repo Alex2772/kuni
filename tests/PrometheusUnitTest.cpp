@@ -14,6 +14,7 @@
 #include <range/v3/all.hpp>
 #include "AppBase.h"
 #include "IOpenAIChat.h"
+#include "OpenAIMock.h"
 #include "OpenAITools.h"
 #include "Prometheus.h"
 #include "MetricsBreadcumbs.h"
@@ -24,15 +25,6 @@
 #include <AUI/IO/APath.h>
 
 using namespace std::chrono_literals;
-
-// ============================================================================
-// Mock IOpenAIChat
-// ============================================================================
-class PrometheusOpenAIMock : public IOpenAIChat {
-public:
-    MOCK_METHOD(_<StreamingResponse>, chatStreaming, (Params params, IOpenAIChat::Session messages), (override));
-    MOCK_METHOD(AFuture<std::valarray<double>>, embedding, (Params params, AString input), (override));
-};
 
 // ============================================================================
 // Helper: build a canned LLM response that dispatches the named tool
@@ -158,9 +150,9 @@ TEST_F(PrometheusUnitTest, ToolCallFiredOnSuccessfulToolCall) {
     IEventLoop::Handle h(&loop);
     AAsyncHolder async;
 
-    auto openAI = _cast<IOpenAIChat>(_new<PrometheusOpenAIMock>());
+    auto openAI = _cast<IOpenAIChat>(_new<OpenAIMock>());
     // LLM calls my_tool, then wait
-    EXPECT_CALL(*static_cast<PrometheusOpenAIMock*>(openAI.get()), chatStreaming(::testing::_, ::testing::_))
+    EXPECT_CALL(*static_cast<OpenAIMock*>(openAI.get()), chatStreaming(::testing::_, ::testing::_))
         .WillOnce(::testing::Return(makeMyToolResponse()))
         .WillOnce(::testing::Return(makeWaitResponse()));
 
@@ -190,8 +182,8 @@ TEST_F(PrometheusUnitTest, ToolCallFiredCarriesCorrectToolName) {
     IEventLoop::Handle h(&loop);
     AAsyncHolder async;
 
-    auto openAI = _cast<IOpenAIChat>(_new<PrometheusOpenAIMock>());
-    EXPECT_CALL(*static_cast<PrometheusOpenAIMock*>(openAI.get()), chatStreaming(::testing::_, ::testing::_))
+    auto openAI = _cast<IOpenAIChat>(_new<OpenAIMock>());
+    EXPECT_CALL(*static_cast<OpenAIMock*>(openAI.get()), chatStreaming(::testing::_, ::testing::_))
         .WillOnce(::testing::Return(makeMyToolResponse()))
         .WillOnce(::testing::Return(makeWaitResponse()));
 
@@ -217,9 +209,9 @@ TEST_F(PrometheusUnitTest, ToolCallFiredNotEmittedOnToolException) {
     IEventLoop::Handle h(&loop);
     AAsyncHolder async;
 
-    auto openAI = _cast<IOpenAIChat>(_new<PrometheusOpenAIMock>());
+    auto openAI = _cast<IOpenAIChat>(_new<OpenAIMock>());
     // LLM calls "unknown_tool" (not registered) -> handler is not found, no onAfterToolCall
-    EXPECT_CALL(*static_cast<PrometheusOpenAIMock*>(openAI.get()), chatStreaming(::testing::_, ::testing::_))
+    EXPECT_CALL(*static_cast<OpenAIMock*>(openAI.get()), chatStreaming(::testing::_, ::testing::_))
         .WillOnce(::testing::Return(makeToolCallResponse("unknown_tool")))
         .WillOnce(::testing::Return(makeWaitResponse()));
 
@@ -267,8 +259,8 @@ TEST_F(PrometheusUnitTest, ToolCallFiredBreadcrumbLabelsSnapshot) {
     IEventLoop::Handle h(&loop);
     AAsyncHolder async;
 
-    auto openAI = _cast<IOpenAIChat>(_new<PrometheusOpenAIMock>());
-    EXPECT_CALL(*static_cast<PrometheusOpenAIMock*>(openAI.get()), chatStreaming(::testing::_, ::testing::_))
+    auto openAI = _cast<IOpenAIChat>(_new<OpenAIMock>());
+    EXPECT_CALL(*static_cast<OpenAIMock*>(openAI.get()), chatStreaming(::testing::_, ::testing::_))
         .WillOnce(::testing::Return(makeMyToolResponse()))
         .WillOnce(::testing::Return(makeWaitResponse()));
 
@@ -302,8 +294,8 @@ TEST_F(PrometheusUnitTest, ToolCallFiredlastOpenedChatLastMessageTime) {
     IEventLoop::Handle h(&loop);
     AAsyncHolder async;
 
-    auto openAI = _cast<IOpenAIChat>(_new<PrometheusOpenAIMock>());
-    EXPECT_CALL(*static_cast<PrometheusOpenAIMock*>(openAI.get()), chatStreaming(::testing::_, ::testing::_))
+    auto openAI = _cast<IOpenAIChat>(_new<OpenAIMock>());
+    EXPECT_CALL(*static_cast<OpenAIMock*>(openAI.get()), chatStreaming(::testing::_, ::testing::_))
         .WillOnce(::testing::Return(makeMyToolResponse()))
         .WillOnce(::testing::Return(makeWaitResponse()));
 
@@ -358,9 +350,9 @@ TEST_F(PrometheusUnitTest, MultipleToolCallsAllCaptured) {
     IEventLoop::Handle h(&loop);
     AAsyncHolder async;
 
-    auto openAI = _cast<IOpenAIChat>(_new<PrometheusOpenAIMock>());
+    auto openAI = _cast<IOpenAIChat>(_new<OpenAIMock>());
     // Two separate notifications, each dispatching my_tool then wait
-    EXPECT_CALL(*static_cast<PrometheusOpenAIMock*>(openAI.get()), chatStreaming(::testing::_, ::testing::_))
+    EXPECT_CALL(*static_cast<OpenAIMock*>(openAI.get()), chatStreaming(::testing::_, ::testing::_))
         .WillOnce(::testing::Return(makeMyToolResponse()))
         .WillOnce(::testing::Return(makeWaitResponse()))
         .WillOnce(::testing::Return(makeMyToolResponse()))
@@ -390,7 +382,7 @@ TEST_F(PrometheusUnitTest, MultipleToolCallsAllCaptured) {
 // registerAppBase is safe to call before any tool calls happen
 // ============================================================================
 TEST_F(PrometheusUnitTest, RegisterAppBaseSafeWithNoToolCalls) {
-    auto openAI = _cast<IOpenAIChat>(_new<PrometheusOpenAIMock>());
+    auto openAI = _cast<IOpenAIChat>(_new<OpenAIMock>());
     auto app = _new<PrometheusTestHarness>(openAI);
 
     SpyExporter spy;

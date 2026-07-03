@@ -7,6 +7,7 @@
 #include "AUI/Util/APreprocessor.h"
 #include "config.h"
 #include "AUI/Common/AProperty.h"
+#include "AUI/Common/AByteBufferView.h"
 
 /**
  * @brief Abstract interface for OpenAI-compatible chat API clients.
@@ -126,6 +127,33 @@ struct IOpenAIChat {
     AFuture<Response> chat(Params params, IOpenAIChat::Session messages);
     virtual _<StreamingResponse> chatStreaming(Params params, IOpenAIChat::Session messages) = 0;
     virtual AFuture<std::valarray<double>> embedding(Params params, AString input) = 0;
+
+    
+    struct AudioTranscription {
+        AString task;
+        AString language;
+        double language_probability{};
+        double duration{};
+        double duration_after_vad{};
+        AString text;
+
+        struct Segment {
+            int64_t id{};
+            int64_t seek{};
+            double start{};
+            double end{};
+            AString text;
+            AVector<int64_t> tokens;
+            double temperature{};
+            double avg_logprob{};
+            double compression_ratio{};
+            double no_speech_prob{};
+        };
+        AVector<Segment> segments;
+    };
+
+    virtual AFuture<AudioTranscription> transcribeAudio(AByteBufferView audio, AStringView format) = 0;
+
 };
 
 template<>
@@ -235,4 +263,27 @@ struct AJsonConv<AJson> {
         dst = from;
     }
 };
+
+AJSON_FIELDS(IOpenAIChat::AudioTranscription::Segment,
+             AJSON_FIELDS_ENTRY(id)
+             AJSON_FIELDS_ENTRY(seek)
+             AJSON_FIELDS_ENTRY(start)
+             AJSON_FIELDS_ENTRY(end)
+             AJSON_FIELDS_ENTRY(text)
+             AJSON_FIELDS_ENTRY(tokens)
+             AJSON_FIELDS_ENTRY(temperature)
+             AJSON_FIELDS_ENTRY(avg_logprob)
+             AJSON_FIELDS_ENTRY(compression_ratio)
+             AJSON_FIELDS_ENTRY(no_speech_prob)
+             )
+
+AJSON_FIELDS(IOpenAIChat::AudioTranscription,
+             AJSON_FIELDS_ENTRY(task)
+             AJSON_FIELDS_ENTRY(language)
+             AJSON_FIELDS_ENTRY(language_probability)
+             AJSON_FIELDS_ENTRY(duration)
+             AJSON_FIELDS_ENTRY(duration_after_vad)
+             AJSON_FIELDS_ENTRY(text)
+             AJSON_FIELDS_ENTRY(segments)
+             )
 

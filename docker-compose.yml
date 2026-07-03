@@ -46,6 +46,66 @@ services:
             - driver: nvidia
               capabilities: [gpu]
 
+  whisper:
+    image: hwdsl2/whisper-server:cuda
+    restart: always
+    ports:
+      - "9000:9000"
+    volumes:
+      - ./bin/whisper:/var/lib/whisper
+    environment:
+      - WHISPER_API_KEY=
+      - WHISPER_MODEL=large-v3-turbo
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [ gpu ]
+
+  omnivoice-server:
+    # https://github.com/maemreyo/omnivoice-server
+    # you need to build this first
+    image: omnivoice-server
+    pull_policy: never # only use local image
+    container_name: omnivoice-server
+    ports:
+      - "8880:8880"
+    volumes:
+      # Persist voice profiles
+      - ./bin/omnivoice/profiles:/home/ubuntu/app/profiles
+      - ./bin/omnivoice/huggingface:/home/ubuntu/.cache/huggingface # persist HF cache for offline use
+    environment:
+      # Server configuration
+      - OMNIVOICE_HOST=0.0.0.0
+      - OMNIVOICE_PORT=6020
+      - OMNIVOICE_DEVICE=cuda
+      - OMNIVOICE_NUM_STEP=32
+      - OMNIVOICE_MAX_CONCURRENT=2
+      # HF_HUB_OFFLINE=1  # enables server in a no Internet docker config
+      # Optional: Enable authentication
+      # - OMNIVOICE_API_KEY=your-secret-key
+      # Optional: Adjust inference quality
+      # - OMNIVOICE_GUIDANCE_SCALE=2.0
+      # - OMNIVOICE_DENOISE=true
+      # Optional: Logging
+      - OMNIVOICE_LOG_LEVEL=info
+    restart: unless-stopped
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8880/health')"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+
 # uncomment below if you want a dashboard with stats
 #
 #  prometheus:

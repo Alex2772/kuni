@@ -9,6 +9,7 @@ public:
     ~OpenAIChatMeasurable() override = default;
     _<StreamingResponse> chatStreaming(Params params, IOpenAIChat::Session messages) override;
     AFuture<std::valarray<double>> embedding(Params params, AString input) override;
+    AFuture<AudioTranscription> transcribeAudio(AByteBufferView audio, AStringView format) override;
 
     struct Metrics {
         AString model;

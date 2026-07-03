@@ -24,3 +24,7 @@ _<IOpenAIChat::StreamingResponse> OpenAIChatMeasurable::chatStreaming(Params par
 AFuture<std::valarray<double>> OpenAIChatMeasurable::embedding(Params params, AString input) {
     return mWrapped->embedding(std::move(params), std::move(input));
 }
+
+AFuture<IOpenAIChat::AudioTranscription> OpenAIChatMeasurable::transcribeAudio(AByteBufferView audio, AStringView format) {
+    return mWrapped->transcribeAudio(audio, format);
+}

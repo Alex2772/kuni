@@ -8,6 +8,8 @@
 #include "OpenAITools.h"
 #include "config.h"
 #include "util/cosine_similarity.h"
+#include "AUI/IO/AFileInputStream.h"
+#include "util/await_synchronously.h"
 
 static constexpr auto SYSTEM_PROMPT = R"(
 You are an expert AI programming assistant, working with a user in the VS Code editor.
@@ -383,4 +385,24 @@ TEST(OpenAIChatIntegration, ParseResponse) {
 }
 )";
     aui::from_json<IOpenAIChat::Response>(AJson::fromString(R));
+}
+
+TEST(OpenAIChatIntegration, AudioTranscription) {
+    util::await_synchronously([]() -> AFuture<> {
+        auto session = _new<OpenAIChatImpl>();
+
+        AFileInputStream stream(TEST_DATA / "audio.ogg");
+        AByteBuffer audio = AByteBuffer::fromStream(stream);
+
+        auto transcription = co_await session->transcribeAudio(audio, "ogg");
+        auto lower = transcription.text.lowercase();
+        ALogger::info("AudioTranscription") << "Transcribed: " << AJson::toString(aui::to_json(transcription));
+
+        // "самолётик. вперед телеграм! да ёбаный в рот блядь заебали со своей телеграмой блядь. ай!. вашу мать блядь"
+        EXPECT_TRUE(lower.contains("вперед") || lower.contains("вперёд"))
+            << "Expected 'вперед' mention: " << transcription.text;
+        EXPECT_TRUE(lower.contains("блять") || lower.contains("блядь"))
+            << "Expected 'блять' mention: " << transcription.text;
+    }());
+
 }

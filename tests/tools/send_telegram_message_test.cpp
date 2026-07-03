@@ -8,6 +8,7 @@
 #include "AUI/Thread/AEventLoop.h"
 #include "util/await_synchronously.h"
 
+#include "../OpenAIMock.h"
 #include <gmock/gmock.h>
 
 namespace {
@@ -31,14 +32,6 @@ public:
     }
 };
 
-// ---------------------------------------------------------------------------
-// Mock IOpenAIChat
-// ---------------------------------------------------------------------------
-class OpenAIMock : public IOpenAIChat {
-public:
-    MOCK_METHOD(_<IOpenAIChat::StreamingResponse>, chatStreaming, (Params params, IOpenAIChat::Session messages), (override));
-    MOCK_METHOD(AFuture<std::valarray<double>>, embedding, (Params params, AString input), (override));
-};
 }
 
 // ---------------------------------------------------------------------------

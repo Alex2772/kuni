@@ -10,6 +10,8 @@ struct OpenAIChatImpl: IOpenAIChat {
 
     AFuture<std::valarray<double>> embedding(Params params, AString input) override;
 
+    AFuture<AudioTranscription> transcribeAudio(AByteBufferView audio, AStringView format) override;
+
     static AFuture<AJson> makeHttpRequest(Endpoint endpoint, std::string query, std::string_view sessionId);
 
 private:

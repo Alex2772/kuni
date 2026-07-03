@@ -1,4 +1,5 @@
 #include "config.h"
+#include "OpenAIMock.h"
 #include <gmock/gmock.h>
 #include <range/v3/all.hpp>
 
@@ -8,15 +9,6 @@
 #include "llmui/telegram.h"
 #include "telegram/TelegramClientImpl.h"
 #include "util/post_message.h"
-
-// ---------------------------------------------------------------------------
-// Mock IOpenAIChat
-// ---------------------------------------------------------------------------
-class OpenAIMock : public IOpenAIChat {
-public:
-    MOCK_METHOD(_<StreamingResponse>, chatStreaming, (Params params, IOpenAIChat::Session messages), (override));
-    MOCK_METHOD(AFuture<std::valarray<double>>, embedding, (Params params, AString input), (override));
-};
 
 TEST(TelegramIntegration, PostMessage) {
     AEventLoop loop;

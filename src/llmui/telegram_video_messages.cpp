@@ -4,7 +4,10 @@
 
 #include "telegram_video_messages.h"
 
+#include "config.h"
 #include "malicious_payloads.h"
+#include "telegram.h"
+#include "video.h"
 #include "AUI/Thread/AFuture.h"
 #include "AUI/Util/kAUI.h"
 
@@ -71,7 +74,12 @@ static AFuture<AOptional<AString>> tryTelegramPremiumTranscription(
 }
 
 AFuture<AString>
-llmui::videoNoteTranscription(ITelegramClient& telegram, td::td_api::messageVideoNote& voiceNote, int64_t chatId, int64_t messageId) {
+llmui::videoNoteTranscription(ITelegramClient& telegram, IOpenAIChat& openAI, td::td_api::messageVideoNote& voiceNote, int64_t chatId, int64_t messageId) {
+    try {
+        if (config().capabilityHearing && config().capabilityVision) {
+            co_return co_await video({}, openAI, co_await fetchMedia(telegram, voiceNote.video_note_->video_), "video_note");
+        }
+    } catch (const AException&) {}
     auto text = co_await tryTelegramPremiumTranscription(telegram, voiceNote, chatId, messageId);
     if (text.hasValue()) {
         co_return "[video note]: " + *text + "\n";

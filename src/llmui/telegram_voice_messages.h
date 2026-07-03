@@ -4,6 +4,8 @@
 #include <telegram/ITelegramClient.h>
 #include <td/telegram/td_api.h>
 
+struct IOpenAIChat;
+
 namespace llmui {
 
 /**
@@ -22,6 +24,7 @@ AFuture<AString> voiceMessageTranscription(
     ITelegramClient& telegram,
     td::td_api::messageVoiceNote& voiceNote,
     int64_t chatId,
-    int64_t messageId);
+    int64_t messageId,
+    IOpenAIChat& openAI);
 
 }   // namespace llmui

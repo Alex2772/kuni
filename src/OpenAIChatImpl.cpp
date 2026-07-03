@@ -12,6 +12,7 @@
 #include <range/v3/view.hpp>
 
 #include "AUI/Curl/ACurl.h"
+#include "AUI/Curl/AFormMultipart.h"
 #include "AUI/IO/AFileOutputStream.h"
 #include "AUI/Image/jpg/JpgImageLoader.h"
 #include "AUI/Json/Conversion.h"
@@ -266,4 +267,32 @@ AFuture<std::valarray<double>> OpenAIChatImpl::embedding(Params params, AString 
         result[i] = v.asNumber();
     }
     co_return result;
+}
+
+AFuture<IOpenAIChat::AudioTranscription> OpenAIChatImpl::transcribeAudio(AByteBufferView audio, AStringView format) {
+    ALOG_TRACE(LOG_TAG) << "transcribeAudio: " << audio.size() << " bytes, format=" << format;
+    const auto& cfg = config().llmAudioToText;
+
+    AFormMultipart form;
+    form["model"] = { .value = AString(cfg.model) };
+    form["file"] = { .value = _new<AByteBufferInputStream>(audio), .filename = "audio.{}"_format(format), .mimeType = "audio/{}"_format(format) };
+    form["response_format"] = { .value = AString("verbose_json") };
+
+    AVector<AString> headers;
+    if (!cfg.endpoint.bearerKey.empty()) {
+        headers << "Authorization: Bearer {}"_format(cfg.endpoint.bearerKey);
+    }
+
+    auto response = co_await ACurl::Builder(cfg.endpoint.baseUrl + "audio/transcriptions")
+                        .withMethod(ACurl::Method::HTTP_POST)
+                        .withHeaders(std::move(headers))
+                        .withMultipart(form)
+                        .withTimeout(Config::REQUEST_TIMEOUT)
+                        .runAsync();
+
+    if (response.code != ACurl::ResponseCode::HTTP_200_OK) {
+        throw AException("transcribeAudio: HTTP {}: {}"_format(int(response.code), AString::fromUtf8(response.body)));
+    }
+
+    co_return aui::from_json<AudioTranscription>(AJson::fromBuffer(response.body));
 }

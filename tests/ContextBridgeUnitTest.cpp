@@ -123,6 +123,9 @@ public:
     AFuture<std::valarray<double>> embedding(Params params, AString input) override {
         co_return std::valarray{0.0, 1.0, 2.0};
     }
+    AFuture<AudioTranscription> transcribeAudio(AByteBufferView audio, AStringView format) override {
+        throw AException("unimplemented");
+    }
 };
 
 // ─── MockDiary ────────────────────────────────────────────────────────────────

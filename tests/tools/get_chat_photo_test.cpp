@@ -5,6 +5,7 @@
 #include "tools/get_chat_photo.h"
 #include "../common.h"
 #include "IOpenAIChat.h"
+#include "../OpenAIMock.h"
 #include "AUI/Thread/AAsyncHolder.h"
 #include "AUI/Thread/AEventLoop.h"
 #include "util/await_synchronously.h"
@@ -31,14 +32,6 @@ public:
     }
 };
 
-// ---------------------------------------------------------------------------
-// Mock IOpenAIChat
-// ---------------------------------------------------------------------------
-class OpenAIMock : public IOpenAIChat {
-public:
-    MOCK_METHOD(_<StreamingResponse>, chatStreaming, (Params params, IOpenAIChat::Session messages), (override));
-    MOCK_METHOD(AFuture<std::valarray<double>>, embedding, (Params params, AString input), (override));
-};
 }
 
 // ---------------------------------------------------------------------------

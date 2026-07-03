@@ -4,6 +4,7 @@
 
 #include "AppBase.h"
 #include "IOpenAIChat.h"
+#include "OpenAIMock.h"
 #include "OpenAITools.h"
 #include "Diary.h"
 #include "common.h"
@@ -15,16 +16,6 @@
 #include <AUI/Logging/ALogger.h>
 
 #include <range/v3/algorithm/any_of.hpp>
-
-// ============================================================================
-// Mock IOpenAIChat — returns canned responses, no real API calls
-// ============================================================================
-class OpenAIMock : public IOpenAIChat {
-public:
-    MOCK_METHOD(_<StreamingResponse>, chatStreaming, (Params params, IOpenAIChat::Session messages), (override));
-
-    MOCK_METHOD(AFuture<std::valarray<double>>, embedding, (Params params, AString input), (override));
-};
 
 // ============================================================================
 // Helper: create a minimal chat response that calls #wait (pause)

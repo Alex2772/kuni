@@ -1,4 +1,5 @@
 #pragma once
+#include "IOpenAIChat.h"
 #include "AUI/Common/AString.h"
 #include "AUI/Thread/AFuture.h"
 #include <telegram/ITelegramClient.h>
@@ -7,7 +8,11 @@
 namespace llmui {
 
 /**
- * @brief Transcribes a video note using Telegram Premium speech recognition only.
+ * @brief Transcribes a video note.
+ * in video note, order is reverse compared to a voice note:
+ *
+ * 1. we attempt llmui::video transcription first
+ * 2. we attempt telegram's transcription if (1) fails
  *
  * Tries Telegram's built-in speech recognition (Premium only):
  * - if a result is already cached in the videoNote object, uses it directly;
@@ -19,6 +24,7 @@ namespace llmui {
 [[nodiscard]]
 AFuture<AString> videoNoteTranscription(
     ITelegramClient& telegram,
+    IOpenAIChat& openAI,
     td::td_api::messageVideoNote& videoNote,
     int64_t chatId,
     int64_t messageId);

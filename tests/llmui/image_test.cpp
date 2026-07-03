@@ -5,6 +5,7 @@
 #include "llmui/image.h"
 #include "../common.h"
 #include "IOpenAIChat.h"
+#include "../OpenAIMock.h"
 #include "AUI/Thread/AAsyncHolder.h"
 #include "AUI/Thread/AEventLoop.h"
 #include "AUI/IO/AFileOutputStream.h"
@@ -38,16 +39,6 @@ static AArc<IOpenAIChat::StreamingResponse> makeStreamingTextResponse(AString co
     result->completed.supplyValue();
     return result;
 }
-
-// ---------------------------------------------------------------------------
-// Mock IOpenAIChat
-// ---------------------------------------------------------------------------
-class OpenAIMock : public IOpenAIChat {
-public:
-    MOCK_METHOD((AArc<StreamingResponse>), chatStreaming, (Params params, IOpenAIChat::Session messages), (override));
-    MOCK_METHOD(AFuture<std::valarray<double>>, embedding, (Params params, AString input), (override));
-};
-
 
 // ===========================================================================
 // llmui::image – Unsupported media type (null image)

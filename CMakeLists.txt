@@ -65,6 +65,11 @@ auib_import(Td https://github.com/tdlib/td
 
 aui_executable(${PROJECT_NAME})
 
+# FFmpeg for video frame extraction (libavcodec/libavformat/libswscale)
+find_package(PkgConfig REQUIRED)
+pkg_check_modules(FFMPEG REQUIRED libavcodec libavformat libavutil libswscale)
+target_include_directories(${PROJECT_NAME} PRIVATE ${FFMPEG_INCLUDE_DIRS})
+
 # Link required libs
 aui_link(${PROJECT_NAME} PUBLIC
         aui::core
@@ -76,7 +81,8 @@ aui_link(${PROJECT_NAME} PUBLIC
         Td::TdStatic
         toml11::toml11
         prometheus-cpp::pull
-        httplib::httplib)
+        httplib::httplib
+        ${FFMPEG_LINK_LIBRARIES})
 
 aui_compile_assets(${PROJECT_NAME})
 aui_enable_tests(${PROJECT_NAME})

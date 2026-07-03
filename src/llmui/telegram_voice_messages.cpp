@@ -80,13 +80,14 @@ AFuture<AString> llmui::voiceMessageTranscription(
     ITelegramClient& telegram,
     td::td_api::messageVoiceNote& voiceNote,
     int64_t chatId,
-    int64_t messageId) {
+    int64_t messageId,
+    IOpenAIChat& openAI) {
     auto text = co_await tryTelegramPremiumTranscription(telegram, voiceNote, chatId, messageId);
     if (text.hasValue()) {
         co_return "[voice transcription]: " + *text + "\n";
     }
     // Fall back to local Whisper transcription
-    co_return co_await llmui::voiceMessage(co_await llmui::fetchMedia(telegram, voiceNote.voice_note_->voice_));
+    co_return co_await llmui::voiceMessage(co_await llmui::fetchMedia(telegram, voiceNote.voice_note_->voice_), openAI);
 }
 
 

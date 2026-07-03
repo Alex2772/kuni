@@ -7,6 +7,7 @@
 #include "audio.h"
 #include "config.h"
 #include "image.h"
+#include "video.h"
 #include "malicious_payloads.h"
 #include "telegram_video_messages.h"
 #include "telegram_voice_messages.h"
@@ -536,17 +537,28 @@ AFuture<AString> llmui::formatChatHistoryMessage(
             }
         }
 
+        if (msg.content_->get_id() == td::td_api::messageVideo::ID) {
+            auto& videoMsg = static_cast<td::td_api::messageVideo&>(*msg.content_);
+            if (videoMsg.video_) {
+                result += co_await llmui::video(
+                    temporaryContext,
+                    openAI,
+                    co_await fetchMedia(telegram, videoMsg.video_->video_),
+                    "video");
+            }
+        }
+
         if (msg.content_->get_id() == td::td_api::messageVoiceNote::ID) {
             auto& voiceNote = static_cast<td::td_api::messageVoiceNote&>(*msg.content_);
             if (voiceNote.voice_note_) {
-                result += co_await llmui::voiceMessageTranscription(telegram, voiceNote, msg.chat_id_, msg.id_);
+                result += co_await llmui::voiceMessageTranscription(telegram, voiceNote, msg.chat_id_, msg.id_, openAI);
             }
         }
 
         if (msg.content_->get_id() == td::td_api::messageVideoNote::ID) {
             auto& videoNote = static_cast<td::td_api::messageVideoNote&>(*msg.content_);
             if (videoNote.video_note_) {
-                result += co_await llmui::videoNoteTranscription(telegram, videoNote, msg.chat_id_, msg.id_);
+                result += co_await llmui::videoNoteTranscription(telegram, openAI, videoNote, msg.chat_id_, msg.id_);
             }
         }
     }

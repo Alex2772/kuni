@@ -5,6 +5,7 @@
 #include "image.h"
 
 #include "prompts.h"
+#include "video.h"
 #include "AUI/IO/AFileInputStream.h"
 #include "AUI/Util/kAUI.h"
 
@@ -31,6 +32,12 @@ AFuture<AString> llmui::image(std::span<const IOpenAIChat::Message> temporaryCon
             context += "<context_item>\n";
             context += i.content;
             context += "\n</context_item>\n";
+        }
+
+        // Route video formats to the video pipeline
+        static const AVector<AString> VIDEO_EXTS = {"webm", "mp4", "mkv", "avi", "mov", "m4v", "flv", "3gp"};
+        if (VIDEO_EXTS.contains(AString(APath(pathToImage).extension()).lowercase())) {
+            co_return co_await llmui::video(temporaryContext, openAI, pathToImage, xmlTag);
         }
 
         context += "\n\n</context>\n\nPhoto:\n\n";
