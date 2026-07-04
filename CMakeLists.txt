@@ -25,6 +25,7 @@ endif()
 
 
 option(BUILD_SHARED_LIBS OFF)
+option(KUNI_USE_FFMPEG OFF "Enable FFmpeg. Enables video transcription")
 
 set(AUI_VERSION v8.0.0-rc.29)
 
@@ -65,11 +66,6 @@ auib_import(Td https://github.com/tdlib/td
 
 aui_executable(${PROJECT_NAME})
 
-# FFmpeg for video frame extraction (libavcodec/libavformat/libswscale)
-find_package(PkgConfig REQUIRED)
-pkg_check_modules(FFMPEG REQUIRED libavcodec libavformat libavutil libswscale)
-target_include_directories(${PROJECT_NAME} PRIVATE ${FFMPEG_INCLUDE_DIRS})
-
 # Link required libs
 aui_link(${PROJECT_NAME} PUBLIC
         aui::core
@@ -81,8 +77,7 @@ aui_link(${PROJECT_NAME} PUBLIC
         Td::TdStatic
         toml11::toml11
         prometheus-cpp::pull
-        httplib::httplib
-        ${FFMPEG_LINK_LIBRARIES})
+        httplib::httplib)
 
 aui_compile_assets(${PROJECT_NAME})
 aui_enable_tests(${PROJECT_NAME})
@@ -131,3 +126,24 @@ file(WRITE ${CMAKE_CURRENT_BINARY_DIR}/version_info.cpp
 "}"
 )
 target_sources(${PROJECT_NAME} PRIVATE ${CMAKE_CURRENT_BINARY_DIR}/version_info.cpp)
+
+# optional features
+foreach (_feature_switch KUNI_USE_FFMPEG)
+    if (${${_feature_switch}})
+        target_compile_definitions(${PROJECT_NAME} PUBLIC ${_feature_switch}=1)
+        target_compile_definitions(Tests PUBLIC ${_feature_switch}=1)
+        message(STATUS "[Feature switch] ${_feature_switch}=1")
+    else()
+        target_compile_definitions(${PROJECT_NAME} PUBLIC ${_feature_switch}=0)
+        target_compile_definitions(Tests PUBLIC ${_feature_switch}=0)
+        message(STATUS "[Feature switch] ${_feature_switch}=0")
+    endif()
+endforeach ()
+
+if (KUNI_USE_FFMPEG)
+    # FFmpeg for video frame extraction (libavcodec/libavformat/libswscale)
+    find_package(PkgConfig REQUIRED)
+    pkg_check_modules(FFMPEG REQUIRED libavcodec libavformat libavutil libswscale)
+    target_include_directories(${PROJECT_NAME} PRIVATE ${FFMPEG_INCLUDE_DIRS})
+    target_link_libraries(${PROJECT_NAME} PUBLIC ${FFMPEG_LINK_LIBRARIES})
+endif ()

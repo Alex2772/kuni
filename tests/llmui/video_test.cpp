@@ -21,6 +21,7 @@ using namespace testing;
 
 static const auto TEST_DATA = APath(__FILE__).parent().parent() / "data";
 
+#if KUNI_USE_FFMPEG
 
 // ---------------------------------------------------------------------------
 // Helper: streaming response with plain text content
@@ -143,3 +144,5 @@ TEST(LlmuiVideoIntegrationTest, Video) {
     EXPECT_TRUE(frames.contains("track=\"video\""));
     EXPECT_TRUE(frames.contains("track=\"audio\""));
 }
+
+#endif

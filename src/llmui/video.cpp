@@ -14,6 +14,11 @@
 #include "AUI/Image/jpg/JpgImageLoader.h"
 #include "AUI/Util/kAUI.h"
 
+
+static constexpr auto LOG_TAG = "llmui::video";
+
+#if KUNI_USE_FFMPEG
+
 extern "C" {
 #include <libavcodec/avcodec.h>
 #include <libavformat/avformat.h>
@@ -21,7 +26,6 @@ extern "C" {
 #include <libswscale/swscale.h>
 }
 
-static constexpr auto LOG_TAG = "llmui::video";
 
 // RAII wrappers for ffmpeg resources
 namespace {
@@ -134,6 +138,8 @@ std::optional<AImageView> decodeFrameAt(AVFormatContext* fmtCtx, AVCodecContext*
 
 }  // anonymous namespace
 
+#endif
+
 // Format milliseconds as "M:SS.mmm" (omitting trailing zeros after decimal point)
 static AString formatTimestamp(std::chrono::milliseconds ms) {
     auto totalMs = ms.count();
@@ -155,6 +161,7 @@ AFuture<AVector<llmui::Frame>> llmui::videoFrames(std::span<const IOpenAIChat::M
                                                    IOpenAIChat& openAI,
                                                    AStringView pathToVideo,
                                                    bool isSticker) {
+#if KUNI_USE_FFMPEG
     try {
         // --- Open the video file ---
         AVFormatContext* rawFmtCtx = nullptr;
@@ -436,6 +443,9 @@ AFuture<AVector<llmui::Frame>> llmui::videoFrames(std::span<const IOpenAIChat::M
         ALogger::err(LOG_TAG) << "Can't describe video frames: " << e;
         co_return AVector<Frame>{};
     }
+#else
+    throw AException("unsupported");
+#endif
 }
 
 AFuture<AString> llmui::video(std::span<const IOpenAIChat::Message> temporaryContext,
