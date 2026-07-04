@@ -92,7 +92,7 @@ AFuture<AJson> OpenAIChatImpl::makeHttpRequest(Endpoint endpoint, std::string qu
     tryAgain:
     auto response = AJson::fromBuffer((co_await ACurl::Builder(endpoint.baseUrl + "chat/completions")
                                            .withMethod(ACurl::Method::HTTP_POST)
-                                           .withTimeout(Config::REQUEST_TIMEOUT)
+                                           .withTimeout(config().requestTimeoutSecs)
                                            .withHeaders(headers)
                                            .withBody(query)
                                            .runAsync())
@@ -189,7 +189,7 @@ _<IOpenAIChat::StreamingResponse> OpenAIChatImpl::chatStreaming(Params params, I
         }
         auto httpResponse = co_await ACurl::Builder(params.config.endpoint.baseUrl + "chat/completions")
                                                .withMethod(ACurl::Method::HTTP_POST)
-                                               .withTimeout(Config::REQUEST_TIMEOUT)
+                                               .withTimeout(config().requestTimeoutSecs)
                                                .withHeaders(std::move(headers))
                                                .withBody(query.toStdString())
                                                .withWriteCallback([&parseBuffer, &jsonTempBuffer](AByteBufferView buffer) -> size_t {
@@ -239,7 +239,7 @@ AFuture<std::valarray<double>> OpenAIChatImpl::embedding(Params params, AString 
     tryAgain:
     auto response = AJson::fromBuffer((co_await ACurl::Builder(params.config.endpoint.baseUrl + "embeddings")
                                            .withMethod(ACurl::Method::HTTP_POST)
-                                           .withTimeout(Config::REQUEST_TIMEOUT)
+                                           .withTimeout(config().requestTimeoutSecs)
                                            .withHeaders(headers)
                                            .withBody(AJson::toString(AJson::Object{
                                                {"model", params.config.model},
@@ -287,7 +287,7 @@ AFuture<IOpenAIChat::AudioTranscription> OpenAIChatImpl::transcribeAudio(AByteBu
                         .withMethod(ACurl::Method::HTTP_POST)
                         .withHeaders(std::move(headers))
                         .withMultipart(form)
-                        .withTimeout(Config::REQUEST_TIMEOUT)
+                        .withTimeout(config().requestTimeoutSecs)
                         .runAsync();
 
     if (response.code != ACurl::ResponseCode::HTTP_200_OK) {

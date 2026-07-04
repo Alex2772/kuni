@@ -37,7 +37,7 @@ OpenAISpeechClient::textToSpeech(const TextToSpeechRequest& request) {
             .withMethod(ACurl::Method::HTTP_POST)
             .withHeaders(std::move(headers))
             .withBody(requestBody.toStdString())
-            .withTimeout(Config::REQUEST_TIMEOUT)
+            .withTimeout(config().requestTimeoutSecs)
             .runAsync());
     if (response.code != ACurl::ResponseCode::HTTP_200_OK) {
         throw AException("OpenAISpeechClient failed: {}"_format(AString::fromUtf8(response.body)));

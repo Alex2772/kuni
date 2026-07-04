@@ -54,6 +54,7 @@ services:
     volumes:
       - ./bin/whisper:/var/lib/whisper
     environment:
+#      - WHISPER_DEVICE=cuda
       - WHISPER_API_KEY=
       - WHISPER_MODEL=large-v3-turbo
     deploy:

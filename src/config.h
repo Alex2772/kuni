@@ -33,6 +33,9 @@
   X(float, antiRepeatTriggerMax, 0.95, "misc.anti_repeat_trigger_max") \
   X(float, antiRepeatTriggerAvg, 0.85, "misc.anti_repeat_trigger_avg") \
   X(size_t, antiRepeatMaxHistory, 32, "misc.anti_repeat_max_history") \
+  X(std::chrono::seconds, requestTimeoutSecs, std::chrono::seconds(30), "misc.request_timeout_secs") \
+  X(size_t, videoMaxFrames, 16, "misc.video_max_frames") \
+  X(size_t, videoMinStepMs, 1000, "misc.video_min_step_ms") \
   X(bool, capabilityWebSearch, false, "capabilities.web_search.enabled") \
   X(AString, webSearchOllamaKey, "", "capabilities.web_search.ollama_bearer_key") \
   X(bool, capabilityVision, false, "capabilities.vision.enabled") \
@@ -58,7 +61,6 @@
 
 struct Config {
     // these are technical constants that are not interesting for consumers
-    static constexpr auto REQUEST_TIMEOUT = std::chrono::seconds(30);
     static constexpr auto SLEEP_MAX_TIME = std::chrono::hours(6);
 
     enum class LockdownMode {

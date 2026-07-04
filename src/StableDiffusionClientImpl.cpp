@@ -49,7 +49,7 @@ AFuture<IStableDiffusionClient::Txt2ImgResponse> StableDiffusionClientImpl::txt2
                                            .withMethod(ACurl::Method::HTTP_POST)
                                            .withHeaders(std::move(headers))
                                            .withBody(query.toStdString())
-                                           .withTimeout(Config::REQUEST_TIMEOUT)
+                                           .withTimeout(config().requestTimeoutSecs)
                                            .runAsync())
                                           .body;
     auto response = AJson::fromBuffer(responseBody);
@@ -72,7 +72,7 @@ AFuture<> StableDiffusionClientImpl::unloadCheckpoint() {
     co_await ACurl::Builder(endpoint.baseUrl + "sdapi/v1/unload-checkpoint")
         .withMethod(ACurl::Method::HTTP_POST)
         .withHeaders(std::move(headers))
-        .withTimeout(Config::REQUEST_TIMEOUT)
+        .withTimeout(config().requestTimeoutSecs)
         .runAsync();
 
     co_return;

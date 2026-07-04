@@ -22,7 +22,6 @@ extern "C" {
 }
 
 static constexpr auto LOG_TAG = "llmui::video";
-static constexpr int MAX_FRAMES = 16;
 
 // RAII wrappers for ffmpeg resources
 namespace {
@@ -195,8 +194,11 @@ AFuture<AVector<llmui::Frame>> llmui::videoFrames(std::span<const IOpenAIChat::M
             durationSecs = static_cast<double>(fmtCtx->duration) / AV_TIME_BASE;
         }
 
-        const int frameCount = (durationSecs > 0.0)
-            ? std::clamp(static_cast<int>(std::ceil(durationSecs)), 1, MAX_FRAMES)
+        // Sample at most one frame per video_min_step_ms, capped at video_max_frames overall.
+        const double durationMs = durationSecs * 1000.0;
+        const int frameCount = (durationMs > 0.0)
+            ? std::clamp(static_cast<int>(std::ceil(durationMs / static_cast<double>(config().videoMinStepMs))),
+                         1, static_cast<int>(config().videoMaxFrames))
             : 1;
 
 
@@ -449,7 +451,7 @@ AFuture<AString> llmui::video(std::span<const IOpenAIChat::Message> temporaryCon
 #ifndef AUI_TESTS_MODULE
         if (cache.isRegularFileExists()) {
             auto content = AString::fromUtf8(AByteBuffer::fromStream(AFileInputStream(cache)));
-            co_return "<{} description>\n{}\n</{}>"_format(xmlTag, std::move(content), xmlTag);
+            co_return "<{} transcription>\n{}\n</{}>"_format(xmlTag, std::move(content), xmlTag);
         }
 #endif
 
@@ -460,9 +462,22 @@ AFuture<AString> llmui::video(std::span<const IOpenAIChat::Message> temporaryCon
             co_return "<{} description>\nThis media type is not supported\n</{}>"_format(xmlTag, xmlTag);
         }
 
+        // Merge consecutive frames of the same track
+        AVector<Frame> mergedFrames;
+        mergedFrames.reserve(frames.size());
+        for (auto& f : frames) {
+            if (!mergedFrames.empty() && mergedFrames.back().track == f.track) {
+                mergedFrames.back().to = f.to;
+                mergedFrames.back().contents += " ";
+                mergedFrames.back().contents += f.contents;
+            } else {
+                mergedFrames.push_back(std::move(f));
+            }
+        }
+
         // Format frames as LLM-friendly XML
         AString result;
-        for (const auto& f : frames) {
+        for (const auto& f : mergedFrames) {
             if (!result.empty()) result += "\n";
             result += "<f track=\"{}\" from=\"{}\" to=\"{}\">\n{}\n</f>"_format(
                 f.track,

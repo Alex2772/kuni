@@ -44,7 +44,7 @@ ElevenLabsClient::textToSpeech(const TextToSpeechRequest& request) {
             .withMethod(ACurl::Method::HTTP_POST)
             .withHeaders(std::move(headers))
             .withBody(requestBody.toStdString())
-            .withTimeout(Config::REQUEST_TIMEOUT)
+            .withTimeout(config().requestTimeoutSecs)
             .runAsync())
         .body;
 

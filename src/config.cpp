@@ -285,6 +285,24 @@ static const std::unordered_map<AStringView, AStringView> CONFIG_COMMENTS = {
       "Number of recent responses kept in history for the anti-repeat similarity check.",
     },
     {
+      "misc.request_timeout_secs",
+      "HTTP request timeout (in seconds) for all outgoing requests made by Kuni's kernel\n"
+      "(LLM, embedding, TTS, stable diffusion, transcription, etc).\n"
+      "Increase this if your LLM backend is slow to respond (e.g. big local models on weak hardware).",
+    },
+    {
+      "misc.video_max_frames",
+      "Maximum number of frames sampled from a video/GIF/video-sticker for captioning.\n"
+      "Frames are spread evenly across the video duration. Higher values give the LLM more context\n"
+      "about the video but cost more tokens/time to caption.",
+    },
+    {
+      "misc.video_min_step_ms",
+      "Minimum interval (in milliseconds) between two sampled video frames.\n"
+      "Prevents oversampling short videos - effectively caps frame count so consecutive frames are\n"
+      "never closer together than this value, regardless of video_max_frames.",
+    },
+    {
       "capabilities.web_search.ollama_bearer_key",
       "Bearer key for the Ollama web search integration.\n"
       "Ollama provides a free web search API key. Leave empty to disable web search via Ollama.",
