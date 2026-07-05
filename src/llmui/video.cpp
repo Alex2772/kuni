@@ -99,7 +99,23 @@ std::optional<AImageView> decodeFrameAt(AVFormatContext* fmtCtx, AVCodecContext*
 
     // Seek lands on a keyframe *before* targetPts; keep decoding until we
     // reach a frame whose PTS is >= targetPts so each call returns a distinct frame.
+    // If we hit EOF before reaching targetPts, the last decoded frame is used as fallback.
     bool gotFrame = false;
+    auto tryDecodeFrame = [&](AVFrame* f) -> bool {
+        if (f->pts != AV_NOPTS_VALUE && f->pts < targetPts) {
+            // Not at target yet — but save it as a fallback in case we hit EOF
+            sws_scale(swsCtx, f->data, f->linesize, 0, codecCtx->height,
+                      res.rgbaFrame->data, res.rgbaFrame->linesize);
+            av_frame_unref(f);
+            return false;  // keep draining
+        }
+        sws_scale(swsCtx, f->data, f->linesize, 0, codecCtx->height,
+                  res.rgbaFrame->data, res.rgbaFrame->linesize);
+        av_frame_unref(f);
+        return true;
+    };
+
+    bool hadAnyFrame = false;
     while (av_read_frame(fmtCtx, pkt.get()) >= 0) {
         AUI_DEFER { av_packet_unref(pkt.get()); };
 
@@ -112,18 +128,24 @@ std::optional<AImageView> decodeFrameAt(AVFormatContext* fmtCtx, AVCodecContext*
         }
 
         while (avcodec_receive_frame(codecCtx, frame.get()) >= 0) {
-            if (frame->pts != AV_NOPTS_VALUE && frame->pts < targetPts) {
-                av_frame_unref(frame.get());
-                continue;  // not at target yet, keep draining
+            hadAnyFrame = true;
+            if (tryDecodeFrame(frame.get())) {
+                gotFrame = true;
+                break;
             }
-            sws_scale(swsCtx,
-                      frame->data, frame->linesize, 0, codecCtx->height,
-                      res.rgbaFrame->data, res.rgbaFrame->linesize);
-            av_frame_unref(frame.get());
-            gotFrame = true;
-            break;
         }
         if (gotFrame) break;
+    }
+
+    if (!gotFrame) {
+        // Flush any buffered frames from the codec
+        avcodec_send_packet(codecCtx, nullptr);
+        while (avcodec_receive_frame(codecCtx, frame.get()) >= 0) {
+            hadAnyFrame = true;
+            tryDecodeFrame(frame.get());  // always scale; last one wins
+        }
+        // If we decoded at least one frame (even before targetPts), use it as fallback
+        gotFrame = hadAnyFrame;
     }
 
     if (!gotFrame) {
