@@ -83,6 +83,11 @@ AFuture<IOpenAIChat::Response> IOpenAIChat::chat(Params params, IOpenAIChat::Ses
 
 void AJsonConv<IOpenAIChat::Response::Usage, void>::fromJson(const AJson& v, IOpenAIChat::Response::Usage& dst) {
     aui::zero(dst);
+    if (!v.isObject()) {
+        // OpenAI-compatible endpoints (e.g. gpt-4o-mini) send `"usage": null` in every streaming chunk but
+        // the last one. The OPTIONAL field flag only covers a missing key, not an explicit null.
+        return;
+    }
     dst.prompt_tokens = v["prompt_tokens"].asLongIntOpt().valueOr(0);
     dst.completion_tokens = v["completion_tokens"].asLongIntOpt().valueOr(0);
     dst.total_tokens = v["total_tokens"].asLongIntOpt().valueOr(0);
