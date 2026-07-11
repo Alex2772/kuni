@@ -12,6 +12,7 @@
   X(std::int64_t, papikChatId, 625207005,"general.papik_chat_id") \
   X(std::int64_t, telegramApiId, 0,"general.telegram_api_id") \
   X(AString,telegramApiHash, "", "general.telegram_api_hash") \
+  X(bool, telegramEnabled, true, "general.telegram_enabled") \
   X(EndpointAndModel, llm, (EndpointAndModel{.endpoint={"http://localhost:11434/v1/"},.model="deepseek-v4-flash"}), "general.llm") \
   X(EndpointAndModel, embedding, (EndpointAndModel{.endpoint={"http://localhost:11434/v1/"},.model="qwen3-embedding"}), "general.embedding") \
   X(::Config::LockdownMode, lockdown, ::Config::LockdownMode::PAPIK_ONLY, "general.lockdown") \
