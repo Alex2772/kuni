@@ -4,7 +4,7 @@
 
 #include "AUI/IO/APath.h"
 #include "AUI/Logging/ALogger.h"
-#include "AUI/Platform/linux/AINotifyFileWatcher.h"
+
 #include "AUI/Platform/unix/UnixIoThread.h"
 #include "AUI/Util/kAUI.h"
 
@@ -551,23 +551,5 @@ emits<> gConfigUpdated;
 
 const Config& config() {
     static Config cfg = load(true);
-    AUI_DO_ONCE {
-        static auto watcher = _new<AINotifyFileWatcher>();
-        auto h = watcher->addWatch(APath(CONFIG_TOML).absolute(), AINotifyFileWatcher::Mask::MODIFY);
-        AObject::connect(watcher->fired, AObject::GENERIC_OBSERVER, [h](const AINotifyFileWatcher::Event& event) {
-            if (event.watchDescriptor != h) {
-                return;
-            }
-            ALogger::info(LOG_TAG) << CONFIG_TOML << " updated - reloading";
-            try {
-                cfg = load();
-            } catch (const AException& e) {
-                ALogger::err(LOG_TAG) << e;
-            } catch (const std::exception& e) {
-                ALogger::err(LOG_TAG) << e;
-            }
-            *watcher ^ gConfigUpdated();
-        });
-    };
     return cfg;
 }

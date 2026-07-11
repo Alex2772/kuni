@@ -10,7 +10,7 @@
 #include "AUI/IO/AFileInputStream.h"
 #include "AUI/IO/AFileOutputStream.h"
 #include "AUI/IO/APath.h"
-#include "AUI/Platform/linux/AINotifyFileWatcher.h"
+
 
 static const APath PROMPTS_DIR = "prompts";
 
@@ -77,7 +77,7 @@ const Prompts& prompts() {
         if (!PROMPTS_DIR.isDirectoryExists()) {
             PROMPTS_DIR.makeDirs();
         }
-        static auto watcher = _new<AINotifyFileWatcher>();
+        
 
         static constexpr auto reg = [](AString& field, AStringView name, AStringView defaultPrompt) {
             const auto path = PROMPTS_DIR / "{}.md"_format(name);
@@ -86,15 +86,7 @@ const Prompts& prompts() {
                 ALogger::info("prompts") << "Loaded: " << path;
             };
             update();
-            AObject::connect(gConfigUpdated, AObject::GENERIC_OBSERVER, update);
-            auto h = watcher->addWatch(path.absolute(), AINotifyFileWatcher::Mask::MODIFY);
-            AObject::connect(watcher->fired, AObject::GENERIC_OBSERVER, [=](const AINotifyFileWatcher::Event& event) {
-                if (event.watchDescriptor != h) {
-                    return;
-                }
-                update();
-            });
-        };
+            AObject::connect(gConfigUpdated, AObject::GENERIC_OBSERVER, update);};
 
         reg(prompts.system, "system", R"(---
 System prompt that describes base workflow in the Kuni's kernel.
