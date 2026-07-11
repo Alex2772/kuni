@@ -87,7 +87,8 @@ AppBase::AppBase(Init init): mInit(std::move(init)), mDiary({
     });
     mWakeupTimer->start();
 
-    getThread()->enqueue([&] {
+#ifndef AUI_TESTS_MODULE
+    getThread()->enqueue([this] {
         mAsync << [](AppBase& self) -> AFuture<> {
             // co_await self.mDiary.sleepingConsolidation();
 
@@ -358,6 +359,7 @@ AppBase::AppBase(Init init): mInit(std::move(init)), mDiary({
             co_return;
         }(*this);
     });
+#endif
 }
 
 const AppBase::Notification& AppBase::passNotificationToAI(AString notification, OpenAITools actions, bool first) {
