@@ -134,6 +134,11 @@ static const std::unordered_map<AStringView, AStringView> CONFIG_COMMENTS = {
       "https://habr.com/ru/articles/923168/",
     },
     {
+      "general.telegram_enabled",
+      "Whether to enable the Telegram bot. If set to false, Kuni will run in standalone mode\n"
+      "(useful if you only want to use the proxy server without a Telegram account).",
+    },
+    {
       "general.telegram_api_hash",
       "tdlib API hash, acquired on the same page as telegram_api_id.",
     },
@@ -526,8 +531,9 @@ static Config load(bool saveBack = false) {
 
 #ifndef AUI_TESTS_MODULE
     // validation
-    {
-        const auto& value = toml["general"]["telegram_api_id"];
+    if (out.telegramEnabled) {
+        {
+            const auto& value = toml["general"]["telegram_api_id"];
         if (value.as_integer() == 0) {
             ALogger::err(LOG_TAG) << toml::format_error(
                 (toml::make_error_info("general.telegram_api_id should be populated", value, "the actual value is 0")));
@@ -541,6 +547,7 @@ static Config load(bool saveBack = false) {
                 "general.telegram_api_hash should be populated", value, "the actual string is empty")));
             std::exit(-1);
         }
+    }
     }
 #endif
     ALogger::info(LOG_TAG) << CONFIG_TOML << " loaded";

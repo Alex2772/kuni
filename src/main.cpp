@@ -629,81 +629,87 @@ AUI_ENTRY {
     }
 
     using namespace std::chrono_literals;
-    auto telegram = _new<TelegramClientImpl>();
 
     AAsyncHolder async;
-    async << [](_<ITelegramClient> telegram) -> AFuture<> {
-        ALogger::info(LOG_TAG) << "Waiting for Telegram network...";
-        co_await telegram->waitForConnection();
-        switch (config().lockdown) {
-            case Config::LockdownMode::NONE:
-                break;
-            case Config::LockdownMode::CONTACTS_ONLY:
-                ALogger::info(LOG_TAG) << "Lockdown mode is enabled (config.toml lockdown). Kuni can only chat with "
-                                          "her contacts.";
-                break;
-            case Config::LockdownMode::PAPIK_ONLY:
-                ALogger::info(LOG_TAG) << "Lockdown mode is enabled (config.toml lockdown). Kuni can only open chat with ID {} (PAPIK_CHAT_ID)."_format(
-                    config().papikChatId);
-                break;
-        }
-        // app->actProactively(); // for tests
-    }(telegram);
-
     _<prometheus::IExporter> prometheus;
     _<App> app;
     _<proxy_server::IProxyServer> proxyServer;
     _<proxy_server::ContextBridge> contextBridge;
-    AObject::connect(telegram->loggedIn, telegram, [&] {
-        auto openAI = _new<OpenAIChatMeasurable>(std::make_unique<OpenAIChatImpl>());
-        app = _new<App>(telegram, openAI);
 
+    if (config().telegramEnabled) {
+        auto telegram = _new<TelegramClientImpl>();
+        async << [](_<ITelegramClient> telegram) -> AFuture<> {
+            ALogger::info(LOG_TAG) << "Waiting for Telegram network...";
+            co_await telegram->waitForConnection();
+            switch (config().lockdown) {
+                case Config::LockdownMode::NONE: break;
+                case Config::LockdownMode::CONTACTS_ONLY:
+                    ALogger::info(LOG_TAG) << "Lockdown mode is enabled (config.toml lockdown). Kuni can only chat with her contacts."; break;
+                case Config::LockdownMode::PAPIK_ONLY:
+                    ALogger::info(LOG_TAG) << "Lockdown mode is enabled (config.toml lockdown). Kuni can only open chat with ID {} (PAPIK_CHAT_ID)."_format(config().papikChatId); break;
+            }
+        }(telegram);
+
+        AObject::connect(telegram->loggedIn, telegram, [&] {
+            auto openAI = _new<OpenAIChatMeasurable>(std::make_unique<OpenAIChatImpl>());
+            app = _new<App>(telegram, openAI);
+
+            if (config().proxyEnabled) {
+                auto diary = std::make_shared<Diary>(Diary::Init { .diaryDir = "data/diary", .openAI = openAI });
+                proxyServer = proxy_server::init({
+                  .upstreamEndpoint = config().llm.endpoint,
+                  .port = 10434,
+                  .toolsFactory = [openAI, diary](IOpenAIChat::Session ctx) {
+                      return OpenAITools { tools::ask([ctx = std::move(ctx)] { return ctx.empty() ? AString {} : AString(ctx.last().content); }, openAI, *diary) };
+                  },
+                });
+                contextBridge = _new<proxy_server::ContextBridge>(proxy_server::ContextBridge::Config { .endpoint = config().llm.endpoint, .diary = diary });
+                AObject::connect(proxyServer->sentRequestToLLM, AUI_SLOT(contextBridge)::collectRequestToLLM);
+                app->chatHistoryMessageProcessors << contextBridge;
+            }
+            prometheus = prometheus::setup(app->metricBreadcumbs());
+            prometheus->registerOpenAI(*openAI);
+            prometheus->registerAppBase(*app);
+            _new<AThread>([] {
+                ALogger::info(LOG_TAG) << "Bot is up and running. Press enter to shutdown gracefully.";
+                std::cin.get();
+                ALogger::info(LOG_TAG) << "Bot is shutting down. Please give some time to dump remaining context";
+                gEventLoop.stop();
+            })->start();
+        });
+    } else {
+        auto openAI = _new<OpenAIChatMeasurable>(std::make_unique<OpenAIChatImpl>());
         if (config().proxyEnabled) {
             auto diary = std::make_shared<Diary>(Diary::Init { .diaryDir = "data/diary", .openAI = openAI });
             proxyServer = proxy_server::init({
               .upstreamEndpoint = config().llm.endpoint,
               .port = 10434,
-              .toolsFactory =
-                  [openAI, diary](IOpenAIChat::Session ctx) {
-                      // Create the tools directly without using an initializer list
-                      return OpenAITools {
-                          tools::ask(
-                              [ctx = std::move(ctx)] { return ctx.empty() ? AString {} : AString(ctx.last().content); }, openAI, *diary),
-                      };
-                  },
+              .toolsFactory = [openAI, diary](IOpenAIChat::Session ctx) {
+                  return OpenAITools { tools::ask([ctx = std::move(ctx)] { return ctx.empty() ? AString {} : AString(ctx.last().content); }, openAI, *diary) };
+              },
             });
-            contextBridge = _new<proxy_server::ContextBridge>(proxy_server::ContextBridge::Config {
-              .endpoint = config().llm.endpoint,
-              .diary = diary,
-            });
+            contextBridge = _new<proxy_server::ContextBridge>(proxy_server::ContextBridge::Config { .endpoint = config().llm.endpoint, .diary = diary });
             AObject::connect(proxyServer->sentRequestToLLM, AUI_SLOT(contextBridge)::collectRequestToLLM);
-            app->chatHistoryMessageProcessors << contextBridge;
+            ALogger::info(LOG_TAG) << "Proxy server started standalone (No Telegram)!";
         }
-        prometheus = prometheus::setup(app->metricBreadcumbs());
+        
+        auto dummyBreadcrumbs = _new<MetricsBreadcumbs>();
+        prometheus = prometheus::setup(dummyBreadcrumbs);
         prometheus->registerOpenAI(*openAI);
-        prometheus->registerAppBase(*app);
         _new<AThread>([] {
             ALogger::info(LOG_TAG) << "Bot is up and running. Press enter to shutdown gracefully.";
             std::cin.get();
             ALogger::info(LOG_TAG) << "Bot is shutting down. Please give some time to dump remaining context";
             gEventLoop.stop();
         })->start();
-    });
+    }
 
     IEventLoop::Handle h(&gEventLoop);
     gEventLoop.loop();
 
-    if (app) {
-        async << app->diaryDumpMessages();
-    }
+    if (app) { async << app->diaryDumpMessages(); }
+    if (contextBridge) { async << contextBridge->collectAndSaveSessionsNotNewerThan(std::chrono::system_clock::now()); }
 
-    if (contextBridge) {
-        async << contextBridge->collectAndSaveSessionsNotNewerThan(std::chrono::system_clock::now());
-    }
-
-    while (!async.empty()) {
-        gEventLoop.iteration();
-    }
-
+    while (!async.empty()) { gEventLoop.iteration(); }
     return 0;
 }

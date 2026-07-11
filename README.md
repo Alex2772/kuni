@@ -230,6 +230,7 @@ Open it and populate at minimum the `[general]` section:
 ```toml
 [general]
 character_name = "Kuni"          # your character's name
+telegram_enabled = true          # set to false to run as a standalone proxy without Telegram
 character_nickname = "@kunii_chan"
 papik_name = "Alex2772"          # your nickname — the instance owner
 papik_chat_id = 625207005        # your Telegram user ID
@@ -392,6 +393,10 @@ Client  ──POST /v1/chat/completions──►  Proxy
 ### Configuration
 
 Enable `PROXY_ENABLED` in config.
+
+#### Standalone mode (No Telegram)
+
+If you just want to use Kuni as a local RAG proxy for your IDE without dealing with Telegram accounts, set `telegram_enabled = false` in `config.toml`. Kuni will bypass TDLib initialization and spin up the proxy server directly on port 10434. 
 
 #### VS Code GitHub Copilot.
 
