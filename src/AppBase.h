@@ -1,3 +1,4 @@
+#include <memory>
 #pragma once
 #include "AUI/Common/AObject.h"
 #include "AUI/Common/ATimer.h"
@@ -15,6 +16,7 @@ public:
         _<IOpenAIChat> openAI;
     };
     AppBase(Init init);
+    virtual ~AppBase();
     AString getSystemPrompt() const;
 
     struct Notification {
@@ -160,4 +162,5 @@ private:
     bool mAskCalledThisTurn = false;
 
     Diary mDiary;
+    std::shared_ptr<bool> mAliveToken = std::make_shared<bool>(true);
 };
