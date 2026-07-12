@@ -74,7 +74,8 @@ namespace util {
                 if (eventFlags[i] & (kFSEventStreamEventFlagItemModified | kFSEventStreamEventFlagItemCreated | kFSEventStreamEventFlagItemRenamed)) {
                     for (const auto& pair : self->watches) {
                         if (path == pair.second) {
-                            emit self->parent->fired(Event{pair.first});
+                            // ВЫЗЫВАЕМ СИГНАЛ НАПРЯМУЮ, БЕЗ МАКРОСА emit
+                            self->parent->fired(Event{pair.first});
                         }
                     }
                 }
