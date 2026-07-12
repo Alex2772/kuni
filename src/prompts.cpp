@@ -10,7 +10,9 @@
 #include "AUI/IO/AFileInputStream.h"
 #include "AUI/IO/AFileOutputStream.h"
 #include "AUI/IO/APath.h"
+#ifndef __APPLE__
 #include "AUI/Platform/linux/AINotifyFileWatcher.h"
+#endif
 
 static const APath PROMPTS_DIR = "prompts";
 
@@ -77,7 +79,9 @@ const Prompts& prompts() {
         if (!PROMPTS_DIR.isDirectoryExists()) {
             PROMPTS_DIR.makeDirs();
         }
+#ifndef __APPLE__
         static auto watcher = _new<AINotifyFileWatcher>();
+#endif
 
         static constexpr auto reg = [](AString& field, AStringView name, AStringView defaultPrompt) {
             const auto path = PROMPTS_DIR / "{}.md"_format(name);
@@ -87,6 +91,7 @@ const Prompts& prompts() {
             };
             update();
             AObject::connect(gConfigUpdated, AObject::GENERIC_OBSERVER, update);
+#ifndef __APPLE__
             auto h = watcher->addWatch(path.absolute(), AINotifyFileWatcher::Mask::MODIFY);
             AObject::connect(watcher->fired, AObject::GENERIC_OBSERVER, [=](const AINotifyFileWatcher::Event& event) {
                 if (event.watchDescriptor != h) {
@@ -94,6 +99,7 @@ const Prompts& prompts() {
                 }
                 update();
             });
+#endif
         };
 
         reg(prompts.system, "system", R"(---

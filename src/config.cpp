@@ -4,7 +4,9 @@
 
 #include "AUI/IO/APath.h"
 #include "AUI/Logging/ALogger.h"
+#ifndef __APPLE__
 #include "AUI/Platform/linux/AINotifyFileWatcher.h"
+#endif
 #include "AUI/Platform/unix/UnixIoThread.h"
 #include "AUI/Util/kAUI.h"
 
@@ -551,6 +553,7 @@ emits<> gConfigUpdated;
 
 const Config& config() {
     static Config cfg = load(true);
+#ifndef __APPLE__
     AUI_DO_ONCE {
         static auto watcher = _new<AINotifyFileWatcher>();
         auto h = watcher->addWatch(APath(CONFIG_TOML).absolute(), AINotifyFileWatcher::Mask::MODIFY);
@@ -569,5 +572,6 @@ const Config& config() {
             *watcher ^ gConfigUpdated();
         });
     };
+#endif
     return cfg;
 }

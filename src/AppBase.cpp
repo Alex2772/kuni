@@ -57,6 +57,13 @@ AFuture<std::valarray<double>> contextEmbedding(IOpenAIChat& openAI, ranges::ran
     co_return co_await openAI.embedding({ .config = config().embedding }, basePrompt);
 }
 
+
+AppBase::~AppBase() {
+    if (mAliveToken) {
+        *mAliveToken = false;
+    }
+}
+
 AppBase::AppBase(Init init): mInit(std::move(init)), mDiary({
     .diaryDir = mInit.workingDir / "diary",
     .openAI = mInit.openAI,
@@ -87,7 +94,9 @@ AppBase::AppBase(Init init): mInit(std::move(init)), mDiary({
     });
     mWakeupTimer->start();
 
-    getThread()->enqueue([&] {
+    auto alive = mAliveToken;
+    getThread()->enqueue([this, alive] {
+        if (!*alive) return;
         mAsync << [](AppBase& self) -> AFuture<> {
             // co_await self.mDiary.sleepingConsolidation();
 
