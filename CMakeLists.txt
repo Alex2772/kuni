@@ -79,6 +79,10 @@ aui_link(${PROJECT_NAME} PUBLIC
         prometheus-cpp::pull
         httplib::httplib)
 
+if (APPLE)
+    target_link_libraries(${PROJECT_NAME} PUBLIC "-framework CoreServices")
+endif()
+
 aui_compile_assets(${PROJECT_NAME})
 aui_enable_tests(${PROJECT_NAME})
 
