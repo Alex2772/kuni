@@ -6,6 +6,7 @@
 #include <mutex>
 #include <atomic>
 #include <thread>
+#include <filesystem>
 
 namespace util {
     struct FileWatcher::Impl {
@@ -29,17 +30,26 @@ namespace util {
         }
 
         void rebuildStream() {
+            std::map<int, AString> localWatches;
+            {
+                std::lock_guard<std::mutex> lock(mutex);
+                localWatches = watches;
+            }
+
             if (stream) {
                 FSEventStreamStop(stream);
                 FSEventStreamInvalidate(stream);
                 FSEventStreamRelease(stream);
                 stream = nullptr;
             }
-            if (watches.empty()) return;
+            if (localWatches.empty()) return;
 
             CFMutableArrayRef pathsToWatch = CFArrayCreateMutable(NULL, 0, &kCFTypeArrayCallBacks);
-            for (const auto& pair : watches) {
-                CFStringRef cfPath = CFStringCreateWithCString(NULL, pair.second.toStdString().c_str(), kCFStringEncodingUTF8);
+            for (const auto& pair : localWatches) {
+                std::filesystem::path p(pair.second.toStdString());
+                std::string parentDir = p.parent_path().string();
+                
+                CFStringRef cfPath = CFStringCreateWithCString(NULL, parentDir.c_str(), kCFStringEncodingUTF8);
                 CFArrayAppendValue(pathsToWatch, cfPath);
                 CFRelease(cfPath);
             }
@@ -50,13 +60,15 @@ namespace util {
                 &context,
                 pathsToWatch,
                 kFSEventStreamEventIdSinceNow,
-                0.5,
+                0.1,
                 kFSEventStreamCreateFlagFileEvents | kFSEventStreamCreateFlagNoDefer
             );
 
+            CFRelease(pathsToWatch);
+            if (!stream) return;
+
             FSEventStreamScheduleWithRunLoop(stream, runLoop, kCFRunLoopDefaultMode);
             FSEventStreamStart(stream);
-            CFRelease(pathsToWatch);
         }
 
         static void callback(ConstFSEventStreamRef streamRef,
@@ -68,13 +80,18 @@ namespace util {
             auto* self = static_cast<Impl*>(clientCallBackInfo);
             char** paths = static_cast<char**>(eventPaths);
 
-            std::lock_guard<std::mutex> lock(self->mutex);
+            std::map<int, AString> localWatches;
+            {
+                std::lock_guard<std::mutex> lock(self->mutex);
+                localWatches = self->watches;
+            }
+
             for (size_t i = 0; i < numEvents; i++) {
                 AString path = paths[i];
                 if (eventFlags[i] & (kFSEventStreamEventFlagItemModified | kFSEventStreamEventFlagItemCreated | kFSEventStreamEventFlagItemRenamed)) {
-                    for (const auto& pair : self->watches) {
+                    for (const auto& pair : localWatches) {
                         if (path == pair.second) {
-                            self->parent->fired(Event{pair.first});
+                            (*self->parent) ^ self->parent->fired(Event{pair.first});
                         }
                     }
                 }
@@ -86,6 +103,12 @@ namespace util {
         mImpl->parent = this;
         mImpl->thread = _new<AThread>([this] {
             mImpl->runLoop = CFRunLoopGetCurrent();
+            
+            CFRunLoopSourceContext sourceContext = {0, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL};
+            CFRunLoopSourceRef source = CFRunLoopSourceCreate(NULL, 0, &sourceContext);
+            CFRunLoopAddSource(mImpl->runLoop, source, kCFRunLoopDefaultMode);
+            CFRelease(source);
+            
             mImpl->ready = true;
             CFRunLoopRun();
         });
@@ -100,9 +123,12 @@ namespace util {
     FileWatcher::~FileWatcher() = default;
 
     int FileWatcher::addWatch(const APath& path, Mask mask) {
-        std::lock_guard<std::mutex> lock(mImpl->mutex);
-        int wd = mImpl->nextWd++;
-        mImpl->watches[wd] = path.absolute();
+        int wd;
+        {
+            std::lock_guard<std::mutex> lock(mImpl->mutex);
+            wd = mImpl->nextWd++;
+            mImpl->watches[wd] = path.absolute();
+        }
         mImpl->rebuildStream();
         return wd;
     }
