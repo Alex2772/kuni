@@ -74,7 +74,6 @@ namespace util {
                 if (eventFlags[i] & (kFSEventStreamEventFlagItemModified | kFSEventStreamEventFlagItemCreated | kFSEventStreamEventFlagItemRenamed)) {
                     for (const auto& pair : self->watches) {
                         if (path == pair.second) {
-                            // ВЫЗЫВАЕМ СИГНАЛ НАПРЯМУЮ, БЕЗ МАКРОСА emit
                             self->parent->fired(Event{pair.first});
                         }
                     }
@@ -90,6 +89,9 @@ namespace util {
             mImpl->ready = true;
             CFRunLoopRun();
         });
+        
+        mImpl->thread->start();
+        
         while (!mImpl->ready) {
             std::this_thread::sleep_for(std::chrono::milliseconds(10));
         }
