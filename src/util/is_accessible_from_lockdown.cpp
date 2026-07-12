@@ -14,6 +14,10 @@ AFuture<bool> util::isAccessibleFromLockdown(ITelegramClient& telegram, int64_t 
         }
 
         case Config::LockdownMode::CONTACTS_ONLY: {
+            if (chatId < 0) {
+                // a group chat that kuni participate, ok.
+                co_return true;
+            }
             static auto contacts = co_await telegram.sendQueryWithResult(ITelegramClient::toPtr(td::td_api::getContacts()));
             if (ranges::contains(contacts->user_ids_, chatId)) {
                 co_return true;

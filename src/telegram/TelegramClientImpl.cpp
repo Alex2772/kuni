@@ -27,7 +27,7 @@ TelegramClientImpl::TelegramClientImpl() : mTgUpdateTimer(_new<ATimer>(1s)) {
 
 AFuture<ITelegramClient::Object> TelegramClientImpl::sendQuery(td::td_api::object_ptr<td::td_api::Function> f) {
     ALOG_TRACE(LOG_TAG) << "sendQuery " << td::td_api::to_string(f);
-    if (mQueryCountLastUpdate++ >= 5) {
+    if (mQueryCountLastUpdate++ >= 20) {
         // Telegram is strict about using 3rdparty telegram clients. For this reason, we have to ensure that we wouldn't
         // trigger their security leading to ban of the account.
         ALogger::info(LOG_TAG) << "Too many calls to tdlib! Throttling...\n" << AStacktrace::capture(1, 8);

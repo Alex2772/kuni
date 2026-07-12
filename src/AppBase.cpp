@@ -219,10 +219,12 @@ AppBase::AppBase(Init init): mInit(std::move(init)), mDiary({
                     if (!self.mAskCalledThisTurn) {
                         // remind LLM to call #ask before responding.
                         // Injected as a system-level checkpoint so LLM sees it right before generating its next action.
-                        self.mTemporaryContext.last().content +=
-                            "\n[system] Have you called #ask yet this turn? "
-                            "If the message involves personal topics, past events, questions, or people you know — "
-                            "call #ask BEFORE send_telegram_message.";
+                        if (config().remindUseAsk) {
+                            self.mTemporaryContext.last().content +=
+                                "\n[system] Have you called #ask yet this turn? "
+                                "If the message involves personal topics, past events, questions, or people you know — "
+                                "call #ask BEFORE send_telegram_message.";
+                        }
                     }
                     auto escape = [&](OpenAITools::Ctx ctx) -> AFuture<AString> {
                         pauseFlag = true;
@@ -344,7 +346,7 @@ AppBase::AppBase(Init init): mInit(std::move(init)), mDiary({
                     if (ranges::any_of(botAnswer.choices.at(0).message.tool_calls, [](const IOpenAIChat::Message::ToolCall& t){ return t.function.name == "send_telegram_message"; })) {
                         // if LLM sent a message without ever calling #ask this turn,
                         // inject a reminder into the next turn's context.
-                        if (!self.mAskCalledThisTurn) {
+                        if (!self.mAskCalledThisTurn && config().remindUseAsk) {
                             self.mTemporaryContext.last().content +=
                                 "\n[system] Note: you sent a message without consulting #ask this turn. "
                                 "Next time, call #ask before send_telegram_message to enrich your response "

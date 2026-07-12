@@ -194,14 +194,18 @@ protected:
 
     AFuture<AString> onCleanContext() override {
         AString result = co_await AppBase::onCleanContext();
-        if (config().capabilityUseStickers) {
-            auto list = co_await llmui::listFavoriteStickers(*telegram(), *openAI());
-            if (!list.empty()) {
-                result += "<your_favorite_stickers>\n";
-                result += list;
-                result += "</your_favorite_stickers>\n";
-            }
-        }
+        // Alex2772 (9 Jul 2026):
+        // consumes too much content.
+        // if llm wants to share a sticker, it would call get_stickers().
+        //
+        // if (config().capabilityUseStickers) {
+        //     auto list = co_await llmui::listFavoriteStickers(*telegram(), *openAI());
+        //     if (!list.empty()) {
+        //         result += "<your_favorite_stickers>\n";
+        //         result += list;
+        //         result += "</your_favorite_stickers>\n";
+        //     }
+        // }
         co_return result;
     }
 
@@ -233,6 +237,9 @@ private:
     }
 
     AFuture<> sendNotificationsOnInit() {
+        if (!config().checkChatsOnStartup) {
+            co_return;
+        }
         // tdlib does not send notifications for unread chats on program startup. we'll fix this.
         auto chats = co_await getChats();
         chats |= ranges::actions::reverse;   // older first, newest last
@@ -413,16 +420,18 @@ public:
             int64_t fromMessage = 0;
             for (;;) {
                 auto response = co_await mTelegram->sendQueryWithResult(
-                    ITelegramClient::toPtr(td::td_api::getChatHistory(chatId, fromMessage, 0, 5, false)));
+                    ITelegramClient::toPtr(td::td_api::getChatHistory(chatId, fromMessage, 0, 30, false)));
                 if (response->messages_.empty()) {
                     break;
                 }
                 fromMessage = response->messages_.back()->id_;
+                size_t length = 0;
                 for (auto& msg : response->messages_) {
 #if AUI_DEBUG
                     AUI_ASSERT(!ranges::any_of(messages, [&](const auto& m) { return m->id_ == msg->id_; }));
 #endif
                     const auto msgFormatting = R"(<message message_id="{}")"_format(msg->id_);
+                    length += to_string(msg->content_).length();
                     messages.push_back(std::move(msg));
                     if (ranges::any_of(temporaryContext(), [&](const IOpenAIChat::Message& msg) {
                             return msg.content.contains(msgFormatting);
@@ -432,13 +441,12 @@ public:
                         // detached, and stop at this point.
                         co_return;
                     }
-                }
-                const auto length = ranges::accumulate(
-                    messages, size_t(0), std::plus {}, [](const td::td_api::object_ptr<td::td_api::message>& msg) {
-                        return to_string(msg->content_).length();
-                    });
-                if (length >= config().chatMaxHistoryLength) {
-                    break;
+                    if (messages.size() < 3) {
+                        continue;
+                    }
+                    if (length >= config().chatMaxHistoryLength) {
+                        co_return;
+                    }
                 }
             }
         }();
@@ -486,9 +494,7 @@ public:
             // goto naxyi;
         }
         {
-            td::td_api::array<td::td_api::int53> readMessages;
             for (auto& msg : messages | ranges::view::reverse) {
-                readMessages.push_back(msg->id_);
                 auto msgFormatted =
                     co_await llmui::formatChatHistoryMessage(*telegram(), *msg, *chat, *openAI(), temporaryContext());
                 for (const auto& i : chatHistoryMessageProcessors) {
@@ -542,8 +548,10 @@ public:
                 }
             }
 
-            mTelegram->sendQuery(
-                ITelegramClient::toPtr(td::td_api::viewMessages(chatId, std::move(readMessages), nullptr, false)));
+            if (!messages.empty()) {
+                mTelegram->sendQuery(
+                    ITelegramClient::toPtr(td::td_api::viewMessages(chatId, td::td_api::array<td::td_api::int53>{messages.front()->id_}, nullptr, true)));
+            }
 
             result = "You switched to the chat \"{}\" in Telegram. You see last messages:\n"_format(chat->title_) + result;
 
@@ -629,81 +637,87 @@ AUI_ENTRY {
     }
 
     using namespace std::chrono_literals;
-    auto telegram = _new<TelegramClientImpl>();
 
     AAsyncHolder async;
-    async << [](_<ITelegramClient> telegram) -> AFuture<> {
-        ALogger::info(LOG_TAG) << "Waiting for Telegram network...";
-        co_await telegram->waitForConnection();
-        switch (config().lockdown) {
-            case Config::LockdownMode::NONE:
-                break;
-            case Config::LockdownMode::CONTACTS_ONLY:
-                ALogger::info(LOG_TAG) << "Lockdown mode is enabled (config.toml lockdown). Kuni can only chat with "
-                                          "her contacts.";
-                break;
-            case Config::LockdownMode::PAPIK_ONLY:
-                ALogger::info(LOG_TAG) << "Lockdown mode is enabled (config.toml lockdown). Kuni can only open chat with ID {} (PAPIK_CHAT_ID)."_format(
-                    config().papikChatId);
-                break;
-        }
-        // app->actProactively(); // for tests
-    }(telegram);
-
     _<prometheus::IExporter> prometheus;
     _<App> app;
     _<proxy_server::IProxyServer> proxyServer;
     _<proxy_server::ContextBridge> contextBridge;
-    AObject::connect(telegram->loggedIn, telegram, [&] {
-        auto openAI = _new<OpenAIChatMeasurable>(std::make_unique<OpenAIChatImpl>());
-        app = _new<App>(telegram, openAI);
 
+    if (config().telegramEnabled) {
+        auto telegram = _new<TelegramClientImpl>();
+        async << [](_<ITelegramClient> telegram) -> AFuture<> {
+            ALogger::info(LOG_TAG) << "Waiting for Telegram network...";
+            co_await telegram->waitForConnection();
+            switch (config().lockdown) {
+                case Config::LockdownMode::NONE: break;
+                case Config::LockdownMode::CONTACTS_ONLY:
+                    ALogger::info(LOG_TAG) << "Lockdown mode is enabled (config.toml lockdown). Kuni can only chat with her contacts."; break;
+                case Config::LockdownMode::PAPIK_ONLY:
+                    ALogger::info(LOG_TAG) << "Lockdown mode is enabled (config.toml lockdown). Kuni can only open chat with ID {} (PAPIK_CHAT_ID)."_format(config().papikChatId); break;
+            }
+        }(telegram);
+
+        AObject::connect(telegram->loggedIn, telegram, [&] {
+            auto openAI = _new<OpenAIChatMeasurable>(std::make_unique<OpenAIChatImpl>());
+            app = _new<App>(telegram, openAI);
+
+            if (config().proxyEnabled) {
+                auto diary = std::make_shared<Diary>(Diary::Init { .diaryDir = "data/diary", .openAI = openAI });
+                proxyServer = proxy_server::init({
+                  .upstreamEndpoint = config().llm.endpoint,
+                  .port = 10434,
+                  .toolsFactory = [openAI, diary](IOpenAIChat::Session ctx) {
+                      return OpenAITools { tools::ask([ctx = std::move(ctx)] { return ctx.empty() ? AString {} : AString(ctx.last().content); }, openAI, *diary) };
+                  },
+                });
+                contextBridge = _new<proxy_server::ContextBridge>(proxy_server::ContextBridge::Config { .endpoint = config().llm.endpoint, .diary = diary });
+                AObject::connect(proxyServer->sentRequestToLLM, AUI_SLOT(contextBridge)::collectRequestToLLM);
+                app->chatHistoryMessageProcessors << contextBridge;
+            }
+            prometheus = prometheus::setup(app->metricBreadcumbs());
+            prometheus->registerOpenAI(*openAI);
+            prometheus->registerAppBase(*app);
+            _new<AThread>([] {
+                ALogger::info(LOG_TAG) << "Bot is up and running. Press enter to shutdown gracefully.";
+                std::cin.get();
+                ALogger::info(LOG_TAG) << "Bot is shutting down. Please give some time to dump remaining context";
+                gEventLoop.stop();
+            })->start();
+        });
+    } else {
+        auto openAI = _new<OpenAIChatMeasurable>(std::make_unique<OpenAIChatImpl>());
         if (config().proxyEnabled) {
             auto diary = std::make_shared<Diary>(Diary::Init { .diaryDir = "data/diary", .openAI = openAI });
             proxyServer = proxy_server::init({
               .upstreamEndpoint = config().llm.endpoint,
               .port = 10434,
-              .toolsFactory =
-                  [openAI, diary](IOpenAIChat::Session ctx) {
-                      // Create the tools directly without using an initializer list
-                      return OpenAITools {
-                          tools::ask(
-                              [ctx = std::move(ctx)] { return ctx.empty() ? AString {} : AString(ctx.last().content); }, openAI, *diary),
-                      };
-                  },
+              .toolsFactory = [openAI, diary](IOpenAIChat::Session ctx) {
+                  return OpenAITools { tools::ask([ctx = std::move(ctx)] { return ctx.empty() ? AString {} : AString(ctx.last().content); }, openAI, *diary) };
+              },
             });
-            contextBridge = _new<proxy_server::ContextBridge>(proxy_server::ContextBridge::Config {
-              .endpoint = config().llm.endpoint,
-              .diary = diary,
-            });
+            contextBridge = _new<proxy_server::ContextBridge>(proxy_server::ContextBridge::Config { .endpoint = config().llm.endpoint, .diary = diary });
             AObject::connect(proxyServer->sentRequestToLLM, AUI_SLOT(contextBridge)::collectRequestToLLM);
-            app->chatHistoryMessageProcessors << contextBridge;
+            ALogger::info(LOG_TAG) << "Proxy server started standalone (No Telegram)!";
         }
-        prometheus = prometheus::setup(app->metricBreadcumbs());
+        
+        auto dummyBreadcrumbs = _new<MetricsBreadcumbs>();
+        prometheus = prometheus::setup(dummyBreadcrumbs);
         prometheus->registerOpenAI(*openAI);
-        prometheus->registerAppBase(*app);
         _new<AThread>([] {
             ALogger::info(LOG_TAG) << "Bot is up and running. Press enter to shutdown gracefully.";
             std::cin.get();
             ALogger::info(LOG_TAG) << "Bot is shutting down. Please give some time to dump remaining context";
             gEventLoop.stop();
         })->start();
-    });
+    }
 
     IEventLoop::Handle h(&gEventLoop);
     gEventLoop.loop();
 
-    if (app) {
-        async << app->diaryDumpMessages();
-    }
+    if (app) { async << app->diaryDumpMessages(); }
+    if (contextBridge) { async << contextBridge->collectAndSaveSessionsNotNewerThan(std::chrono::system_clock::now()); }
 
-    if (contextBridge) {
-        async << contextBridge->collectAndSaveSessionsNotNewerThan(std::chrono::system_clock::now());
-    }
-
-    while (!async.empty()) {
-        gEventLoop.iteration();
-    }
-
+    while (!async.empty()) { gEventLoop.iteration(); }
     return 0;
 }

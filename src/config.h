@@ -12,6 +12,7 @@
   X(std::int64_t, papikChatId, 625207005,"general.papik_chat_id") \
   X(std::int64_t, telegramApiId, 0,"general.telegram_api_id") \
   X(AString,telegramApiHash, "", "general.telegram_api_hash") \
+  X(bool, telegramEnabled, true, "general.telegram_enabled") \
   X(EndpointAndModel, llm, (EndpointAndModel{.endpoint={"http://localhost:11434/v1/"},.model="deepseek-v4-flash"}), "general.llm") \
   X(EndpointAndModel, embedding, (EndpointAndModel{.endpoint={"http://localhost:11434/v1/"},.model="qwen3-embedding"}), "general.embedding") \
   X(::Config::LockdownMode, lockdown, ::Config::LockdownMode::PAPIK_ONLY, "general.lockdown") \
@@ -36,6 +37,10 @@
   X(std::chrono::seconds, requestTimeoutSecs, std::chrono::seconds(30), "misc.request_timeout_secs") \
   X(size_t, videoMaxFrames, 16, "misc.video_max_frames") \
   X(size_t, videoMinStepMs, 1000, "misc.video_min_step_ms") \
+  X(bool, remindUseAsk, true, "misc.remind_use_ask") \
+  X(int, typingSimulationMinWpm, 120, "misc.typing_simulation_min_wpm") \
+  X(int, typingSimulationMaxWpm, 150, "misc.typing_simulation_max_wpm") \
+  X(bool, checkChatsOnStartup, true, "misc.check_chats_on_startup") \
   X(bool, capabilityWebSearch, false, "capabilities.web_search.enabled") \
   X(AString, webSearchOllamaKey, "", "capabilities.web_search.ollama_bearer_key") \
   X(bool, capabilityVision, false, "capabilities.vision.enabled") \
