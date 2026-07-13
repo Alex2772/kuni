@@ -103,6 +103,48 @@ jobs:
       - name: Build Project
         run: cmake --build ${{github.workspace}}/build --config RelWithDebInfo
 
+      - name: Test Hot-Reloading (macOS & Linux)
+        if: runner.os != 'Windows'
+        working-directory: ${{github.workspace}}/build/bin
+        run: |
+          # 1. Создаем конфиг с отключенным Telegram
+          echo '[general]' > config.toml
+          echo 'telegram_enabled = false' >> config.toml
+          echo 'character_name = "Kuni"' >> config.toml
+          echo 'papik_name = "Alex2772"' >> config.toml
+          echo 'papik_chat_id = 625207005' >> config.toml
+          echo 'telegram_api_id = 12345' >> config.toml
+          echo 'telegram_api_hash = "abc"' >> config.toml
+          
+          # 2. Запускаем через бесконечный пайп ввода tail -f /dev/null, чтобы std::cin не ловил EOF
+          if [ "${{ runner.os }}" = "macOS" ]; then
+            tail -f /dev/null | ./Kuni.app/Contents/MacOS/Kuni &> kuni_run.log &
+          else
+            tail -f /dev/null | ./kuni &> kuni_run.log &
+          fi
+          KUNI_PID=$!
+          
+          # 3. Даем боту 3 секунды инициализироваться
+          sleep 3
+          
+          # 4. Имитируем изменение файла
+          echo 'misc.remind_use_ask = false' >> config.toml
+          
+          # 5. Даем 3 секунды поймать событие
+          sleep 3
+          
+          # 6. Убиваем фоновый процесс бота
+          kill -9 $KUNI_PID || true
+          
+          # 7. Выводим лог для истории и проверяем релоад
+          cat kuni_run.log
+          if grep -q "reloading" kuni_run.log; then
+            echo "SUCCESS: Hot-reloading works natively on ${{ runner.os }}!"
+          else
+            echo "ERROR: Hot-reloading failed to detect file modification on ${{ runner.os }}!"
+            exit 1
+          fi
+
       - name: Build Tests
         run: cmake --build ${{github.workspace}}/build --config RelWithDebInfo --target Tests
 

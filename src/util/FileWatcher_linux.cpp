@@ -16,7 +16,11 @@ namespace util {
     FileWatcher::~FileWatcher() = default;
 
     int FileWatcher::addWatch(const APath& path, Mask mask) {
-        return mImpl->watcher->addWatch(path, static_cast<AINotifyFileWatcher::Mask>(mask));
+        AINotifyFileWatcher::Mask targetMask = AINotifyFileWatcher::Mask::MODIFY;
+        if (mask == Mask::MODIFY) {
+            targetMask = AINotifyFileWatcher::Mask::MODIFY;
+        }
+        return mImpl->watcher->addWatch(path, targetMask);
     }
 }
 #endif
