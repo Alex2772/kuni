@@ -732,9 +732,10 @@ AUI_ENTRY {
     _<App> app;
     _<proxy_server::IProxyServer> proxyServer;
     _<proxy_server::ContextBridge> contextBridge;
+    _<TelegramClientImpl> telegram;
 
     if (config().telegramEnabled) {
-        auto telegram = _new<TelegramClientImpl>();
+        telegram = _new<TelegramClientImpl>();
         async << [](_<ITelegramClient> telegram) -> AFuture<> {
             ALogger::info(LOG_TAG) << "Waiting for Telegram network...";
             co_await telegram->waitForConnection();
@@ -747,7 +748,7 @@ AUI_ENTRY {
             }
         }(telegram);
 
-        AObject::connect(telegram->loggedIn, telegram, [&] {
+        AObject::connect(telegram->loggedIn, telegram, [telegram, &app, &prometheus, &proxyServer, &contextBridge] {
             auto openAI = _new<OpenAIChatMeasurable>(std::make_unique<OpenAIChatImpl>());
             app = _new<App>(telegram, openAI);
 

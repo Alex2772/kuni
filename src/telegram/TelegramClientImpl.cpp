@@ -7,6 +7,8 @@
 #include "config.h"
 #include "AUI/Common/ATimer.h"
 #include "AUI/Util/kAUI.h"
+#include <thread>
+#include <string>
 
 using namespace std::chrono_literals;
 
@@ -134,29 +136,49 @@ void TelegramClientImpl::commonHandler(td::tl::unique_ptr<td::td_api::Object> ob
                         emit loggedIn;
                     },
                     [this](td::td_api::authorizationStateWaitPhoneNumber& s) {
-                        ALogger::info(LOG_TAG) << "[Authentication] required. Please supply phone number to stdin";
-
                         auto params = td::td_api::make_object<td::td_api::setAuthenticationPhoneNumber>();
-                        std::cin >> params->phone_number_;
-                        sendQuery(std::move(params));
+                        std::thread([this, params = std::move(params)]() mutable {
+                            ALogger::info("TelegramClient") << "\n[Authentication] required. Please supply phone number to stdin";
+                            std::cin >> params->phone_number_;
+                            std::string dummy;
+                            std::getline(std::cin, dummy);
+                            sendQuery(std::move(params)).onSuccess([](const ITelegramClient::Object& result) {
+                                if (result->get_id() == td::td_api::error::ID) {
+                                    auto error = static_cast<const td::td_api::error*>(result.get());
+                                    ALogger::err("TelegramClient") << "auth error: " << error->message_;
+                                }
+                            });
+                        }).detach();
                     },
                     [this](td::td_api::authorizationStateWaitPassword& s) {
-                        ALogger::info(LOG_TAG)
-                            << "[Authentication] required. Please supply cloud "
-                               "password to stdin";
-
                         auto params = td::td_api::make_object<td::td_api::checkAuthenticationPassword>();
-                        std::cin >> params->password_;
-                        sendQuery(std::move(params));
+                        std::thread([this, params = std::move(params)]() mutable {
+                            ALogger::info("TelegramClient") << "\n[Authentication] required. Please supply cloud password to stdin";
+                            std::cin >> params->password_;
+                            std::string dummy;
+                            std::getline(std::cin, dummy);
+                            sendQuery(std::move(params)).onSuccess([](const ITelegramClient::Object& result) {
+                                if (result->get_id() == td::td_api::error::ID) {
+                                    auto error = static_cast<const td::td_api::error*>(result.get());
+                                    ALogger::err("TelegramClient") << "auth error: " << error->message_;
+                                }
+                            });
+                        }).detach();
                     },
                     [this](td::td_api::authorizationStateWaitCode& s) {
-                        ALogger::info(LOG_TAG)
-                            << "[Authentication] required. Please supply "
-                               "verification code to stdin";
-
                         auto params = td::td_api::make_object<td::td_api::checkAuthenticationCode>();
-                        std::cin >> params->code_;
-                        sendQuery(std::move(params));
+                        std::thread([this, params = std::move(params)]() mutable {
+                            ALogger::info("TelegramClient") << "\n[Authentication] required. Please supply verification code to stdin";
+                            std::cin >> params->code_;
+                            std::string dummy;
+                            std::getline(std::cin, dummy);
+                            sendQuery(std::move(params)).onSuccess([](const ITelegramClient::Object& result) {
+                                if (result->get_id() == td::td_api::error::ID) {
+                                    auto error = static_cast<const td::td_api::error*>(result.get());
+                                    ALogger::err("TelegramClient") << "auth error: " << error->message_;
+                                }
+                            });
+                        }).detach();
                     },
                     [this](td::td_api::authorizationStateClosed& u) {
                         getThread()->enqueue([this, self = shared_from_this()] { initClientManager(); });
