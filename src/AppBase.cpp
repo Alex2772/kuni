@@ -337,9 +337,11 @@ AppBase::AppBase(Init init): mInit(std::move(init)), mDiary({
                         goto naxyi_preserve_ctx;
                     }
 
+#ifndef AUI_TESTS_MODULE
                     if (processIgnoreChance(self.mTemporaryContext, canIgnore, botAnswer.choices.at(0).message)) {
                         goto naxyi_preserve_ctx;
                     }
+#endif
 
                     {
                         auto toolCalls = co_await notification.actions.handleToolCalls(botAnswer.choices.at(0).message.tool_calls, self.metricBreadcumbs());
