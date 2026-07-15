@@ -748,32 +748,34 @@ AUI_ENTRY {
             }
         }(telegram);
 
-        AObject::connect(telegram->loggedIn, telegram, [telegram, &app, &prometheus, &proxyServer, &contextBridge] {
-            auto openAI = _new<OpenAIChatMeasurable>(std::make_unique<OpenAIChatImpl>());
-            app = _new<App>(telegram, openAI);
+        AObject::connect(telegram->loggedIn, telegram, [weakTelegram = telegram.weak(), &app, &prometheus, &proxyServer, &contextBridge] {
+            if (auto tg = weakTelegram.lock()) {
+                auto openAI = _new<OpenAIChatMeasurable>(std::make_unique<OpenAIChatImpl>());
+                app = _new<App>(tg, openAI);
 
-            if (config().proxyEnabled) {
-                auto diary = std::make_shared<Diary>(Diary::Init { .diaryDir = "data/diary", .openAI = openAI });
-                proxyServer = proxy_server::init({
-                  .upstreamEndpoint = config().llm.endpoint,
-                  .port = 10434,
-                  .toolsFactory = [openAI, diary](IOpenAIChat::Session ctx) {
-                      return OpenAITools { tools::ask([ctx = std::move(ctx)] { return ctx.empty() ? AString {} : AString(ctx.last().content); }, openAI, *diary) };
-                  },
-                });
-                contextBridge = _new<proxy_server::ContextBridge>(proxy_server::ContextBridge::Config { .endpoint = config().llm.endpoint, .diary = diary });
-                AObject::connect(proxyServer->sentRequestToLLM, AUI_SLOT(contextBridge)::collectRequestToLLM);
-                app->chatHistoryMessageProcessors << contextBridge;
+                if (config().proxyEnabled) {
+                    auto diary = std::make_shared<Diary>(Diary::Init { .diaryDir = "data/diary", .openAI = openAI });
+                    proxyServer = proxy_server::init({
+                      .upstreamEndpoint = config().llm.endpoint,
+                      .port = 10434,
+                      .toolsFactory = [openAI, diary](IOpenAIChat::Session ctx) {
+                          return OpenAITools { tools::ask([ctx = std::move(ctx)] { return ctx.empty() ? AString {} : AString(ctx.last().content); }, openAI, *diary) };
+                      },
+                    });
+                    contextBridge = _new<proxy_server::ContextBridge>(proxy_server::ContextBridge::Config { .endpoint = config().llm.endpoint, .diary = diary });
+                    AObject::connect(proxyServer->sentRequestToLLM, AUI_SLOT(contextBridge)::collectRequestToLLM);
+                    app->chatHistoryMessageProcessors << contextBridge;
+                }
+                prometheus = prometheus::setup(app->metricBreadcumbs());
+                prometheus->registerOpenAI(*openAI);
+                prometheus->registerAppBase(*app);
+                _new<AThread>([] {
+                    ALogger::info(LOG_TAG) << "Bot is up and running. Press enter to shutdown gracefully.";
+                    std::cin.get();
+                    ALogger::info(LOG_TAG) << "Bot is shutting down. Please give some time to dump remaining context";
+                    gEventLoop.stop();
+                })->start();
             }
-            prometheus = prometheus::setup(app->metricBreadcumbs());
-            prometheus->registerOpenAI(*openAI);
-            prometheus->registerAppBase(*app);
-            _new<AThread>([] {
-                ALogger::info(LOG_TAG) << "Bot is up and running. Press enter to shutdown gracefully.";
-                std::cin.get();
-                ALogger::info(LOG_TAG) << "Bot is shutting down. Please give some time to dump remaining context";
-                gEventLoop.stop();
-            })->start();
         });
     } else {
         auto openAI = _new<OpenAIChatMeasurable>(std::make_unique<OpenAIChatImpl>());
