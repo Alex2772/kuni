@@ -19,8 +19,8 @@ public:
     MOCK_METHOD(AString, openChat, (), ());
 
 protected:
-    void updateTools(OpenAITools& actions) override {
-        AppBase::updateTools(actions);
+    void updateTools(OpenAITools& actions, const IOpenAIChat::Session& temporaryContext) override {
+        AppBase::updateTools(actions, temporaryContext);
         actions.insert({
             .name = "send_telegram_message",
             .description = "Sends a message to the chat",

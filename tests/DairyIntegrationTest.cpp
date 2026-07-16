@@ -21,7 +21,7 @@ TEST(DiaryIntegration, Basic) {
     AAsyncHolder async;
     auto app = _new<AppMock>();
 
-    async << app->passNotificationToAI(R"(
+    async << app->notificationManager().passNotificationToAI({R"(
 Today you read an article. Contents below.
 
 The source character set of C source programs is contained within the 7-bit ASCII character set but is a superset of the
@@ -37,7 +37,7 @@ encourages implementations not to do so. Through C++14, trigraphs are supported 
 
 Visual C++ continues to support trigraph substitution, but it's disabled by default. For information on how to enable
 trigraph substitution, see /Zc:trigraphs (Trigraphs Substitution).
-)").onProcessed;
+)"}).onProcessed;
     while (!async.empty()) {
         loop.iteration();
     }
@@ -67,12 +67,12 @@ TEST(DiaryIntegration, Remember) {
             .WillByDefault([](AString text) -> AFuture<> { co_return; });
         EXPECT_CALL(*app, telegramPostMessage(testing::_)).Times(testing::AtLeast(1));
 
-        async << app->passNotificationToAI(R"(
+        async << app->notificationManager().passNotificationToAI({R"(
 You received a message from Alex2772 (chat_id=1):
 
 Today I was playing several games of Dota 2. Both times I was playing Arc Warden and both times we lost
 :( my teammates weren't bad though.
-)").onProcessed;
+)"}).onProcessed;
         while (!async.empty()) {
             loop.iteration();
         }
@@ -93,13 +93,13 @@ Today I was playing several games of Dota 2. Both times I was playing Arc Warden
         auto app = _new<AppMock>();
         testing::InSequence s;
         bool called = false;
-        async << app->passNotificationToAI(R"(
+        async << app->notificationManager().passNotificationToAI({R"(
 You received a message from Alex2772 (chat_id=1):
 
 Today I won a match in Dota 2
 
 Guess which hero I was playing :)
-)").onProcessed;
+)"}).onProcessed;
         ON_CALL(*app, telegramPostMessage(testing::_))
             .WillByDefault([&](AString text) noexcept -> AFuture<> {
                 const auto lower = text.lowercase();
@@ -263,7 +263,7 @@ TEST(DiaryIntegration, RealWorldChatHistorySneakyTopicSwitch) {
         EXPECT_CALL(*app, openChat()).Times(testing::AtLeast(1));
         EXPECT_CALL(*app, telegramPostMessage(testing::_)).Times(testing::AtLeast(1));
 
-        async << app->passNotificationToAI("You recevied a notification. Please use #open_chat to see mesages.").onProcessed;
+        async << app->notificationManager().passNotificationToAI({"You recevied a notification. Please use #open_chat to see mesages."}).onProcessed;
 
         while (!async.empty()) {
             loop.iteration();
@@ -341,7 +341,7 @@ TEST(DiaryIntegration, ConversationNoFollowUp) {
         EXPECT_CALL(*app, openChat()).Times(testing::AtLeast(1));
         EXPECT_CALL(*app, telegramPostMessage(testing::_)).Times(testing::Exactly(0));
 
-        async << app->passNotificationToAI("You recevied a notification. Please use #open_chat to see mesages.").onProcessed;
+        async << app->notificationManager().passNotificationToAI({"You recevied a notification. Please use #open_chat to see mesages."}).onProcessed;
 
         while (!async.empty()) {
             loop.iteration();

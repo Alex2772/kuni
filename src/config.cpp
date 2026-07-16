@@ -413,6 +413,11 @@ static const std::unordered_map<AStringView, AStringView> CONFIG_COMMENTS = {
       "misc.can_leave_chats",
       "Whether Kuni chat leave a telegram group chat/channel.",
     },
+    {
+      "misc.worker_count",
+      "Amount of Kuni's subpersons that process messages. 1 is totally fine.\n"
+      "This was implemented as a countermeasure to spamming Kuni's DM.",
+    },
 };
 
 static constexpr auto CONFIG_TOML = "config.toml";

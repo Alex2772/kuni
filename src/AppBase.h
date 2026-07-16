@@ -1,5 +1,5 @@
-#include <memory>
 #pragma once
+#include <memory>
 #include "AUI/Common/AObject.h"
 #include "AUI/Common/ATimer.h"
 #include "AUI/Thread/AAsyncHolder.h"
@@ -7,7 +7,9 @@
 #include "Diary.h"
 #include "IOpenAIChat.h"
 #include "MetricsBreadcumbs.h"
+#include "NotificationManager.h"
 #include "OpenAITools.h"
+#include "Worker.h"
 
 class AppBase : public AObject {
 public:
@@ -16,34 +18,13 @@ public:
         _<IOpenAIChat> openAI;
     };
     AppBase(Init init);
-    virtual ~AppBase();
-    AString getSystemPrompt() const;
-
-    struct Notification {
-        AString message;
-        OpenAITools actions;
-        AFuture<> onStartedProcessing;
-        AFuture<> onProcessed;
-    };
-
-
-    /**
-     * @brief Passes an event to the AI to process
-     * @param notification notification text message in natural language (i.e., "you received a message from "...": ...;
-     * an
-     * @param actions immediate actions (tools) related to the notification (i.e., open related chat)
-     * alarm triggerred, etc...)
-     * @return Promise satisfied when the notification is processed.
-     * @details
-     * Think of it as your phone's notifications: you receive a notification, read it and (maybe) react to it.
-     */
-    const Notification& passNotificationToAI(AString notification, OpenAITools actions = {}, bool first = false);
+    virtual ~AppBase() = default;
+    AString getSystemPrompt();
 
     AFuture<> diaryDumpMessages();
+    AFuture<> diaryDumpMessages(IOpenAIChat::Session& temporaryContext);
 
     void actProactively();
-
-    [[nodiscard]] const IOpenAIChat::Session& temporaryContext() const { return mTemporaryContext; }
 
     [[nodiscard]] Diary& diary() { return mDiary; }
 
@@ -64,27 +45,21 @@ public:
         return mMetricBreadcumbs;
     }
 
-    /**
-     * @brief If Kuni is sleeping, this function wake ups her.
-     */
-    void wakeUpIfSleeping() {
-        mWakeup = true;
+    virtual AString onCleanContext() const;
+
+    NotificationManager& notificationManager() {
+        return mNotificationManager;
     }
-
-protected:
-    AAsyncHolder mAsync;
-    aui::float_within_0_1 mRelevanceThreshold = 0.5f;
-
-    // Set by llmuiOpenTelegramChat; read by updateTools to populate ToolCallEvent.
-    AOptional<std::chrono::system_clock::time_point> mLastOpenedChatLastMessageTime;
-
-    virtual AFuture<AString> onCleanContext();
-
 
     /**
      * @brief Called by the main coroutine when a notification was processed.
      */
     virtual void onOffline() {}
+
+    [[nodiscard]]
+    const _<IOpenAIChat>& openAI() const noexcept {
+        return mInit.openAI;
+    }
 
     /**
      * @brief Called by the main coroutine during LLM inference streaming to observe which tool calls LLM is about to
@@ -95,57 +70,26 @@ protected:
     virtual void onResponseAssembling(IOpenAIChat::Response response) {}
 
     /**
-     *
-     * @return @brief Called before LLM's processing loop.
-     */
-    virtual AFuture<> onBeforeMainLoop() { co_return; }
-
-    /**
      * @brief Adds always available actions
      */
-    virtual void updateTools(OpenAITools& actions);
+    virtual void updateTools(OpenAITools& actions, const IOpenAIChat::Session& temporaryContext);
 
-    /**
-     * @brief Removes notifications by the given substring.
-     * @param substring to search in notification texts. Must be unique enough to avoid false positives.
-     * @details
-     * Can be used to remove obsolete notifications from AI's queue.
-     */
-    void removeNotifications(const AString& substring);
 
-    IOpenAIChat::Session mTemporaryContext = [] {
-        IOpenAIChat::Session s;
-        s.sessionId = "kuni_main_coro";
-        return s;
-    }();
+    void wakeUpIfSleeping();
 
-    /**
-     * @brief Performs needed adjustments to the diary page and removes the page from listing. Formatted contents are
-     * returned.
-     * @details
-     * Adjusts usage count, last used and score fields, according to relatedness.
-     *
-     * Format's with XML tag with needed attributes.
-     *
-     * The diary page with new metadata is dropped onto disk and removes from mDiary. This ensures this specific diary
-     * page wouldn't be considered and included again until mTemporary context is cleaned via diaryDumpMessages.
-     *
-     */
-    [[nodiscard]]
-    AString takeDiaryEntry(const Diary::EntryExAndRelatedness& i);
+protected:
+    AAsyncHolder mAsync;
 
-    [[nodiscard]]
-    const _<IOpenAIChat>& openAI() const noexcept {
-        return mInit.openAI;
-    }
+    // Set by llmuiOpenTelegramChat; read by updateTools to populate ToolCallEvent.
+    AOptional<std::chrono::system_clock::time_point> mLastOpenedChatLastMessageTime;
+
 
 private:
     _<MetricsBreadcumbs> mMetricBreadcumbs = _new<MetricsBreadcumbs>();
     const Init mInit;
-    std::deque<Notification> mNotifications;
     AFuture<> mNotificationsSignal;
     _<ATimer> mWakeupTimer;
-    // OpenAITools mTools;
+    NotificationManager mNotificationManager;
     AString mSystemPromptSuffix;
 
     bool mWakeup = false;
@@ -161,6 +105,9 @@ private:
      */
     bool mAskCalledThisTurn = false;
 
+    AVector<AArc<Worker>> mWorkers;
+    AProperty<size_t> mWorkerCount;
+    ASpinlockMutex mWorkingMemoryLock;
+
     Diary mDiary;
-    std::shared_ptr<bool> mAliveToken = std::make_shared<bool>(true);
 };

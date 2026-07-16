@@ -72,6 +72,7 @@ TEST(ReactWithEmojiTest, Success) {
     auto result = util::await_synchronously(tool.handler({
         .tools = tools,
         .args = AJson::Object{{"message_id", 42}, {"emoji", "🔥"}},
+        .temporaryContext = {},
         .allToolCalls = {},
     }));
 
@@ -95,6 +96,7 @@ TEST(ReactWithEmojiTest, WrongChatId) {
     auto result = util::await_synchronously(tool.handler({
         .tools = tools,
         .args = AJson::Object{{"chat_id", 99999}, {"message_id", 42}, {"emoji", "🔥"}},
+        .temporaryContext = {},
         .allToolCalls = {},
     }));
 
@@ -119,6 +121,7 @@ TEST(ReactWithEmojiTest, MissingMessageIdThrows) {
         util::await_synchronously(tool.handler({
             .tools = tools,
             .args = AJson::Object{{"emoji", "🔥"}},
+            .temporaryContext = {},
             .allToolCalls = {},
         })),
         AException
@@ -141,6 +144,7 @@ TEST(ReactWithEmojiTest, MissingEmojiThrows) {
         util::await_synchronously(tool.handler({
             .tools = tools,
             .args = AJson::Object{{"message_id", 42}},
+            .temporaryContext = {},
             .allToolCalls = {},
         })),
         AException

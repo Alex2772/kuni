@@ -41,7 +41,7 @@ static AString removeControlCharacters(AString input) {
 }
 
 AFuture<IOpenAIChat::Session> OpenAITools::handleToolCalls(const AVector<IOpenAIChat::Message::ToolCall>& toolCalls,
-    const _<MetricsBreadcumbs>& metricsBreadCumbs) {
+    const _<MetricsBreadcumbs>& metricsBreadCumbs, const IOpenAIChat::Session& temporaryContext) {
     ALOG_TRACE("OpenAITools") << "handleToolCalls";
     IOpenAIChat::Session result;
     for (const auto& toolCall : toolCalls) {
@@ -57,10 +57,11 @@ AFuture<IOpenAIChat::Session> OpenAITools::handleToolCalls(const AVector<IOpenAI
                         auto handlerResult = co_await c->second.handler({
                             .tools = *this,
                             .args = AJson::fromString(toolCall.function.arguments),
+                            .temporaryContext = temporaryContext,
                             .allToolCalls = toolCalls,
                         });
-                        if (onAfterToolCall) {
-                            onAfterToolCall(toolCall.function.name);
+                        for (const auto& i : onAfterToolCall) {
+                            i(toolCall.function.name);
                         }
                         co_return std::move(handlerResult);
                     }

@@ -119,6 +119,7 @@ TEST(AskTest, HandlerShortQueryError) {
     auto result = util::await_synchronously(tool.handler({
         .tools = tools,
         .args = AJson::Object{{"query", "short"}},
+        .temporaryContext = {},
         .allToolCalls = {},
     }));
 
@@ -142,6 +143,7 @@ TEST(AskTest, HandlerMissingQueryThrows) {
         util::await_synchronously(tool.handler({
             .tools = tools,
             .args = AJson::Object{},
+            .temporaryContext = {},
             .allToolCalls = {},
         })),
         AException
@@ -188,6 +190,7 @@ TEST(AskTest, HandlerSuccessWithToolCall) {
     auto result = util::await_synchronously(tool.handler({
         .tools = tools,
         .args = AJson::Object{{"query", "What kind of music does Alex write?"}},
+        .temporaryContext = {},
         .allToolCalls = {},
     }));
 
@@ -226,6 +229,7 @@ TEST(AskTest, HandlerLLMForcedToCallTool) {
     auto result = util::await_synchronously(tool.handler({
         .tools = tools,
         .args = AJson::Object{{"query", "Tell me about Alex's music habits in detail."}},
+        .temporaryContext = {},
         .allToolCalls = {},
     }));
 
@@ -271,6 +275,7 @@ TEST(AskTest, HandlerWithTemporaryContextEnrichesQuery) {
     auto result = util::await_synchronously(tool.handler({
         .tools = tools,
         .args = AJson::Object{{"query", "Does Alex play any musical instruments?"}},
+        .temporaryContext = {},
         .allToolCalls = {},
     }));
 
@@ -306,6 +311,7 @@ TEST(AskTest, HandlerDiaryReturnsNoEntries) {
     auto result = util::await_synchronously(tool.handler({
         .tools = tools,
         .args = AJson::Object{{"query", "What are the user's hobbies and interests?"}},
+        .temporaryContext = {},
         .allToolCalls = {},
     }));
 

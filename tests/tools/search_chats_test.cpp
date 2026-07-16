@@ -46,6 +46,7 @@ TEST(SearchChatsTest, MissingQueryThrows) {
         util::await_synchronously(tool.handler({
             .tools = tools,
             .args = AJson::Object{},  // empty args, no "query"
+            .temporaryContext = {},
             .allToolCalls = {},
         })),
         AException
@@ -83,6 +84,7 @@ TEST(SearchChatsTest, NoResults) {
     auto result = util::await_synchronously(tool.handler({
         .tools = tools,
         .args = AJson::Object{{"query", "nonexistent_chat"}},
+        .temporaryContext = {},
         .allToolCalls = {},
     }));
 
@@ -134,6 +136,7 @@ TEST(SearchChatsTest, WithResults) {
     auto result = util::await_synchronously(tool.handler({
         .tools = tools,
         .args = AJson::Object{{"query", "test_chat"}},
+        .temporaryContext = {},
         .allToolCalls = {},
     }));
 
@@ -176,6 +179,7 @@ TEST(SearchChatsTest, AtPrefixStripped) {
     auto result = util::await_synchronously(tool.handler({
         .tools = tools,
         .args = AJson::Object{{"query", "@username"}},
+        .temporaryContext = {},
         .allToolCalls = {},
     }));
 

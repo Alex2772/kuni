@@ -6,5 +6,5 @@
 #include <functional>
 
 namespace tools {
-OpenAITools::Tool ask(std::function<AString()> additionalDetails, _<IOpenAIChat> openAI, Diary& diary);
+OpenAITools::Tool ask(std::function<AString()> additionalDetails, _<IOpenAIChat> openAI, Diary diary);
 }

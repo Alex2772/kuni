@@ -189,17 +189,25 @@ AFuture<> ImageGenerator::engineerPrompt(PromptPair& out, const AString& descrip
             }
         };
     }();
+    naxyi_before:
     auto response = co_await mOpenAI->chat(params, messages);
     naxyi:
     if (response.choices.empty()) {
         throw AException("OpenAI returned no choices for initial prompt engineering");
     }
     auto content = response.choices[0].message.content;
-    auto json = parseResponse(content);
-    out = {
-        .positive = json["positivePrompt"].asString(),
-        .negative = json["negativePrompt"].asString(),
-    };
+    try {
+        auto json = parseResponse(content);
+        out = {
+            .positive = json["positivePrompt"].asString(),
+            .negative = json["negativePrompt"].asString(),
+        };
+    } catch (const AException& e) {
+        if (e.getMessage().contains("unexpected end of json stream")) {
+            goto naxyi_before;
+        }
+        throw;
+    }
 
     for (const auto&[name, prompt] : std::array {std::make_pair("positive", &out.positive), std::make_pair("negative", &out.negative) }) {
         prompt->replaceAll(") ", "), "); // add commas
@@ -247,6 +255,7 @@ AFuture<ImageGenerator::AssessmentResult> ImageGenerator::assessImage(const AIma
             .content = "Assess this image: " + IOpenAIChat::embedImage(image)
         }
     };
+    tryAgain:
     auto response = co_await mOpenAI->chat(params, messages);
 
     if (response.choices.empty()) {
@@ -262,6 +271,9 @@ AFuture<ImageGenerator::AssessmentResult> ImageGenerator::assessImage(const AIma
         };
         co_return result;
     } catch (const AException& e) {
+        if (e.getMessage().contains("unexpected end of json stream")) {
+            goto tryAgain;
+        }
         ALogger::err(LOG_TAG) << "Failed to parse assessment JSON: " << e << "\nContent: " << responseContent;
         // Fallback: assume satisfied if parsing fails to avoid infinite loops, but log error
         co_return AssessmentResult{.satisfied = false, .feedback = "" };

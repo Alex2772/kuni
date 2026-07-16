@@ -46,6 +46,7 @@ TEST(RemoveAndBanChatTest, PapikChatIdReturnsFailed) {
     auto result = util::await_synchronously(tool.handler({
         .tools = tools,
         .args = AJson::Object{{"chat_id", config().papikChatId}},
+        .temporaryContext = {},
         .allToolCalls = {},
     }));
 
@@ -87,6 +88,7 @@ TEST(RemoveAndBanChatTest, BasicGroupCallsLeaveChat) {
     auto result = util::await_synchronously(tool.handler({
         .tools = tools,
         .args = AJson::Object{{"chat_id", CHAT_ID}},
+        .temporaryContext = {},
         .allToolCalls = {},
     }));
 
@@ -126,6 +128,7 @@ TEST(RemoveAndBanChatTest, SupergroupCallsLeaveChat) {
     auto result = util::await_synchronously(tool.handler({
         .tools = tools,
         .args = AJson::Object{{"chat_id", CHAT_ID}},
+        .temporaryContext = {},
         .allToolCalls = {},
     }));
 
@@ -147,6 +150,7 @@ TEST(RemoveAndBanChatTest, MissingChatIdThrows) {
         util::await_synchronously(tool.handler({
             .tools = tools,
             .args = AJson::Object{},  // empty args, no "chat_id"
+            .temporaryContext = {},
             .allToolCalls = {},
         })),
         AException

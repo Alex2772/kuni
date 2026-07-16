@@ -124,6 +124,7 @@ TEST(SendTelegramMessageTest, SuccessSimpleText) {
     auto result = util::await_synchronously(tool.handler({
         .tools = tools,
         .args = AJson::Object{{"text", "Hello!"}},
+        .temporaryContext = {},
         .allToolCalls = {},
     }));
 
@@ -157,6 +158,7 @@ TEST(SendTelegramMessageTest, WrongChatId) {
     auto result = util::await_synchronously(tool.handler({
         .tools = tools,
         .args = AJson::Object{{"text", "Hello!"}, {"chat_id", 99999}},
+        .temporaryContext = {},
         .allToolCalls = {},
     }));
 
@@ -192,6 +194,7 @@ TEST(SendTelegramMessageTest, MissingAllContent) {
     auto result = util::await_synchronously(tool.handler({
         .tools = tools,
         .args = AJson::Object{},  // empty args
+        .temporaryContext = {},
         .allToolCalls = {},
     }));
 
@@ -231,6 +234,7 @@ TEST(SendTelegramMessageTest, BothPhotoAndAudioError) {
             {"photo_filename", "photo.jpg"},
             {"audio_filename", "audio.ogg"},
         },
+        .temporaryContext = {},
         .allToolCalls = {},
     }));
 
@@ -272,6 +276,7 @@ TEST(SendTelegramMessageTest, ReplyToMessageFromAnotherChatThrows) {
                 {"text", "Hello!"},
                 {"reply_to_message_id", 42},
             },
+            .temporaryContext = {},
             .allToolCalls = {},
         })),
         AException
@@ -310,6 +315,7 @@ TEST(SendTelegramMessageTest, ReplyToExistingMessage) {
             {"text", "Hello!"},
             {"reply_to_message_id", 42},
         },
+        .temporaryContext = {},
         .allToolCalls = {},
     }));
 
@@ -346,6 +352,7 @@ TEST(SendTelegramMessageTest, TooManyMessagesInRowThrows) {
             auto result = util::await_synchronously(tool.handler({
                 .tools = tools,
                 .args = AJson::Object{{"text", "msg{}"_format(i)}},
+                .temporaryContext = {},
                 .allToolCalls = {},
             }));
             EXPECT_TRUE(result.contains("sent successfully")) << "at iteration " << i << ": " << result;
@@ -384,6 +391,7 @@ TEST(SendTelegramMessageTest, MultiLineMessageGetsSplit) {
     auto result = util::await_synchronously(tool.handler({
         .tools = tools,
         .args = AJson::Object{{"text", "line1\nline2\nline3"}},
+        .temporaryContext = {},
         .allToolCalls = {},
     }));
 
@@ -420,6 +428,7 @@ TEST(SendTelegramMessageTest, InvalidPhotoFilenameSlash) {
                 {"text", "hello"},
                 {"photo_filename", "subdir/photo.jpg"},
             },
+            .temporaryContext = {},
             .allToolCalls = {},
         })),
         AException
@@ -456,6 +465,7 @@ TEST(SendTelegramMessageTest, InvalidPhotoFilenameDotDot) {
                 {"text", "hello"},
                 {"photo_filename", "../photo.jpg"},
             },
+            .temporaryContext = {},
             .allToolCalls = {},
         })),
         AException
@@ -491,6 +501,7 @@ TEST(SendTelegramMessageTest, InvalidAudioFilenameSlash) {
             .args = AJson::Object{
                 {"audio_filename", "subdir/audio.ogg"},
             },
+            .temporaryContext = {},
             .allToolCalls = {},
         })),
         AException
@@ -525,6 +536,7 @@ TEST(SendTelegramMessageTest, InvalidAudioFilenameDotDot) {
             .args = AJson::Object{
                 {"audio_filename", "../audio.ogg"},
             },
+            .temporaryContext = {},
             .allToolCalls = {},
         })),
         AException
@@ -570,6 +582,7 @@ TEST(SendTelegramMessageTest, RepeatDetectionThrows) {
         util::await_synchronously(tool.handler({
             .tools = tools,
             .args = AJson::Object{{"text", "Hello there!"}},
+            .temporaryContext = {},
             .allToolCalls = {},
         })),
         AException
@@ -603,6 +616,7 @@ TEST(SendTelegramMessageTest, FirstMessageEncouragesFollowUp) {
     auto result = util::await_synchronously(tool.handler({
         .tools = tools,
         .args = AJson::Object{{"text", "Hi!"}},
+        .temporaryContext = {},
         .allToolCalls = {},
     }));
 

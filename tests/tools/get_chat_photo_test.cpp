@@ -91,6 +91,7 @@ TEST(GetChatPhotoTest, NoPhoto) {
     auto result = util::await_synchronously(tool.handler({
         .tools = tools,
         .args = AJson::Object{},
+        .temporaryContext = {},
         .allToolCalls = {},
     }));
 
@@ -153,6 +154,7 @@ TEST(GetChatPhotoTest, HasPhotoSuccess) {
     auto result = util::await_synchronously(tool.handler({
         .tools = tools,
         .args = AJson::Object{},
+        .temporaryContext = {},
         .allToolCalls = {},
     }));
 

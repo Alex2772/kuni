@@ -146,6 +146,9 @@ public:
      */
     Diary(Init init);
 
+    Diary(const Diary&) = default;
+    Diary(Diary&&) noexcept = default;
+
     /**
      * @brief Persist a simple entry to disk.
      *
@@ -231,16 +234,6 @@ public:
 
 private:
     const Init mInit;
-
-    /**
-     * @brief Path to the directory containing the markdown files.
-     */
-
-    /**
-     * @brief Holds asynchronous tasks for the diary.
-     */
-
-    AAsyncHolder mAsync;
 
     /**
      * @brief Lazily cached list of parsed diary entries.

@@ -120,7 +120,6 @@ static AFuture<AString> ask(IOpenAIChat& openAI, Diary& diary, const AString& qu
           .content = "<character>\n{}\n</character>\n\n{}"_format(prompts().characterBase, query),
         },
     };
-    messages.sessionId = "ask";
 
     bool toolCallHappened = false;
 
@@ -168,7 +167,7 @@ Do not make up facts. Rely exclusively on provided context.
 }
 
 OpenAITools::Tool
-tools::ask(std::function<AString()> additionalDetails, _<IOpenAIChat> openAI, Diary& diary) {
+tools::ask(std::function<AString()> additionalDetails, _<IOpenAIChat> openAI, Diary diary) {
     return {
         .name = "ask",
         .description = "Consult with Kuni's main knowledge database and the internet (subagent). Use this to "
@@ -193,7 +192,7 @@ tools::ask(std::function<AString()> additionalDetails, _<IOpenAIChat> openAI, Di
                 },
             .required = {"query"},
         },
-        .handler = [additionalDetails, openAI, &diary](OpenAITools::Ctx ctx) -> AFuture<AString> {
+        .handler = [additionalDetails, openAI, diary = std::move(diary)](OpenAITools::Ctx ctx) -> AFuture<AString> {
             auto query = ctx.args["query"].asStringOpt().valueOrException("\"query\" string is required");
             if (query.length() < 10) {
                 // Alex2772 16-04-2026:
@@ -224,7 +223,7 @@ tools::ask(std::function<AString()> additionalDetails, _<IOpenAIChat> openAI, Di
                         "- how can I improve my reaction?\n"
                         "- {}"_format(details, query);
             }
-            co_return (co_await ask(*openAI, diary, query, {.confidenceFactor = 0.f}));
+            co_return (co_await ask(*openAI, const_cast<Diary&>(diary), query, {.confidenceFactor = 0.f}));
         },
     };
 }

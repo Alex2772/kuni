@@ -94,8 +94,8 @@ public:
     }
 
 protected:
-    void updateTools(OpenAITools& actions) override {
-        AppBase::updateTools(actions);
+    void updateTools(OpenAITools& actions, const IOpenAIChat::Session& temporaryContext) override {
+        AppBase::updateTools(actions, temporaryContext);
 
         actions.insert({
             .name = "my_tool",
@@ -160,7 +160,7 @@ TEST_F(PrometheusUnitTest, ToolCallFiredOnSuccessfulToolCall) {
     SpyExporter spy;
     spy.registerAppBase(*app);
 
-    async << app->passNotificationToAI("Hello").onProcessed;
+    async << app->notificationManager().passNotificationToAI({"Hello"}).onProcessed;
     while (!async.empty()) {
         loop.iteration();
     }
@@ -191,7 +191,7 @@ TEST_F(PrometheusUnitTest, ToolCallFiredCarriesCorrectToolName) {
     SpyExporter spy;
     spy.registerAppBase(*app);
 
-    async << app->passNotificationToAI("Hello").onProcessed;
+    async << app->notificationManager().passNotificationToAI({"Hello"}).onProcessed;
     while (!async.empty()) {
         loop.iteration();
     }
@@ -219,8 +219,8 @@ TEST_F(PrometheusUnitTest, ToolCallFiredNotEmittedOnToolException) {
     public:
         explicit ThrowingHarness(_<IOpenAIChat> ai) : PrometheusTestHarness(std::move(ai)) {}
     protected:
-        void updateTools(OpenAITools& actions) override {
-            PrometheusTestHarness::updateTools(actions);
+        void updateTools(OpenAITools& actions, const IOpenAIChat::Session& temporaryContext) override {
+            PrometheusTestHarness::updateTools(actions, temporaryContext);
             // Insert a tool that throws
             actions.insert({
                 .name = "throwing_tool",
@@ -237,7 +237,7 @@ TEST_F(PrometheusUnitTest, ToolCallFiredNotEmittedOnToolException) {
     SpyExporter spy;
     spy.registerAppBase(*app);
 
-    async << app->passNotificationToAI("Hello").onProcessed;
+    async << app->notificationManager().passNotificationToAI({"Hello"}).onProcessed;
     while (!async.empty()) {
         loop.iteration();
     }
@@ -272,7 +272,7 @@ TEST_F(PrometheusUnitTest, ToolCallFiredBreadcrumbLabelsSnapshot) {
     SpyExporter spy;
     spy.registerAppBase(*app);
 
-    async << app->passNotificationToAI("Hello").onProcessed;
+    async << app->notificationManager().passNotificationToAI({"Hello"}).onProcessed;
     while (!async.empty()) {
         loop.iteration();
     }
@@ -304,8 +304,8 @@ TEST_F(PrometheusUnitTest, ToolCallFiredlastOpenedChatLastMessageTime) {
     public:
         explicit TimedHarness(_<IOpenAIChat> ai) : PrometheusTestHarness(std::move(ai)) {}
     protected:
-        void updateTools(OpenAITools& actions) override {
-            PrometheusTestHarness::updateTools(actions);
+        void updateTools(OpenAITools& actions, const IOpenAIChat::Session& temporaryContext) override {
+            PrometheusTestHarness::updateTools(actions, temporaryContext);
             actions.insert({
                 .name = "my_tool",
                 .description = "Test tool",
@@ -323,7 +323,7 @@ TEST_F(PrometheusUnitTest, ToolCallFiredlastOpenedChatLastMessageTime) {
     SpyExporter spy;
     spy.registerAppBase(*app);
 
-    async << app->passNotificationToAI("Hello").onProcessed;
+    async << app->notificationManager().passNotificationToAI({"Hello"}).onProcessed;
     while (!async.empty()) {
         loop.iteration();
     }
@@ -362,12 +362,12 @@ TEST_F(PrometheusUnitTest, MultipleToolCallsAllCaptured) {
     SpyExporter spy;
     spy.registerAppBase(*app);
 
-    async << app->passNotificationToAI("First").onProcessed;
+    async << app->notificationManager().passNotificationToAI({"First"}).onProcessed;
     while (!async.empty()) {
         loop.iteration();
     }
 
-    async << app->passNotificationToAI("Second").onProcessed;
+    async << app->notificationManager().passNotificationToAI({"Second"}).onProcessed;
     while (!async.empty()) {
         loop.iteration();
     }

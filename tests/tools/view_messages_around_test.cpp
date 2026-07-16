@@ -62,6 +62,7 @@ TEST(ViewMessagesAroundTest, LockdownBlocksInaccessibleChat) {
     auto result = util::await_synchronously(tool.handler({
         .tools = tools,
         .args = AJson::Object{{"chat_id", config().papikChatId + 1}, {"message_id", 1}},
+        .temporaryContext = {},
         .allToolCalls = {},
     }));
 
@@ -90,6 +91,7 @@ TEST(ViewMessagesAroundTest, MessageNotFound) {
     auto result = util::await_synchronously(tool.handler({
         .tools = tools,
         .args = AJson::Object{{"chat_id", chatId}, {"message_id", 42}},
+        .temporaryContext = {},
         .allToolCalls = {},
     }));
 
@@ -141,6 +143,7 @@ TEST(ViewMessagesAroundTest, ReturnsSurroundingMessages) {
     auto result = util::await_synchronously(tool.handler({
         .tools = tools,
         .args = AJson::Object{{"chat_id", chatId}, {"message_id", targetId}, {"before", 1}, {"after", 1}},
+        .temporaryContext = {},
         .allToolCalls = {},
     }));
 

@@ -39,6 +39,7 @@ TEST(TakePhotoTest, MissingPhotoDescThrows) {
         util::await_synchronously(tool.handler({
             .tools = tools,
             .args = AJson::Object{},  // empty args, no "photo_desc"
+            .temporaryContext = {},
             .allToolCalls = {},
         })),
         AException
@@ -62,6 +63,7 @@ TEST(TakePhotoTest, PhotoDescNotStringThrows) {
         util::await_synchronously(tool.handler({
             .tools = tools,
             .args = AJson::Object{{"photo_desc", 123}},
+            .temporaryContext = {},
             .allToolCalls = {},
         })),
         AException
