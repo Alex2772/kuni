@@ -90,7 +90,7 @@ static AFuture<AString> ask(IOpenAIChat& openAI, Diary& diary, const AString& qu
                         "believe you are searching for public or recent information. Defaults to false."
                     }},
                 },
-                .required = {"text"},
+                .required = {"text", "include_web_search_results"},
             },
             .handler = [&](OpenAITools::Ctx ctx) -> AFuture<AString> {
                 const auto cue = ctx.args["text"].asStringOpt().valueOrException("text is required string");

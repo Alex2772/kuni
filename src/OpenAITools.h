@@ -22,6 +22,27 @@ struct OpenAITools {
             struct Property {
                 AString type = "string";
                 AString description;
+
+                /**
+                 * @brief Adds "null" to this property's type union.
+                 * @details
+                 * vibecode.moe (and OpenAI strict mode in general) requires every property to be listed in
+                 * `required`; genuinely optional properties must instead be made nullable this way.
+                 */
+                bool nullable = false;
+
+                /**
+                 * @brief Adds "array" to this property's type union, meaning the LLM may pass either a single
+                 * value of `type` or an array of `items`.
+                 */
+                bool orArray = false;
+
+                /**
+                 * @brief Element schema. Required when `type == "array"` or `orArray == true`.
+                 */
+                _<Property> items;
+
+                static _<Property> make(Property p) { return _new<Property>(std::move(p)); }
             };
             AMap<AString, Property> properties;
             AVector<AString> required; // required properties

@@ -46,26 +46,32 @@ OpenAITools::Tool tools::sendTelegramMessage(
                     {
                         {"text", {
                             .type = "string",
-                            .description = "Text of the message. May not be specified if photo_filename is set"},
+                            .description = "Text of the message. May not be specified if photo_filename is set. "
+                            "Pass null if not sending any text (e.g., when sending only a photo/audio).",
+                            .nullable = true},
                         },
                         {"photo_filename", {
                             .type = "string",
                             .description = "Attaches a photo with the given filename. Filename can be "
                             "obtained by #take_photo tool; althrough you can attach any file as soon as "
-                            "their filename is correct."},
+                            "their filename is correct. Pass null if not attaching a photo.",
+                            .nullable = true},
                         },
                         {"audio_filename", {
                             .type = "string",
-                            .description = "Attaches an audio file with the given filename from Kuni's voice gallery."},
+                            .description = "Attaches an audio file with the given filename from Kuni's voice "
+                            "gallery. Pass null if not attaching audio.",
+                            .nullable = true},
                         },
                         {"reply_to_message_id", {
                             .type = "integer",
                             .description = "If specified, the message will be rendered as a reply to the "
                             "message with given message id. You must use it if there are multiple messages "
-                            "or to clearly address specific message."},
+                            "or to clearly address specific message. Pass null if not replying to anything.",
+                            .nullable = true},
                         },
                     },
-                .required = {},
+                .required = {"text", "photo_filename", "audio_filename", "reply_to_message_id"},
             },
         .handler = [telegram = std::move(telegram),
                     openAI = std::move(openAI),

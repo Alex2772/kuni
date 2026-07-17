@@ -97,10 +97,11 @@ OpenAITools::Tool tools::stickers::send(_<ITelegramClient> telegram, _<td::td_ap
                     .type = "integer",
                     .description = "If specified, the message will be rendered as a reply to the "
                     "message with given message id. You must use it if there are multiple messages "
-                    "or to clearly address specific message."},
+                    "or to clearly address specific message. Pass null if not replying to anything.",
+                    .nullable = true},
                 },
             },
-            .required = {"sticker_id"},
+            .required = {"sticker_id", "reply_to_message_id"},
         },
         .handler = [telegram = std::move(telegram), chat = std::move(chat)](OpenAITools::Ctx ctx) -> AFuture<AString> {
             const auto stickerId = util::jsonAsLongInt(ctx.args["sticker_id"]).valueOrException("sticker_id integer required");

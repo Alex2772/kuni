@@ -13,7 +13,12 @@ OpenAITools::Tool tools::removeMessage(_<ITelegramClient> telegram, _<td::td_api
                        "You should use this when you mistakenly sent a message to a wrong chat or to remove an inappropriate message in group chats."_format(chat->title_),
         .parameters = {
             .properties = {
-                {"message_id", {.type = "integer|array", .description = "ID(s) of the message(s) to delete. Taken from message_id attribute in <message> tag."}},
+                {"message_id", {
+                    .type = "integer",
+                    .description = "ID(s) of the message(s) to delete. Taken from message_id attribute in <message> tag.",
+                    .orArray = true,
+                    .items = OpenAITools::Tool::Parameters::Property::make({.type = "integer"}),
+                }},
             },
             .required = {"message_id" },
         },

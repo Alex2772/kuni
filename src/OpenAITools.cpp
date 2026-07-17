@@ -8,7 +8,35 @@
 #include <range/v3/range/conversion.hpp>
 #include <range/v3/view/transform.hpp>
 
-AJSON_FIELDS(OpenAITools::Tool::Parameters::Property, AJSON_FIELDS_ENTRY(type) AJSON_FIELDS_ENTRY(description))
+template<>
+struct AJsonConv<OpenAITools::Tool::Parameters::Property> {
+    using Property = OpenAITools::Tool::Parameters::Property;
+
+    static AJson toJson(const Property& p) {
+        AJson::Object json;
+        json["description"] = p.description;
+
+        AVector<AString> types = { p.type };
+        if (p.orArray) {
+            types << "array";
+        }
+        if (p.nullable) {
+            types << "null";
+        }
+        json["type"] = types.size() == 1 ? AJson(types.first()) : aui::to_json(types);
+
+        if ((p.type == "array" || p.orArray)) {
+            AUI_ASSERTX(p.items != nullptr, "array-typed property must specify items");
+            json["items"] = aui::to_json(*p.items);
+        }
+        return std::move(json);
+    }
+
+    static void fromJson(const AJson& json, Property& dst) {
+        // tool schemas are write-only (sent to the LLM), so parsing back is not needed.
+        AUI_ASSERT(0 && "not implemented");
+    }
+};
 
 AJSON_FIELDS(OpenAITools::Tool::Parameters,
              AJSON_FIELDS_ENTRY(type) AJSON_FIELDS_ENTRY(properties) AJSON_FIELDS_ENTRY(required)

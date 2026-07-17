@@ -21,6 +21,7 @@ OpenAITools::Tool tools::forwardMessage(_<ITelegramClient> telegram, _<td::td_ap
                     .type = "array",
                     .description = "IDs of the messages to forward. Taken from message_id attributes in <message> tags. "
                                    "Pass a single-element array to forward just one message.",
+                    .items = OpenAITools::Tool::Parameters::Property::make({.type = "integer"}),
                 }},
                 {"to_chat_id", {
                     .type = "integer",
@@ -30,10 +31,12 @@ OpenAITools::Tool tools::forwardMessage(_<ITelegramClient> telegram, _<td::td_ap
                 {"comment", {
                     .type = "string",
                     .description = "Optional comment to send after the forwarded message. "
-                                   "Express your reaction, thoughts, or why you found this interesting.",
+                                   "Express your reaction, thoughts, or why you found this interesting. "
+                                   "Pass null to skip the comment.",
+                    .nullable = true,
                 }},
             },
-            .required = {"message_ids", "to_chat_id"},
+            .required = {"message_ids", "to_chat_id", "comment"},
         },
         .handler = [telegram, fromChat](OpenAITools::Ctx ctx) -> AFuture<AString> {
             auto toChatId  = util::jsonAsLongInt(ctx.args["to_chat_id"]).valueOrException("to_chat_id integer required");
