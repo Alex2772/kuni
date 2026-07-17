@@ -61,6 +61,11 @@ AppBase::AppBase(Init init): mInit(std::move(init)), mDiary({
     .diaryDir = mInit.workingDir / "diary",
     .openAI = mInit.openAI,
 }), mWakeupTimer(_new<ATimer>(27min)) {
+    // mWakeupTimer fires on the timer thread; without this, its signal would be invoked directly on the
+    // timer thread instead of being safely queued to AppBase's own thread, racing with mNotificationsSignal/
+    // mNotifications access in the main coroutine below and causing a null AFuture dereference crash.
+    setSlotsCallsOnlyOnMyThread(true);
+
     // mTools.addTool({
     //     .name = "send_telegram_message",
     //     .description = "Sends a message to a Telegram user.",
