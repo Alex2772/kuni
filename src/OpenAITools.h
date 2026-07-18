@@ -7,6 +7,7 @@
 
 struct OpenAITools {
     struct Ctx {
+        ALogger& logger = ALogger::global();
         OpenAITools& tools;
         AJson args;
         const IOpenAIChat::Session& temporaryContext;
@@ -40,7 +41,7 @@ struct OpenAITools {
      */
     AVector<std::function<void(const AString& toolName)>> onAfterToolCall;
 
-    AFuture<IOpenAIChat::Session> handleToolCalls(const AVector<IOpenAIChat::Message::ToolCall>& toolCalls, const _<MetricsBreadcumbs>& metricsBreadCumbs = nullptr, const IOpenAIChat::Session& temporaryContext = {});
+    AFuture<IOpenAIChat::Session> handleToolCalls(const AVector<IOpenAIChat::Message::ToolCall>& toolCalls, const _<MetricsBreadcumbs>& metricsBreadCumbs = nullptr, const IOpenAIChat::Session& temporaryContext = {}, ALogger& logger = ALogger::global());
 
     AJson asJson() const;
 

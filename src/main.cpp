@@ -61,6 +61,9 @@
 #include <range/v3/view/take.hpp>
 #include <proxy_server/proxy_server.h>
 #include "tools/ask.h"
+#include "tools/group_admin_ban_user.h"
+#include "tools/group_admin_remove_message.h"
+#include "tools/group_admin_set_user_tag.h"
 #include "tools/remove_message.h"
 
 #include <Diary.h>
@@ -188,7 +191,7 @@ public:
                         co_return "No such chat";
                     }
 
-                    co_return co_await llmuiOpenTelegramChat(ctx.tools, chatId, ctx.temporaryContext);
+                    co_return co_await llmuiOpenTelegramChat(ctx.logger, ctx.tools, chatId, ctx.temporaryContext);
                 },
             });
         if (config().canJoinChats) {
@@ -218,7 +221,7 @@ public:
                             co_return "Error: failed to join chat by invite link: {}"_format(e.getMessage());
                         }
 
-                        co_return co_await llmuiOpenTelegramChat(ctx.tools, chatId, ctx.temporaryContext);
+                        co_return co_await llmuiOpenTelegramChat(ctx.logger, ctx.tools, chatId, ctx.temporaryContext);
                     },
                 });
         }
@@ -397,7 +400,7 @@ private:
                 .name = "open",
                 .description = "Open \"{}\" chat. Use this if you'd like to reply or see messages."_format(chat->title_),
                 .handler = [this, chatId = chat->id_](OpenAITools::Ctx ctx) -> AFuture<AString> {
-                    return llmuiOpenTelegramChat(ctx.tools, chatId, ctx.temporaryContext);
+                    return llmuiOpenTelegramChat(ctx.logger, ctx.tools, chatId, ctx.temporaryContext);
                 },
               },
             },
@@ -431,10 +434,10 @@ private:
     AOptional<CurrentlyOpenedChat> mCurrentlyOpenedChat;
 
 public:
-    AFuture<AString> llmuiOpenTelegramChat(OpenAITools& tools, int64_t chatId, const IOpenAIChat::Session& temporaryContext) {
+    AFuture<AString> llmuiOpenTelegramChat(ALogger& logger, OpenAITools& tools, int64_t chatId, const IOpenAIChat::Session& temporaryContext) {
         // Check lockdown mode - only allow PAPIK_CHAT_ID if lockdown is enabled
         if (!co_await util::isAccessibleFromLockdown(*telegram(), chatId)) {
-            ALogger::err(LOG_TAG) << "Error: Lockdown mode is enabled. You can only open chat with ID {} (PAPIK_CHAT_ID)."_format(
+            logger.err(LOG_TAG) << "Error: Lockdown mode is enabled. You can only open chat with ID {} (PAPIK_CHAT_ID)."_format(
                 config().papikChatId);
             co_return "No such chat";
         }
@@ -487,7 +490,7 @@ public:
                 }
             }
         }();
-        ALOG_DEBUG(LOG_TAG) << "Loaded " << messages.size() << " message(s): " << chat->title_;
+        logger.info(LOG_TAG) << "Loaded " << messages.size() << " message(s): " << chat->title_;
 
         // Compute response-time metadata for Prometheus. messages[0] is the most recent.
         mLastOpenedChatLastMessageTime = [&]() -> AOptional<std::chrono::system_clock::time_point> {
@@ -530,6 +533,7 @@ public:
             }
             // goto naxyi;
         }
+        bool isAdmin = false;
         {
             for (auto& msg : messages | ranges::view::reverse) {
                 auto msgFormatted =
@@ -604,6 +608,10 @@ public:
                         case td::td_api::chatMemberStatusLeft::ID:
                         case td::td_api::chatMemberStatusBanned::ID:
                             isMember = false;
+                            break;
+                        case td::td_api::chatMemberStatusCreator::ID:
+                        case td::td_api::chatMemberStatusAdministrator::ID:
+                            isAdmin = true;
                             break;
                         default:
                             break;
@@ -697,15 +705,21 @@ Do NOT forward ads, sponsored posts, or low-value content.
             tools.insert(tools::stickers::send(telegram(), chat));
         }
 
-        if (config().canLeaveChats) {
-            switch (chat->type_->get_id()) {
-                case td::td_api::chatTypeBasicGroup::ID:
-                case td::td_api::chatTypeSupergroup::ID:
+        switch (chat->type_->get_id()) {
+            case td::td_api::chatTypeBasicGroup::ID:
+            case td::td_api::chatTypeSupergroup::ID:
+
+                if (config().canLeaveChats) {
                     tools.insert(tools::leaveChat(telegram(), chat));
-                    break;
-                default:
-                    break;
-            }
+                }
+                if (isAdmin) {
+                    tools.insert(tools::groupAdminRemoveMessage(telegram(), chat));
+                    tools.insert(tools::groupAdminBanUser(telegram(), chat));
+                    tools.insert(tools::groupAdminSetUserTag(telegram(), chat));
+                }
+                break;
+            default:
+                break;
         }
 
         co_return result;

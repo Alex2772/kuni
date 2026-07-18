@@ -414,6 +414,10 @@ AFuture<AString> llmui::formatChatHistoryMessage(
         if (!senderName.empty()) {
             formattedXmlTag += " sender=\"{}\""_format(senderName);
         }
+        if (chat.type_->get_id() == td::td_api::chatTypeBasicGroup::ID || chat.type_->get_id() == td::td_api::chatTypeSupergroup::ID) {
+            // for bans.
+            formattedXmlTag += " sender_id=\"{}\""_format(senderId);
+        }
     }
     if (msg.interaction_info_) {
         if (msg.interaction_info_->reactions_) {

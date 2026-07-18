@@ -11,7 +11,7 @@ class AppBase;
 
 class Worker: public AObject {
 public:
-    Worker(AppBase& app);
+    Worker(size_t name, AppBase& app);
     ~Worker();
 
     /**
@@ -24,6 +24,8 @@ public:
     AFuture<> diaryDumpMessages();
 
 private:
+    size_t mName;
+    ALogger mLogger{"kuni_worker{}.log"_format(mName)};
     AppBase& mApp;
     ASet<AString> mWorkerPins;
     AFuture<> mCoroutine;
@@ -34,7 +36,7 @@ private:
 
     IOpenAIChat::Session mTemporaryContext = [this] {
         IOpenAIChat::Session s;
-        s.sessionId = "kuni_main_coro({})"_format((void*)this);
+        s.sessionId = "kuni_main_coro({})"_format(mName);
         return s;
     }();
 

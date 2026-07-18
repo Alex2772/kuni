@@ -72,7 +72,7 @@ AppBase::AppBase(Init init): mInit(std::move(init)), mDiary({
     connect(mWorkerCount, [this] {
         if (mWorkerCount > mWorkers.size()) {
             for (size_t i = mWorkerCount - mWorkers.size(); i > 0; --i) {
-                mWorkers << _new<Worker>(*this);
+                mWorkers << _new<Worker>(mWorkers.size(), *this);
             }
             return;
         }

@@ -2,15 +2,15 @@
 // Created by alex2772 on 6/18/26.
 //
 
-#include "remove_message.h"
+#include "group_admin_remove_message.h"
 
 #include "util/json_utils.h"
 
-OpenAITools::Tool tools::removeMessage(_<ITelegramClient> telegram, _<td::td_api::chat> chat) {
+OpenAITools::Tool tools::groupAdminRemoveMessage(_<ITelegramClient> telegram, _<td::td_api::chat> chat) {
     return {
-        .name = "remove_message",
-        .description = "Deletes specified message for both you and participant(s) in \"{}\" chat.\n"
-                       "You should use this when you mistakenly sent a message to a wrong chat."_format(chat->title_),
+        .name = "group_admin_remove_message",
+        .description = "Administrative tool for \"{}\" chat. Deletes specified message for both you and participant(s).\n"
+                       "You should use this to remove spam/inappropriate message(s) in group chats."_format(chat->title_),
         .parameters = {
             .properties = {
                 {"message_id", {.type = "integer|array", .description = "ID(s) of the message(s) to delete. Taken from message_id attribute in <message> tag."}},

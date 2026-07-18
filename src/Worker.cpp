@@ -20,8 +20,8 @@ using namespace std::chrono_literals;
 extern std::default_random_engine gRandomEngine;
 
 
-AFuture<std::valarray<double>> contextEmbedding(IOpenAIChat& openAI, ranges::range auto&& rng) {
-    ALOG_TRACE(LOG_TAG) << "contextEmbedding";
+AFuture<std::valarray<double>> contextEmbedding(ALogger& logger, IOpenAIChat& openAI, ranges::range auto&& rng) {
+    logger.trace(LOG_TAG) << "contextEmbedding";
     AString basePrompt;
     AUI_ASSERT(!ranges::empty(rng));
     for (const IOpenAIChat::Message& message : rng) {
@@ -40,7 +40,7 @@ AFuture<std::valarray<double>> contextEmbedding(IOpenAIChat& openAI, ranges::ran
 }
 
 [[nodiscard]]
-static AFuture<> processRandomlyGoSleep(bool& wakeUp) {
+static AFuture<> processRandomlyGoSleep(ALogger& logger, bool& wakeUp) {
     if (config().randomlyGoSleep) {
         if (std::uniform_real_distribution(0.0, 1.0)(gRandomEngine) < 0.01) {
             // 1. randomly go afk is humane
@@ -48,13 +48,13 @@ static AFuture<> processRandomlyGoSleep(bool& wakeUp) {
             //    - less conversations would be made
             //    - in case of group chats and telegram channels, messages would be processed in batches
             const auto duration = std::chrono::minutes(std::uniform_int_distribution(15, 120)(gRandomEngine));
-            ALogger::info(LOG_TAG)
+            logger.info(LOG_TAG)
                 << "Going to sleep for " << std::chrono::duration_cast<std::chrono::minutes>(duration).count() << " minutes";
             wakeUp = false;
             for (int i = 0; i < std::chrono::duration_cast<std::chrono::seconds>(duration).count(); ++i) {
                 // костыль ну да сойдёт
                 if (wakeUp) {
-                    ALogger::info(LOG_TAG) << "Early wake up";
+                    logger.info(LOG_TAG) << "Early wake up";
                     break;
                 }
                 co_await AThread::asyncSleep(1s);
@@ -86,7 +86,7 @@ static AFuture<> processShortcutOpen(NotificationManager::Notification& notifica
 
 [[nodiscard]]
 static bool
-processIgnoreChance(IOpenAIChat::Session& temporaryContext, bool& canIgnore, const IOpenAIChat::Message& lastLLMResponse) {
+processIgnoreChance(ALogger& logger, IOpenAIChat::Session& temporaryContext, bool& canIgnore, const IOpenAIChat::Message& lastLLMResponse) {
     if (std::uniform_real_distribution(0.f, 1.f)(gRandomEngine) < config().suggestIgnoreChance) {   // attempt to make
                                                                                                     // LLM lazy and
                                                                                                     // ignore message :)
@@ -104,7 +104,7 @@ processIgnoreChance(IOpenAIChat::Session& temporaryContext, bool& canIgnore, con
                     .tool_call_id = tc.id,
                 };
             }
-            ALogger::info(LOG_TAG) << "Begging LLM to be lazy (ignore message)";
+            logger.info(LOG_TAG) << "Begging LLM to be lazy (ignore message)";
             return true;
         }
     }
@@ -113,7 +113,7 @@ processIgnoreChance(IOpenAIChat::Session& temporaryContext, bool& canIgnore, con
 
 AFuture<> Worker::handleNotification(std::shared_ptr<bool> alive, NotificationManager::Notification notification) {
 #ifndef AUI_TESTS_MODULE
-    co_await processRandomlyGoSleep(mWakeUp);
+    co_await processRandomlyGoSleep(mLogger, mWakeUp);
 #endif
     AUI_ASSERT(AThread::current() == getThread());
     AUI_DEFER { mApp.onOffline(); };
@@ -123,7 +123,7 @@ AFuture<> Worker::handleNotification(std::shared_ptr<bool> alive, NotificationMa
         bool canIgnore = true;
         co_await processShortcutOpen(notification, mTemporaryContext);
 
-        ALOG_DEBUG(LOG_TAG) << "Processing notification: " << notification.message;
+        mLogger.info(LOG_TAG) << "Processing notification: " << notification.message;
 
         mTemporaryContext << IOpenAIChat::Message {
             .role = IOpenAIChat::Message::Role::USER,
@@ -153,7 +153,7 @@ AFuture<> Worker::handleNotification(std::shared_ptr<bool> alive, NotificationMa
             // this will find common cues which are related to current conversation.
             if (config().diaryInjectionMaxLength > 0) {
                 auto currentContext =
-                    co_await contextEmbedding(*mApp.openAI(), mTemporaryContext | ranges::view::take_last(3));
+                    co_await contextEmbedding(mLogger, *mApp.openAI(), mTemporaryContext | ranges::view::take_last(3));
                 auto relatednesses = co_await mApp.diary().query(currentContext, { .confidenceFactor = 0.f });
 
                 for (const auto& i : relatednesses) {
@@ -238,7 +238,7 @@ AFuture<> Worker::handleNotification(std::shared_ptr<bool> alive, NotificationMa
         if (botAnswer.choices.empty() || botAnswer.choices.at(0).message.tool_calls.empty()) {
             // no tool calls.
             // each LLMs turn should end with "wait" or "pause"
-            ALogger::warn(LOG_TAG) << "LLM didn't perform any action.";
+            mLogger.warn(LOG_TAG) << "LLM didn't perform any action.";
             if (!botAnswer.choices.empty()) {
                 // guiderails to make LLM tool-centric.
                 const auto& content = botAnswer.choices.at(0).message.content;
@@ -283,13 +283,13 @@ AFuture<> Worker::handleNotification(std::shared_ptr<bool> alive, NotificationMa
             goto naxyi_preserve_ctx;
         }
 
-        if (processIgnoreChance(mTemporaryContext, canIgnore, botAnswer.choices.at(0).message)) {
+        if (processIgnoreChance(mLogger, mTemporaryContext, canIgnore, botAnswer.choices.at(0).message)) {
             goto naxyi_preserve_ctx;
         }
 
         {
             auto toolCalls = co_await notification.actions.handleToolCalls(
-                botAnswer.choices.at(0).message.tool_calls, mApp.metricBreadcumbs(), mTemporaryContext);
+                botAnswer.choices.at(0).message.tool_calls, mApp.metricBreadcumbs(), mTemporaryContext, mLogger);
             if (ranges::any_of(toolCalls, [](const IOpenAIChat::Message& msg) {
                     return msg.content.contains(IOpenAIChat::EMBEDDING_TAG);
                 })) {
@@ -307,7 +307,7 @@ AFuture<> Worker::handleNotification(std::shared_ptr<bool> alive, NotificationMa
 
                 if (botAnswer.usage.prompt_tokens > config().diaryTokenCountTrigger) {
                     // we are stuck; ignore the event
-                    ALogger::warn("AppBase")
+                    mLogger.warn("AppBase")
                         << "LLM can't find proper response to the notification; "
                            "context is overflown. Ignoring event and dumping context";
                     co_await diaryDumpMessages();
@@ -317,7 +317,7 @@ AFuture<> Worker::handleNotification(std::shared_ptr<bool> alive, NotificationMa
             }
             mTemporaryContext << botAnswer.choices.at(0).message;
             mTemporaryContext << std::move(toolCalls);
-            ALOG_DEBUG(LOG_TAG) << "Tool call response: " << mTemporaryContext.last().content;
+            mLogger.info(LOG_TAG) << "Tool call response: " << mTemporaryContext.last().content;
             AUI_ASSERT(AThread::current() == getThread());
         }
 
@@ -350,17 +350,17 @@ AFuture<> Worker::handleNotification(std::shared_ptr<bool> alive, NotificationMa
             goto naxyi_populate_ctx;
         }
     } catch (const AException& e) {
-        ALogger::err(LOG_TAG) << "Failed to process notification: \"" << notification.message << "\"" << e;
+        mLogger.err(LOG_TAG) << "Failed to process notification: \"" << notification.message << "\"" << e;
         if (e.getMessage().lowercase().contains("json")) {
             // If there's a JSON error, it means we have irreversibly damaged context. Best way to solve
             // this is to drop the temporary context entirery.
-            ALogger::warn("AppBase") << "Context is damaged. Dropping context";
+            mLogger.warn("AppBase") << "Context is damaged. Dropping context";
             mTemporaryContext.clear();
         }
     }
 }
 
-Worker::Worker(AppBase& app): mApp(app) {
+Worker::Worker(size_t name, AppBase& app): mName(name), mApp(app) {
     mAliveToken = _new<bool>(true);
 
     getThread()->enqueue([=, alive = mAliveToken] {
@@ -376,7 +376,7 @@ Worker::Worker(AppBase& app): mApp(app) {
 Worker::~Worker() { *mAliveToken = false; }
 
 AString Worker::takeDiaryEntry(const Diary::EntryExAndRelatedness& i) {
-    ALOG_TRACE(LOG_TAG) << "takeDiaryEntry: " << i.entry->id;
+    mLogger.trace(LOG_TAG) << "takeDiaryEntry: " << i.entry->id;
     if (ranges::any_of(mTemporaryContext, [&](const IOpenAIChat::Message& m) {
         return m.content.contains(i.entry->freeformBody);
     })) {
@@ -389,7 +389,7 @@ AString Worker::takeDiaryEntry(const Diary::EntryExAndRelatedness& i) {
 
     i.entry->metadata.score += (i.relatedness - 0.5f) * 2.f;
     i.entry->incrementUsageCount();
-    ALogger::info("AppBase") << "Loaded into context: " << i.entry->id << ".md relatedness=" << i.relatedness << "\n" << i.entry->freeformBody;
+    mLogger.info("AppBase") << "Loaded into context: " << i.entry->id << ".md relatedness=" << i.relatedness << "\n" << i.entry->freeformBody;
     auto formattedTag = "{} additional_context just_for_reasoning no_plagiarism no_copy"_format("your_diary_page");
     AString result = "<{}>\n{}\n</{}>\n"_format(formattedTag, i.entry->freeformBody, formattedTag);
     mApp.diary().unload(i.entry);
