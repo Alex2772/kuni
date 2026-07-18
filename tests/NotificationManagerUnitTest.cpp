@@ -361,7 +361,7 @@ TEST_F(NotificationManagerUnitTest, PinStaysWithWorkerThatFirstProcessedIt) {
         .actions = emptyActions(),
     });
 
-    while (!AThread::current()->messageQueueEmpty()) {
+    for (int i = 0; i < 1000 && receivedByA.size() < 2; ++i) {
         mLoop.iteration();
     }
     ASSERT_EQ(receivedByA.size(), 2u);
@@ -375,7 +375,7 @@ TEST_F(NotificationManagerUnitTest, PinStaysWithWorkerThatFirstProcessedIt) {
         .pin = "chat1",
     });
 
-    while (!AThread::current()->messageQueueEmpty()) {
+    for (int i = 0; i < 1000 && receivedByA.size() < 3; ++i) {
         mLoop.iteration();
     }
 
