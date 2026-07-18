@@ -633,6 +633,11 @@ const Config& config() {
             }
             *watcher ^ gConfigUpdated();
         });
+#ifdef AUI_TESTS_MODULE
+        // defaults for unit tests
+        cfg.workerCount = 1;
+        cfg.antiRepeatMaxHistory = 32;
+#endif
     };
     return cfg;
 }

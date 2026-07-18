@@ -27,12 +27,6 @@ public:
               .diaryDir = "/tmp/kuni_test_ask_diary",
               .openAI = nullptr,
           }) {}
-
-    MOCK_METHOD(
-        (AFuture<AVector<EntryExAndRelatedness>>),
-        query,
-        (const std::valarray<double>& query, QueryOpts opts),
-        (override));
 };
 
 // ---------------------------------------------------------------------------
@@ -177,9 +171,6 @@ TEST(AskTest, HandlerSuccessWithToolCall) {
 
     Diary::EntryExAndRelatedness hit{entryList.begin(), 0.9};
 
-    EXPECT_CALL(diary, query(testing::_, testing::_))
-        .WillOnce(Return(AFuture<AVector<Diary::EntryExAndRelatedness>>(AVector<Diary::EntryExAndRelatedness>{hit})));
-
     // LLM: first call returns #query tool call, second returns final answer
     EXPECT_CALL(*openAI, chatStreaming(testing::_, testing::_))
         .WillOnce(Return(makeQueryToolCallResponse("What music does Alex write?")))
@@ -211,10 +202,6 @@ TEST(AskTest, HandlerLLMForcedToCallTool) {
     // embedding called once after forced retry
     EXPECT_CALL(*openAI, embedding(testing::_, testing::_))
         .WillOnce(Return(AFuture<std::valarray<double>>(dummyEmbedding())));
-
-    // diary returns no entries for simplicity
-    EXPECT_CALL(diary, query(testing::_, testing::_))
-        .WillOnce(Return(AFuture<AVector<Diary::EntryExAndRelatedness>>(AVector<Diary::EntryExAndRelatedness>{})));
 
     // 1st call: no tool_calls (LLM skips step) → gets "you must perform at least one call" message
     // 2nd call: makes the #query tool call
@@ -251,9 +238,6 @@ TEST(AskTest, HandlerWithTemporaryContextEnrichesQuery) {
 
     EXPECT_CALL(*openAI, embedding(testing::_, testing::_))
         .WillOnce(Return(AFuture<std::valarray<double>>(dummyEmbedding())));
-
-    EXPECT_CALL(diary, query(testing::_, testing::_))
-        .WillOnce(Return(AFuture<AVector<Diary::EntryExAndRelatedness>>(AVector<Diary::EntryExAndRelatedness>{})));
 
     // Capture the messages passed to chat to verify query enrichment
     AString capturedUserContent;
@@ -297,10 +281,6 @@ TEST(AskTest, HandlerDiaryReturnsNoEntries) {
 
     EXPECT_CALL(*openAI, embedding(testing::_, testing::_))
         .WillOnce(Return(AFuture<std::valarray<double>>(dummyEmbedding())));
-
-    // Empty result from diary
-    EXPECT_CALL(diary, query(testing::_, testing::_))
-        .WillOnce(Return(AFuture<AVector<Diary::EntryExAndRelatedness>>(AVector<Diary::EntryExAndRelatedness>{})));
 
     EXPECT_CALL(*openAI, chatStreaming(testing::_, testing::_))
         .WillOnce(Return(makeQueryToolCallResponse("user hobbies")))

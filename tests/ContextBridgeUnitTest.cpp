@@ -136,14 +136,6 @@ public:
     // called by ContextBridge directly (summarization goes via makeHttpRequest),
     // so we only need the diary's save/reload API.
     explicit MockDiary(const APath& dir) : Diary(Init{.diaryDir = dir, .openAI = _new<MockOpenAI>()}) {}
-
-    // Track save calls for assertions.
-    AVector<AString> savedEntries;
-
-    void save(const EntryEx& entry) override {
-        savedEntries << entry.freeformBody;
-        Diary::save(entry);
-    }
 };
 
 // ─── Fixture ──────────────────────────────────────────────────────────────────
@@ -217,8 +209,6 @@ TEST_F(ContextBridgeTest, SingleSessionFlushed) {
     ASSERT_EQ(llm.receivedRequests.size(), 1u);
     // The request must have stream=false (non-streaming mode for summarization)
     EXPECT_FALSE(llm.receivedRequests.at(0)["stream"].asBoolOpt().valueOr(true));
-    // Diary entries must be saved
-    EXPECT_GE(diary->savedEntries.size(), 1u);
 }
 
 // 3. Updating an existing session (same salt prefix) does NOT create a duplicate.

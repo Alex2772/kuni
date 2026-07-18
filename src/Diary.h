@@ -28,7 +28,7 @@
  */
 class Diary {
 public:
-    virtual ~Diary() = default;
+    ~Diary() = default;
     /**
      * @brief Simple representation of a diary entry.
      *
@@ -162,7 +162,7 @@ public:
      * The metadata block is serialized to JSON and written before the
      * freeform body, surrounded by `---` delimiters.
      */
-    virtual void save(const EntryEx& entry);
+    void save(const EntryEx& entry);
 
     /**
      * @brief Remove an entry from the in‑memory cache.
@@ -187,7 +187,7 @@ public:
      * [0,1], and returns a sorted vector of {@link EntryExAndRelatedness}
      * objects.
      */
-    virtual AFuture<AVector<EntryExAndRelatedness>> query(const std::valarray<double>& query, QueryOpts opts);
+    AFuture<AVector<EntryExAndRelatedness>> query(const std::valarray<double>& query, QueryOpts opts);
 
     /**
      * @brief Compute the relatedness of a single entry to a context vector.
