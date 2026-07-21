@@ -53,13 +53,12 @@ AFuture<ImageGenerator::GalleryImage> ImageGenerator::generate(AString descripti
 
     AString descriptionWithAppearance = "<character name=\"{}\" canonical_description>\n{}\n</character canonical_description>\n<user_description overrides_canonical=\"true\">\n{}\n</user_description overrides_canonical=\"true\">"_format(config().characterName, prompts().characterAppearance, description);
 
-    ALogger::info(LOG_TAG) << "positive=" << currentPrompt.positive << "\n\nnegative=" << currentPrompt.negative;
     while (trialIndex <= TRIAL_COUNT) {
         try {
             ++trialIndex;
             static std::default_random_engine ge(std::time(nullptr));
             {
-                ALogger::info(LOG_TAG) << "Iteration " << trialIndex;
+                ALogger::info(LOG_TAG) << "Iteration " << trialIndex << " with prompt:\npositive=" << currentPrompt.positive << "\n\nnegative=" << currentPrompt.negative;
 
                 IStableDiffusionClient::Txt2ImgResponse response;
                 try
@@ -109,7 +108,7 @@ AFuture<ImageGenerator::GalleryImage> ImageGenerator::generate(AString descripti
                 }
 
                 ALogger::info(LOG_TAG) << "Not satisfied. Feedback: " << assessment.feedback;
-                // co_await engineerPrompt(currentPrompt, description, prompts().characterAppearance, assessment.feedback);
+                co_await engineerPrompt(currentPrompt, description, prompts().characterAppearance, assessment.feedback);
             }
 
 

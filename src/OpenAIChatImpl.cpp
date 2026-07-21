@@ -34,9 +34,9 @@ using namespace std::chrono_literals;
 AString IOpenAIChat::embedImage(AImageView image) {
     ALOG_TRACE(LOG_TAG) << "embedImage";
     AByteBuffer jpg;
-    auto resized = image.resizedLinearDownscale({672, 672});
+    auto resized = image.resizedLinearDownscale({672, 672 * float(image.height()) / float(image.width())});
     JpgImageLoader::save(jpg, resized);
-    // JpgImageLoader::save(AFileOutputStream("test.jpg"), resized);
+    JpgImageLoader::save(AFileOutputStream("test.jpg"), resized);
     return "<{}>data:image/jpg;base64,{}</{}>"_format(EMBEDDING_TAG, jpg.toBase64String(), EMBEDDING_TAG);
 }
 
