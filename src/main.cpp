@@ -65,6 +65,7 @@
 #include "tools/group_admin_remove_message.h"
 #include "tools/group_admin_set_user_tag.h"
 #include "tools/remove_message.h"
+#include "tools/search_photo_in_gallery.h"
 
 #include <Diary.h>
 
@@ -155,6 +156,7 @@ public:
         if (config().capabilityTakePhoto) {
             actions.insert(tools::takePhoto(_new<StableDiffusionClientImpl>(), openAI()));
         }
+        actions.insert(tools::searchPhotoInGallery(openAI(), temporaryContext));
         if (config().capabilityRecordVoice) {
             actions.insert(tools::recordAudio());
         }

@@ -210,8 +210,8 @@ static const std::unordered_map<AStringView, AStringView> CONFIG_COMMENTS = {
       "tokens preservation mechanisms (sleep) are not applied to them.",
     },
     {
-      "misc.randomly_go_sleep",
-      "If true, Kuni will randomly go to sleep after some time of inactivity to save LLM tokens.\n"
+      "misc.randomly_go_sleep_chance",
+      "If greater than zero, Kuni will randomly go to sleep after some time of inactivity to save LLM tokens.\n"
       "While sleeping, Kuni won't respond to messages (except from papik_chat_id).\n",
     },
     {

@@ -41,24 +41,22 @@ AFuture<std::valarray<double>> contextEmbedding(ALogger& logger, IOpenAIChat& op
 
 [[nodiscard]]
 static AFuture<> processRandomlyGoSleep(ALogger& logger, bool& wakeUp) {
-    if (config().randomlyGoSleep) {
-        if (std::uniform_real_distribution(0.0, 1.0)(gRandomEngine) < 0.01) {
-            // 1. randomly go afk is humane
-            // 2. reduce resource usage:
-            //    - less conversations would be made
-            //    - in case of group chats and telegram channels, messages would be processed in batches
-            const auto duration = std::chrono::minutes(std::uniform_int_distribution(15, 120)(gRandomEngine));
-            logger.info(LOG_TAG)
-                << "Going to sleep for " << std::chrono::duration_cast<std::chrono::minutes>(duration).count() << " minutes";
-            wakeUp = false;
-            for (int i = 0; i < std::chrono::duration_cast<std::chrono::seconds>(duration).count(); ++i) {
-                // костыль ну да сойдёт
-                if (wakeUp) {
-                    logger.info(LOG_TAG) << "Early wake up";
-                    break;
-                }
-                co_await AThread::asyncSleep(1s);
+    if (std::uniform_real_distribution(0.0, 1.0)(gRandomEngine) < config().randomlyGoSleepChance) {
+        // 1. randomly go afk is humane
+        // 2. reduce resource usage:
+        //    - less conversations would be made
+        //    - in case of group chats and telegram channels, messages would be processed in batches
+        const auto duration = std::chrono::minutes(std::uniform_int_distribution(15, 120)(gRandomEngine));
+        logger.info(LOG_TAG)
+            << "Going to sleep for " << std::chrono::duration_cast<std::chrono::minutes>(duration).count() << " minutes";
+        wakeUp = false;
+        for (int i = 0; i < std::chrono::duration_cast<std::chrono::seconds>(duration).count(); ++i) {
+            // костыль ну да сойдёт
+            if (wakeUp) {
+                logger.info(LOG_TAG) << "Early wake up";
+                break;
             }
+            co_await AThread::asyncSleep(1s);
         }
     }
 }

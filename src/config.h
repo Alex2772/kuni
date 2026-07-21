@@ -18,7 +18,7 @@
   X(::Config::LockdownMode, lockdown, ::Config::LockdownMode::PAPIK_ONLY, "general.lockdown") \
   X(bool, canWriteToANewPerson, false, "misc.can_write_to_a_new_person") \
   X(bool, wakeUpOnPinnedChat, false, "misc.wake_up_on_pinned_chat") \
-  X(bool, randomlyGoSleep, true, "misc.randomly_go_sleep") \
+  X(float, randomlyGoSleepChance, 0.05f, "misc.randomly_go_sleep_chance") \
   X(float, toolReminderProbability, 0.02f, "misc.tool_reminder_probability") \
   X(size_t, diaryTokenCountTrigger, 40000, "misc.diary_token_count_trigger") \
   X(size_t, diaryInjectionMaxLength, 0, "misc.diary_injection_max_length") \
