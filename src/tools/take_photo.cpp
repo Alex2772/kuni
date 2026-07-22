@@ -6,6 +6,9 @@
 
 #include "ImageGenerator.h"
 #include "StableDiffusionClientImpl.h"
+#include "comfyui.h"
+#include "AUI/IO/AFileInputStream.h"
+#include "AUI/Image/png/PngImageLoader.h"
 #include "llmui/image.h"
 
 OpenAITools::Tool tools::takePhoto(_<IStableDiffusionClient> stableDiffusion, _<IOpenAIChat> openAI) {
@@ -65,12 +68,17 @@ OpenAITools::Tool tools::takePhoto(_<IStableDiffusionClient> stableDiffusion, _<
         .handler = [stableDiffusion = std::move(stableDiffusion),
                     openAI = std::move(openAI)](OpenAITools::Ctx ctx) -> AFuture<AString> {
             auto photoDesc = ctx.args["photo_desc"].asStringOpt().valueOrException("photo_desc is required");
-            auto galleryImage = co_await ImageGenerator{_new<StableDiffusionClientImpl>(), openAI, IOpenAIChat::Params{.config = config().llmImageToText}}.generate(photoDesc);
-            auto description = co_await llmui::image({}, *openAI, galleryImage.path);
+            auto image = co_await ImageGenerator{_new<StableDiffusionClientImpl>(), openAI, IOpenAIChat::Params{.config = config().llmImageToText}}.generate(photoDesc);
+
+
+            auto dst = APath("data/gallery/{}.png"_format(std::chrono::system_clock::now()));
+            dst.parent().makeDirs();
+            PngImageLoader::save(AFileOutputStream{ dst }, *image);
+            auto description = co_await llmui::image({}, *openAI, dst);
 
             co_return "{}\n\nFilename: {}\n"
             "When writing diary, do not forget to mention this photo and its filename verbatim - you might need this in the future!\n\n"
-            "You have created photo successfully. Review it carefully. Send it only if you are fully satisfied; use take_photo again to make another photo or search_photo_in_gallery to search for an old photo."_format(description, galleryImage.path.filename());
+            "You have created photo successfully. Review it carefully. Send it only if you are fully satisfied; use take_photo again to make another photo or search_photo_in_gallery to search for an old photo."_format(description, dst.filename());
         },
     };
 }
