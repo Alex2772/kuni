@@ -38,7 +38,7 @@ static AJson parseResponse(AString content) {
     return AJson::fromString(content);
 }
 
-AFuture<ImageGenerator::GalleryImage> ImageGenerator::generate(AString description) {
+AFuture<_<AImage>> ImageGenerator::generate(AString description) {
     ALOG_TRACE(LOG_TAG) << "generate: " << description;
     int trialIndex = 0;
 
@@ -98,10 +98,7 @@ AFuture<ImageGenerator::GalleryImage> ImageGenerator::generate(AString descripti
 
                 if (assessment.satisfied) {
                     ALogger::info(LOG_TAG) << "Satisfied with the result. " << assessment.feedback;
-                    auto dst = APath("data/gallery/{}.png"_format(std::chrono::system_clock::now()));
-                    dst.parent().makeDirs();
-                    PngImageLoader::save(AFileOutputStream{ dst }, *lastImage);
-                    co_return GalleryImage{ .image = lastImage, .path = dst.absolute() };
+                    co_return lastImage;
                 }
                 if (firstFeedback.empty()) {
                     firstFeedback = assessment.feedback;

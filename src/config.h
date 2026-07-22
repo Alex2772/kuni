@@ -55,6 +55,7 @@
   X(bool, capabilityTakePhoto, false, "capabilities.take_photo.enabled") \
   X(Endpoint, sdEndpoint, (Endpoint{.baseUrl="http://localhost:7860/"}),"capabilities.take_photo.sd.endpoint") \
   X(AString, sdCheckpoint, "novaAnimeXL_ilV170.safetensors", "capabilities.take_photo.sd.checkpoint") \
+  X(Endpoint, comfyEndpoint, (Endpoint{.baseUrl="http://localhost:8188/"}),"capabilities.take_photo.comfyui.endpoint") \
   X(bool, capabilityHearing, false, "capabilities.hearing.enabled") \
   X(EndpointAndModel, llmAudioToText, (EndpointAndModel{.endpoint={"http://localhost:9000/v1/"},.model="base"}), "capabilities.hearing.llm_audio_to_text") \
   X(bool, capabilityRecordVoice, false, "capabilities.record_voice.enabled") \
