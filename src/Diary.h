@@ -186,8 +186,29 @@ public:
      * vector and each entry's embedding, normalizes it to the range
      * [0,1], and returns a sorted vector of {@link EntryExAndRelatedness}
      * objects.
+     *
+     * @note Prefer the {@link query(const AString&, QueryOpts)} overload when a query text is
+     *       available; it combines embedding similarity with lexical keyword matching, which
+     *       greatly reduces false positives (e.g., unrelated entries about a different topic
+     *       that happen to have a close embedding). This overload is intended for callers that
+     *       only have an embedding on hand (e.g., context-based lookups, plagiarism checks).
      */
     AFuture<AVector<EntryExAndRelatedness>> query(const std::valarray<double>& query, QueryOpts opts);
+
+    /**
+     * @brief Asynchronously query the diary for entries related to a query text.
+     * @details
+     * This is the preferred search entry point. In addition to the embedding-based cosine
+     * similarity (see {@link query(const std::valarray<double>&, QueryOpts)}), this overload
+     * boosts entries that lexically share keywords/tokens (e.g., proper nouns like "Kiriko")
+     * with the query text. This mitigates the common RAG failure mode where an unrelated entry
+     * has a deceptively close embedding but doesn't actually mention the thing being asked
+     * about.
+     *
+     * The query text is embedded once via {@link openAI}'s embedding endpoint and delegates the
+     * semantic part of scoring to the embedding-based overload.
+     */
+    AFuture<AVector<EntryExAndRelatedness>> query(const AString& query, QueryOpts opts);
 
     /**
      * @brief Compute the relatedness of a single entry to a context vector.

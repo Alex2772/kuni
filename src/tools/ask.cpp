@@ -13,8 +13,8 @@
 static constexpr auto LOG_TAG = "ask";
 
 static AFuture<AString>
-queryDiary(IOpenAIChat& openAI, Diary& diary, ASet<AString> includedIds, const AString& cue, const Diary::QueryOpts& opts) {
-    auto diaryResponse = co_await diary.query(co_await openAI.embedding({ .config = config().embedding }, cue), [&] {
+queryDiary(Diary& diary, ASet<AString> includedIds, const AString& cue, const Diary::QueryOpts& opts) {
+    auto diaryResponse = co_await diary.query(cue, [&] {
         auto optsCopy = opts;
         optsCopy.maxEntryCount *= 10;
         return optsCopy;
@@ -100,7 +100,7 @@ static AFuture<AString> ask(IOpenAIChat& openAI, Diary& diary, const AString& qu
                 if (includeWebSearchResults) {
                     out += "<local_db_results>\n";
                 }
-                out += co_await queryDiary(openAI, diary, includedIds, cue, opts);
+                out += co_await queryDiary(diary, includedIds, cue, opts);
                 if (includeWebSearchResults) {
                     out += "\n</local_db_results>\n";
                 }
