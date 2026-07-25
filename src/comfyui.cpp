@@ -16,6 +16,9 @@
 
 static constexpr auto LOG_TAG = "comfyui";
 
+using namespace std::chrono_literals;
+
+
 namespace {
 
 AString wsUrl(const AString& baseUrl, const AString& clientId) {
@@ -54,47 +57,8 @@ AFuture<comfy::PromptResult> comfy::prompt(AJson workflow) {
     auto clientId = r.nextUuid().toString();
 
     const auto url = wsUrl(endpoint.baseUrl, clientId);
-    auto websocket = _new<AWebsocket>(url);
-    AFuture<> connected;
-    AFuture<AString> promptDone;
-
-    AObject::connect(websocket->connected, AObject::GENERIC_OBSERVER, [connected] { connected.supplyValue(); });
-    AObject::connect(websocket->websocketClosed, AObject::GENERIC_OBSERVER, [promptDone](const AString& reason) {
-        if (!promptDone.hasResult()) {
-            promptDone.supplyValue(AString());
-            ALogger::warn(LOG_TAG) << "Websocket closed before completion: " << reason;
-        }
-    });
 
     AString promptId;
-    AObject::connect(websocket->received, AObject::GENERIC_OBSERVER, [promptDone, &promptId](AByteBuffer buffer) {
-        if (buffer.empty()) {
-            return;
-        }
-        try {
-            auto json = AJson::fromBuffer(buffer);
-            const auto& type = json["type"].asStringOpt().valueOr("");
-            if (type != "executing") {
-                return;
-            }
-            const auto& data = json["data"];
-            if (!data["prompt_id"].asStringOpt().valueOr("").empty() && data["prompt_id"].asString() != promptId) {
-                return;
-            }
-            if (data["node"].isNull()) {
-                if (!promptDone.hasResult()) {
-                    promptDone.supplyValue(promptId);
-                }
-            }
-        } catch (const AException& e) {
-            ALogger::warn(LOG_TAG) << "Failed to process websocket message: " << e;
-        }
-    });
-
-    ACurlMulti::global() << websocket;
-
-    co_await connected;
-
     AJson body = AJson::Object{
         {"prompt", std::move(workflow)},
         {"client_id", clientId},
@@ -115,16 +79,22 @@ AFuture<comfy::PromptResult> comfy::prompt(AJson workflow) {
     promptId = queueResponse["prompt_id"].asString();
     ALogger::info(LOG_TAG) << "Queued prompt_id=" << promptId;
 
-    co_await promptDone;
-    websocket->close();
 
-    auto historyResponse = AJson::fromBuffer((co_await ACurl::Builder(endpoint.baseUrl + "history/{}"_format(promptId))
-                                                   .withHeaders(authHeaders(endpoint))
-                                                   .withTimeout(config().requestTimeoutSecs)
-                                                   .runAsync())
-                                                  .body);
 
-    auto history = historyResponse[promptId];
+    auto history = co_await [&]() -> AFuture<AJson> {
+        for (size_t maxTrials = 100; maxTrials > 0; --maxTrials) {
+            auto historyResponse = AJson::fromBuffer((co_await ACurl::Builder(endpoint.baseUrl + "history/{}"_format(promptId))
+                                                           .withHeaders(authHeaders(endpoint))
+                                                           .withTimeout(config().requestTimeoutSecs)
+                                                           .runAsync())
+                                                          .body);
+            if (auto r = historyResponse.containsOpt(promptId)) {
+                co_return *r;
+            }
+            co_await AThread::asyncSleep(1s);
+        }
+        throw AException("timeout");
+    }();
 
     PromptResult result;
     result.history = history;

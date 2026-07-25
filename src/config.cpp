@@ -153,6 +153,11 @@ static const std::unordered_map<AStringView, AStringView> CONFIG_COMMENTS = {
       "Generally, deepseek-v4-flash is cheap and fine enough. Local models sub 26b are stupid.",
     },
     {
+      "general.llm_diary",
+      "LLM endpoint used for diary lookups. Can be text-only.\n"
+      "Generally, local/cheap models are fine enough.",
+    },
+    {
       "general.embedding",
       "Embeddings endpoint. Used for RAG. A local qwen3-embedding is good enough.\n"
       "You should specify an **embedding** model specifically.",
@@ -239,6 +244,13 @@ static const std::unordered_map<AStringView, AStringView> CONFIG_COMMENTS = {
       "misc.diary_min_relatedness",
       "Minimum cosine similarity (0.0-1.0) for a diary entry to be injected into context.\n"
       "Higher values = only very relevant memories are recalled.",
+    },
+    {
+      "misc.diary_lexical_weight",
+      "Weight (0.0-1.0+) of lexical keyword overlap when scoring diary search results for\n"
+      "text-based queries (Diary::query(AString, ...)). Blended with embedding similarity so that\n"
+      "entries literally mentioning the query's keywords/names rank higher, reducing unrelated\n"
+      "results that happen to have a close embedding.",
     },
     {
       "misc.chat_max_history_length",
