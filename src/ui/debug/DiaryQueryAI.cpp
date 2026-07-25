@@ -210,6 +210,7 @@ Do not alter facts.
 
 Do not make up facts. Rely exclusively on provided context.
     )",
+            .config = config().llmDiary,
             .tools = tools.asJson(),
         };
 

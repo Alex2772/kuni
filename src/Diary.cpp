@@ -395,7 +395,7 @@ AFuture<> Diary::sleepingConsolidation() {
             try {
                 response = co_await openAI()->chat({
                 .systemPrompt = prompts().sleepConsolidator,
-                .config = config().llm,
+                .config = config().llmDiary,
             }, { { .role = IOpenAIChat::Message::Role::USER, .content = body }});
             } catch (const AException& e) {
                 ALogger::err("Diary") << "sleepingConsolidation can't chat " << e;

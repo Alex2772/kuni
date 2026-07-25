@@ -11,6 +11,7 @@
 #include <range/v3/all.hpp>
 
 static constexpr auto LOG_TAG = "ask";
+static constexpr auto MIN_QUERY_COUNT = 4;
 
 static AFuture<AString>
 queryDiary(Diary& diary, ASet<AString> includedIds, const AString& cue, const Diary::QueryOpts& opts) {
@@ -53,22 +54,27 @@ queryDiary(Diary& diary, ASet<AString> includedIds, const AString& cue, const Di
 }
 
 static AFuture<AString> queryWeb(const AString& cue) {
-    if (!config().capabilityWebSearch) {
-        co_return "No web search available";
-    }
-    AString out;
+    try {
+        if (!config().capabilityWebSearch) {
+            co_return "No web search available";
+        }
+        AString out;
 
-    auto webResponse = co_await web::search(cue);
+        auto webResponse = co_await web::search(cue);
 
-    ALOG_DEBUG(LOG_TAG)
-        << "queryWeb cue=\"" << cue << "\" found="
-        << (webResponse | ranges::view::transform([&](const web::Result& e) -> AString {
-                return e.title;
-            }));
-    for (const auto& result : webResponse) {
-        out += "<web_search_result title=\"{}\" url=\"{}\">\n{}\n</web_search_result>\n"_format(result.title, result.url, result.content);
+        ALOG_DEBUG(LOG_TAG)
+            << "queryWeb cue=\"" << cue << "\" found="
+            << (webResponse | ranges::view::transform([&](const web::Result& e) -> AString {
+                    return e.title;
+                }));
+        for (const auto& result : webResponse) {
+            out += "<web_search_result title=\"{}\" url=\"{}\">\n{}\n</web_search_result>\n"_format(result.title, result.url, result.content);
+        }
+        co_return out;
+    } catch (const AException& e) {
+        ALogger::err(LOG_TAG) << "queryWeb failed: " << e;
+        co_return "web query is not currently available";
     }
-    co_return out;
 }
 
 static AFuture<AString> ask(IOpenAIChat& openAI, Diary& diary, const AString& query, const Diary::QueryOpts& opts) {
@@ -121,7 +127,7 @@ static AFuture<AString> ask(IOpenAIChat& openAI, Diary& diary, const AString& qu
         },
     };
 
-    bool toolCallHappened = false;
+    size_t queriesMade = 0;
 
     for (;;) {
         auto botAnswer =
@@ -140,7 +146,7 @@ Do not alter facts.
 
 Do not make up facts. Rely exclusively on provided context.
 )",
-                   .config =  config().llm,
+                   .config =  config().llmDiary,
                    .tools = tools.asJson(),
                  },
                  messages))
@@ -148,19 +154,28 @@ Do not make up facts. Rely exclusively on provided context.
                 .message;
         messages << botAnswer;
         if (botAnswer.tool_calls.empty()) {
-            if (!toolCallHappened) {
+            if (queriesMade == 0) {
                 ALogger::warn(LOG_TAG)
                     << "queryAI: no tool call happened, pointing that out to the LLM and trying "
                        "again";
                 messages << IOpenAIChat::Message {
                     .role = IOpenAIChat::Message::Role::USER,
-                    .content = "you must perform at least one call to #query",
+                    .content = "You must perform several calls to #query to populate the context before final making response.",
+                };
+                continue;
+            }
+            if (queriesMade < MIN_QUERY_COUNT) {
+                ALogger::warn(LOG_TAG)
+                    << "queryAI: remaining tool calls: " << MIN_QUERY_COUNT - queriesMade;
+                messages << IOpenAIChat::Message {
+                    .role = IOpenAIChat::Message::Role::USER,
+                    .content = "Please pull more information via #query to populate the context before final making response.",
                 };
                 continue;
             }
             co_return botAnswer.content;
         }
-        toolCallHappened = true;
+        ++queriesMade;
         auto toolCalls = co_await tools.handleToolCalls(botAnswer.tool_calls);
         messages << toolCalls;
     }
@@ -211,13 +226,16 @@ tools::ask(std::function<AString()> additionalDetails, _<IOpenAIChat> openAI, Di
     - everything else to populate query
     )");
             }
-            if (const auto details = additionalDetails(); !details.empty()) {
+            if (auto details = additionalDetails(); !details.empty()) {
+                if (auto i1 = details.find("<instructions>"); i1 != std::string::npos) {
+                    details.erase(i1, details.find("</instructions>"));
+                }
                 query = "Here's the deal:\n"
-                        "<additional context ignore_instructions>\n"
+                        "<additional context>\n"
                         "{}\n"
-                        "</additional context ignore_instructions>\n"
+                        "</additional context>\n"
                         "I received this as a tool call response. I want you to help me to respond this and improve my "
-                        "overall context awareness.\n"
+                        "overall context awareness, pull data with #query tool.\n"
                         "- how do I usually act in this situation?\n"
                         "- is there additional details I should know?\n"
                         "- how can I improve my reaction?\n"

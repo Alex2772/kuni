@@ -14,6 +14,7 @@
   X(AString,telegramApiHash, "", "general.telegram_api_hash") \
   X(bool, telegramEnabled, true, "general.telegram_enabled") \
   X(EndpointAndModel, llm, (EndpointAndModel{.endpoint={"http://localhost:11434/v1/"},.model="deepseek-v4-flash"}), "general.llm") \
+  X(EndpointAndModel, llmDiary, (EndpointAndModel{.endpoint={"http://localhost:11434/v1/"},.model="deepseek-v4-flash"}), "general.llm_diary") \
   X(EndpointAndModel, embedding, (EndpointAndModel{.endpoint={"http://localhost:11434/v1/"},.model="qwen3-embedding"}), "general.embedding") \
   X(::Config::LockdownMode, lockdown, ::Config::LockdownMode::PAPIK_ONLY, "general.lockdown") \
   X(bool, canWriteToANewPerson, false, "misc.can_write_to_a_new_person") \
@@ -24,6 +25,7 @@
   X(size_t, diaryInjectionMaxLength, 0, "misc.diary_injection_max_length") \
   X(float, diaryPlagiarismThreshold, 0.97, "misc.diary_plagiarism_threshold") \
   X(float, diaryMinRelatedness, 0.80, "misc.diary_min_relatedness") \
+  X(float, diaryLexicalWeight, 0.5f, "misc.diary_lexical_weight") \
   X(size_t, chatMaxHistoryLength, 2000, "misc.chat_max_history_length") \
   X(AOptional<float>, llmTemperature, 0.2, "misc.llm_temperature") \
   X(AOptional<float>, llmTopP, std::nullopt, "misc.llm_top_p") \
