@@ -79,6 +79,9 @@ AJson OpenAIChatImpl::makeQueryString(Params params, const IOpenAIChat::Session&
     if (params.seed) {
         json["seed"] = *params.seed;
     }
+    if (config().llmReasoningEffort) {
+        json["reasoning_effort"] = *config().llmReasoningEffort;
+    }
     return json;
 }
 
@@ -119,6 +122,7 @@ _<IOpenAIChat::StreamingResponse> OpenAIChatImpl::chatStreaming(Params params, I
     AString query = [&] {
         auto json = makeQueryString(params, messages);
         json["stream"] = true;
+        json["stream_options"] = AJson::Object {{ "include_usage", true }};
         return AJson::toString(json);
     }();
     AFileOutputStream("last_query.json") << query.toStdString();

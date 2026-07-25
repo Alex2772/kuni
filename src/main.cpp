@@ -26,6 +26,9 @@
 #include "OpenAIChatMeasurable.h"
 #include "Prometheus.h"
 #include "prompts.h"
+#if KUNI_VOICE_CALLS
+#include "voicecalls/VoiceCallManager.h"
+#endif
 #include "AUI/AppInfo.h"
 #include "llmui/image.h"
 #include "llmui/malicious_payloads.h"
@@ -67,6 +70,8 @@
 #include "tools/remove_message.h"
 #include "tools/search_photo_in_gallery.h"
 
+
+#include "voicecalls/LlmVoiceCall.h"
 #include <Diary.h>
 
 using namespace std::chrono_literals;
@@ -82,12 +87,33 @@ AEventLoop gEventLoop;
 
 extern "C" AStringView project_version_info();
 
+#if KUNI_VOICE_CALLS
+class VoiceCallAcceptor: public VoiceCallManager::IAcceptor {
+public:
+    VoiceCallAcceptor(_<IOpenAIChat> openAI): mOpenAI(std::move(openAI)) {}
+
+    ~VoiceCallAcceptor() override = default;
+    std::variant<Accepted, Declined> onIncomingCall(int64_t fromUserId) override {
+        if (fromUserId != config().papikChatId) {
+            return Declined{};
+        }
+        return Accepted { _new<LlmVoiceCall>(mOpenAI) };
+    }
+private:
+    _<IOpenAIChat> mOpenAI;
+};
+#endif
+
 class App : public AppBase {
 public:
     AVector<_<IChatHistoryMessageProcessor>> chatHistoryMessageProcessors;
 
     App(_<ITelegramClient> telegram, _<IOpenAIChat> openAI)
-      : AppBase({ .workingDir = "data", .openAI = std::move(openAI) }), mTelegram(std::move(telegram)) {
+      : AppBase({ .workingDir = "data", .openAI = std::move(openAI) }), mTelegram(std::move(telegram))
+#if KUNI_VOICE_CALLS
+        , mVoiceCallManager(_new<VoiceCallManager>(mTelegram, _new<VoiceCallAcceptor>(this->openAI())))
+#endif
+    {
         ALOG_TRACE(LOG_TAG) << "App::App";
         connect(mTelegram->onEvent, [this](AArc<const td::td_api::Object> event) {
             td::td_api::downcast_call(const_cast<td::td_api::Object&>(*event), [&](const auto& u) {
@@ -273,6 +299,9 @@ protected:
 
 private:
     _<ITelegramClient> mTelegram;
+#if KUNI_VOICE_CALLS
+    _<VoiceCallManager> mVoiceCallManager;
+#endif
     std::list<MetricsBreadcumbs::Point> mLastOpenedChatLastMetrics;
 
     AFuture<AVector<_<td::td_api::chat>>> chatIdsToChats(std::span<td::td_api::int53> ids) {
