@@ -82,6 +82,7 @@ AFuture<IOpenAIChat::Session> OpenAITools::handleToolCalls(const AVector<IOpenAI
                         if (metricsBreadCumbs) {
                             point.emplace(metricsBreadCumbs, "function", toolCall.function.name);
                         }
+                        const auto handlerStartedAt = std::chrono::steady_clock::now();
                         auto handlerResult = co_await c->second.handler({
                             .logger = logger,
                             .tools = *this,
@@ -89,8 +90,10 @@ AFuture<IOpenAIChat::Session> OpenAITools::handleToolCalls(const AVector<IOpenAI
                             .temporaryContext = temporaryContext,
                             .allToolCalls = toolCalls,
                         });
+                        const auto handlerDuration = std::chrono::duration_cast<std::chrono::milliseconds>(
+                            std::chrono::steady_clock::now() - handlerStartedAt);
                         for (const auto& i : onAfterToolCall) {
-                            i(toolCall.function.name);
+                            i(toolCall.function.name, handlerDuration);
                         }
                         co_return std::move(handlerResult);
                     }

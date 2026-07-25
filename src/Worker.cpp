@@ -19,6 +19,29 @@ using namespace std::chrono_literals;
 
 extern std::default_random_engine gRandomEngine;
 
+namespace {
+/**
+ * @brief RAII scoped timer that reports elapsed wall-clock time to AppBase::reportPhaseTiming on
+ * destruction.
+ * @details
+ * Used to break down a single Worker::handleNotification iteration into named phases (e.g.
+ * "thinking", "diary_lookup") so Grafana can render a per-iteration breakdown of where time went.
+ */
+struct ScopedPhaseTimer: aui::noncopyable {
+    ScopedPhaseTimer(AppBase& app, AString phase): mApp(app), mPhase(std::move(phase)), mStartedAt(std::chrono::steady_clock::now()) {}
+
+    ~ScopedPhaseTimer() {
+        const auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - mStartedAt);
+        mApp.reportPhaseTiming(mPhase, duration);
+    }
+
+private:
+    AppBase& mApp;
+    AString mPhase;
+    std::chrono::steady_clock::time_point mStartedAt;
+};
+}   // namespace
+
 
 AFuture<std::valarray<double>> contextEmbedding(ALogger& logger, IOpenAIChat& openAI, ranges::range auto&& rng) {
     logger.trace(LOG_TAG) << "contextEmbedding";
@@ -147,6 +170,7 @@ AFuture<> Worker::handleNotification(std::shared_ptr<bool> alive, NotificationMa
         bool pauseFlag = false;
     naxyi_populate_ctx:
         if (!mApp.diary().list().empty()) {
+            ScopedPhaseTimer phaseTimer(mApp, "diary_lookup");
             AString diary;
 
             // performs scan on diary based on entire context.
@@ -221,6 +245,7 @@ AFuture<> Worker::handleNotification(std::shared_ptr<bool> alive, NotificationMa
         });
         IOpenAIChat::Response botAnswer = co_await [&]() -> AFuture<IOpenAIChat::Response> {
             MetricsBreadcumbs::Point metric(mApp.metricBreadcumbs(), "function", "notification processing loop");
+            ScopedPhaseTimer phaseTimer(mApp, "thinking");
             auto response = mApp.openAI()->chatStreaming(
                 {
                   .systemPrompt = mApp.getSystemPrompt(),
@@ -398,7 +423,7 @@ AString Worker::takeDiaryEntry(const Diary::EntryExAndRelatedness& i) {
 
 void Worker::updateTools(OpenAITools& tools) {
     mApp.updateTools(tools, mTemporaryContext);
-    tools.onAfterToolCall << [this](const AString& toolName) {
+    tools.onAfterToolCall << [this](const AString& toolName, std::chrono::milliseconds duration) {
         if (toolName == "ask") {
             mAskCalledThisTurn = true;
         }

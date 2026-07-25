@@ -188,6 +188,14 @@ send_telegram_message("text":"мррр~")
 }
 
 
+void AppBase::reportPhaseTiming(AString phase, std::chrono::milliseconds duration) {
+    emit phaseTimingFired(AppBase::PhaseTimingEvent{
+        .phase = std::move(phase),
+        .breadcrumbLabels = metricBreadcumbs()->value(),
+        .duration = duration,
+    });
+}
+
 void AppBase::updateTools(OpenAITools& actions, const IOpenAIChat::Session& temporaryContext) {
     ALOG_TRACE(LOG_TAG) << "updateTools";
     actions.insert(tools::ask([&temporaryContext] {
@@ -198,13 +206,14 @@ void AppBase::updateTools(OpenAITools& actions, const IOpenAIChat::Session& temp
         }
         return out;
     }, openAI(), mDiary));
-    actions.onAfterToolCall << [this](const AString& toolName) {
+    actions.onAfterToolCall << [this](const AString& toolName, std::chrono::milliseconds duration) {
         if (toolName == "wait") {
             return;
         }
         if (toolName == "pause") {
             return;
         }
+        reportPhaseTiming(toolName, duration);
         auto labels = metricBreadcumbs()->value();
         emit toolCallFired(AppBase::ToolCallEvent{
             .toolName = toolName,
@@ -212,6 +221,7 @@ void AppBase::updateTools(OpenAITools& actions, const IOpenAIChat::Session& temp
             .lastOpenedChatLastMessageTime = mLastOpenedChatLastMessageTime.map([](std::chrono::system_clock::time_point t) {
                 return std::chrono::duration_cast<std::chrono::seconds>(std::chrono::system_clock::now() - t);
             }),
+            .toolCallDuration = duration,
         });
     };
 

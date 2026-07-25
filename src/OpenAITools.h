@@ -1,4 +1,5 @@
 #pragma once
+#include <chrono>
 #include "AUI/Common/AString.h"
 #include "AUI/Common/AVector.h"
 #include "AUI/Json/AJson.h"
@@ -59,8 +60,10 @@ struct OpenAITools {
     /**
      * @brief Optional hook fired after each tool call handler completes successfully.
      * Not called if the handler throws. Set by AppBase::updateTools to emit AppBase::toolCallFired.
+     * @param toolName name of the tool that was just executed.
+     * @param duration wall-clock time spent inside the tool's handler (from dispatch to completion).
      */
-    AVector<std::function<void(const AString& toolName)>> onAfterToolCall;
+    AVector<std::function<void(const AString& toolName, std::chrono::milliseconds duration)>> onAfterToolCall;
 
     AFuture<IOpenAIChat::Session> handleToolCalls(const AVector<IOpenAIChat::Message::ToolCall>& toolCalls, const _<MetricsBreadcumbs>& metricsBreadCumbs = nullptr, const IOpenAIChat::Session& temporaryContext = {}, ALogger& logger = ALogger::global());
 

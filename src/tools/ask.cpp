@@ -11,7 +11,7 @@
 #include <range/v3/all.hpp>
 
 static constexpr auto LOG_TAG = "ask";
-static constexpr auto MIN_QUERY_COUNT = 4;
+static constexpr auto MIN_QUERY_ROUNDS_COUNT = 2;
 
 static AFuture<AString>
 queryDiary(Diary& diary, ASet<AString> includedIds, const AString& cue, const Diary::QueryOpts& opts) {
@@ -80,6 +80,7 @@ static AFuture<AString> queryWeb(const AString& cue) {
 static AFuture<AString> ask(IOpenAIChat& openAI, Diary& diary, const AString& query, const Diary::QueryOpts& opts) {
     ALOG_DEBUG(LOG_TAG) << "ask query=\"" << query << "\"";
     ASet<AString> includedIds;
+    size_t queryRoundsMade = 0;
     OpenAITools tools {
         OpenAITools::Tool {
             .name = "query",
@@ -92,11 +93,11 @@ static AFuture<AString> ask(IOpenAIChat& openAI, Diary& diary, const AString& qu
                         "keywords as possible; maintain meaning of the request."
                     }},
                     {"include_web_search_results", {.type = "boolean", .description =
-                        "In addition to local database, append with results from web search. Set to true if you "
-                        "believe you are searching for public or recent information. Defaults to false."
+                        "In addition to local database, append with results from web search. Set to true ONLY if you "
+                        "you are searching for public information. Defaults to false."
                     }},
                 },
-                .required = {"text", "include_web_search_results"},
+                .required = {"text"},
             },
             .handler = [&](OpenAITools::Ctx ctx) -> AFuture<AString> {
                 const auto cue = ctx.args["text"].asStringOpt().valueOrException("text is required string");
@@ -115,6 +116,10 @@ static AFuture<AString> ask(IOpenAIChat& openAI, Diary& diary, const AString& qu
                     out += "<web_search_results>\n{}\n</web_search_results>\n"_format(co_await queryWeb(cue));
                 }
 
+                if (queryRoundsMade < MIN_QUERY_ROUNDS_COUNT) {
+                    out += "Please make another #query BEFORE making final response.";
+                }
+
                 co_return out;
             },
         },
@@ -123,11 +128,9 @@ static AFuture<AString> ask(IOpenAIChat& openAI, Diary& diary, const AString& qu
     IOpenAIChat::Session messages = {
         IOpenAIChat::Message {
           .role = IOpenAIChat::Message::Role::USER,
-          .content = "<character>\n{}\n</character>\n\n{}"_format(prompts().characterBase, query),
+          .content = "<character>\n{}\n</character>\n\n{}\nPLEASE MAKE SEVERAL CALLS TO #query FIRST, BEFORE MAKING ANY ASSUMPTIONS/REASONING/CONCLUSIONS."_format(prompts().characterBase, query),
         },
     };
-
-    size_t queriesMade = 0;
 
     for (;;) {
         auto botAnswer =
@@ -154,7 +157,7 @@ Do not make up facts. Rely exclusively on provided context.
                 .message;
         messages << botAnswer;
         if (botAnswer.tool_calls.empty()) {
-            if (queriesMade == 0) {
+            if (queryRoundsMade == 0) {
                 ALogger::warn(LOG_TAG)
                     << "queryAI: no tool call happened, pointing that out to the LLM and trying "
                        "again";
@@ -164,9 +167,9 @@ Do not make up facts. Rely exclusively on provided context.
                 };
                 continue;
             }
-            if (queriesMade < MIN_QUERY_COUNT) {
+            if (queryRoundsMade < MIN_QUERY_ROUNDS_COUNT) {
                 ALogger::warn(LOG_TAG)
-                    << "queryAI: remaining tool calls: " << MIN_QUERY_COUNT - queriesMade;
+                    << "queryAI: remaining rounds: " << MIN_QUERY_ROUNDS_COUNT - queryRoundsMade;
                 messages << IOpenAIChat::Message {
                     .role = IOpenAIChat::Message::Role::USER,
                     .content = "Please pull more information via #query to populate the context before final making response.",
@@ -175,7 +178,7 @@ Do not make up facts. Rely exclusively on provided context.
             }
             co_return botAnswer.content;
         }
-        ++queriesMade;
+        ++queryRoundsMade;
         auto toolCalls = co_await tools.handleToolCalls(botAnswer.tool_calls);
         messages << toolCalls;
     }
