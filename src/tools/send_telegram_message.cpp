@@ -199,12 +199,16 @@ OpenAITools::Tool tools::sendTelegramMessage(
             // After the introduction of reply_to_message_id, Kuni started to confuse between chats. Opening
             // a chat, it tries to reply to a message from another chat by specifying reply_to_message_id.
             if (replyTo != 0) {
-                if (!ranges::contains(messages, replyTo, [](const auto& m) { return m->id_; })) {
-                    // I'm not exactly sure how we should handle this.
-                    // first, if LLM is confused between chats, this means a high privacy violation
-                    // risk.
-                    // second, ideally, I should crash the application.
-                    throw AException("You are trying to send a message to another chat!");
+                // I'm not exactly sure how we should handle this.
+                // first, if LLM is confused between chats, this means a high privacy violation
+                // risk.
+                // second, ideally, I should crash the application.
+                try {
+                    if (co_await telegram->getMessage(chat->id_, replyTo) == nullptr) {
+                        co_return "Error: you are trying to send a message to another chat!";
+                    }
+                } catch (const AException& e) {
+                    co_return "Error: you are trying to send a message to another chat!";
                 }
             }
 
