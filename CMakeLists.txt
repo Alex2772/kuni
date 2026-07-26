@@ -25,7 +25,8 @@ endif()
 
 
 option(BUILD_SHARED_LIBS OFF)
-option(KUNI_USE_FFMPEG OFF "Enable FFmpeg. Enables video transcription")
+option(KUNI_USE_FFMPEG "Enable FFmpeg. Enables video transcription" OFF)
+
 
 set(AUI_VERSION v8.0.0-rc.29)
 
@@ -37,7 +38,7 @@ auib_mark_var_forwardable(AUI_COROUTINES)
 
 # import AUI
 auib_import(aui https://github.com/aui-framework/aui
-        COMPONENTS core json curl crypt image views
+        COMPONENTS core json curl crypt image views audio
         VERSION ${AUI_VERSION})
 
 
@@ -74,6 +75,7 @@ aui_link(${PROJECT_NAME} PUBLIC
         aui::crypt
         aui::image
         aui::views
+        aui::audio
         Td::TdStatic
         toml11::toml11
         prometheus-cpp::pull
@@ -83,8 +85,6 @@ if (APPLE)
     target_link_libraries(${PROJECT_NAME} PUBLIC "-framework CoreServices")
 endif()
 
-aui_compile_assets(${PROJECT_NAME})
-aui_enable_tests(${PROJECT_NAME})
 
 # Setup icon, display name, etc
 aui_app(TARGET ${PROJECT_NAME}
@@ -154,3 +154,12 @@ if (KUNI_USE_FFMPEG)
     target_include_directories(Tests PRIVATE ${FFMPEG_INCLUDE_DIRS})
     target_link_libraries(Tests PUBLIC ${FFMPEG_LINK_LIBRARIES})
 endif ()
+
+aui_compile_assets(${PROJECT_NAME})
+aui_enable_tests(${PROJECT_NAME})
+
+if (EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/../kuni-private/CMakeLists.txt")
+    # for developing private/instance-specific stuff
+    add_subdirectory("${CMAKE_CURRENT_SOURCE_DIR}/../kuni-private" "kuni-private")
+endif ()
+
