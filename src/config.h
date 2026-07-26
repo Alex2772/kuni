@@ -33,6 +33,7 @@
   X(AOptional<float>, llmMinP, std::nullopt, "misc.llm_min_p") \
   X(AOptional<float>, llmPresencePenalty, std::nullopt, "misc.presence_penalty") \
   X(AOptional<float>, llmRepetitionPenalty, std::nullopt, "misc.repetition_penalty") \
+  X(AOptional<AString>, llmReasoningEffort, std::nullopt, "misc.reasoning_effort") \
   X(float, antiRepeatTriggerMax, 0.95, "misc.anti_repeat_trigger_max") \
   X(float, antiRepeatTriggerAvg, 0.85, "misc.anti_repeat_trigger_avg") \
   X(size_t, antiRepeatMaxHistory, 32, "misc.anti_repeat_max_history") \

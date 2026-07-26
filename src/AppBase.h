@@ -104,6 +104,9 @@ public:
     void wakeUpIfSleeping();
 
 protected:
+    OpenAITools::Tool toolAsk(const IOpenAIChat::Session& temporaryContext);
+
+protected:
     AAsyncHolder mAsync;
 
     // Set by llmuiOpenTelegramChat; read by updateTools to populate ToolCallEvent.

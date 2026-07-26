@@ -29,6 +29,7 @@
 #if KUNI_VOICE_CALLS
 #include "voicecalls/VoiceCallManager.h"
 #endif
+#include "ChatDatabase.h"
 #include "AUI/AppInfo.h"
 #include "llmui/image.h"
 #include "llmui/malicious_payloads.h"
@@ -109,7 +110,8 @@ public:
     AVector<_<IChatHistoryMessageProcessor>> chatHistoryMessageProcessors;
 
     App(_<ITelegramClient> telegram, _<IOpenAIChat> openAI)
-      : AppBase({ .workingDir = "data", .openAI = std::move(openAI) }), mTelegram(std::move(telegram))
+      : AppBase({ .workingDir = "data", .openAI = std::move(openAI) }), mTelegram(std::move(telegram)),
+        mChatDatabase(mTelegram)
 #if KUNI_VOICE_CALLS
         , mVoiceCallManager(_new<VoiceCallManager>(mTelegram, _new<VoiceCallAcceptor>(this->openAI())))
 #endif
@@ -298,11 +300,25 @@ protected:
     }
 
 private:
+    struct CurrentlyOpenedChat {
+        App& app;
+        _<td::td_api::chat> chat;
+
+        ~CurrentlyOpenedChat() {
+            app.mTelegram->sendQuery(ITelegramClient::toPtr(td::td_api::sendChatAction(chat->id_, {}, {}, nullptr)));
+            app.mTelegram->sendQuery(ITelegramClient::toPtr(td::td_api::closeChat(chat->id_)));
+        }
+    };
+
     _<ITelegramClient> mTelegram;
 #if KUNI_VOICE_CALLS
     _<VoiceCallManager> mVoiceCallManager;
 #endif
     std::list<MetricsBreadcumbs::Point> mLastOpenedChatLastMetrics;
+    AOptional<CurrentlyOpenedChat> mCurrentlyOpenedChat;
+    ChatDatabase mChatDatabase;
+
+    AMap<AString /* path */, AString /* description */> mImages = {};
 
     AFuture<AVector<_<td::td_api::chat>>> chatIdsToChats(std::span<td::td_api::int53> ids) {
         auto chats = ids | ranges::view::transform([&](td::td_api::int53 chatId) { return telegram()->getChat(chatId); }) | ranges::to_vector;
@@ -451,18 +467,6 @@ private:
             td::td_api::setOption("online", ITelegramClient::toPtr(td::td_api::optionValueBoolean(online)))));
     }
 
-    AMap<AString /* path */, AString /* description */> mImages = {};
-
-    struct CurrentlyOpenedChat {
-        App& app;
-        _<td::td_api::chat> chat;
-
-        ~CurrentlyOpenedChat() {
-            app.mTelegram->sendQuery(ITelegramClient::toPtr(td::td_api::sendChatAction(chat->id_, {}, {}, nullptr)));
-            app.mTelegram->sendQuery(ITelegramClient::toPtr(td::td_api::closeChat(chat->id_)));
-        }
-    };
-    AOptional<CurrentlyOpenedChat> mCurrentlyOpenedChat;
 
 public:
     AFuture<AString> llmuiOpenTelegramChat(ALogger& logger, OpenAITools& tools, int64_t chatId, const IOpenAIChat::Session& temporaryContext) {
@@ -625,7 +629,21 @@ public:
                     ITelegramClient::toPtr(td::td_api::viewMessages(chatId, td::td_api::array<td::td_api::int53>{messages.front()->id_}, nullptr, true)));
             }
 
-            result = "You switched to the chat \"{}\" in Telegram. You see last messages:\n"_format(chat->title_) + result;
+            auto prefix = "You switched to the chat \"{}\" in Telegram."_format(chat->title_);
+
+            {
+                const auto tag = "<previous_history chat_id=\"{}\">"_format(chatId);
+                if (!ranges::any_of(temporaryContext, [&](const IOpenAIChat::Message& ctx) {
+                    return ctx.content.contains(tag);
+                })) {
+                    if (auto lastAsk = mChatDatabase.getLastAskResult(chatId)) {
+                        prefix += "\n{}\n{}\n</previous_history>\n"_format(tag, *lastAsk);
+                    }
+                }
+            }
+
+            prefix += " You see last messages:\n";
+            result = prefix + result;
 
             // Mirror the official Telegram client behavior: if you open a group chat/channel you haven't joined,
             // you only see a "Join" button (plus the ability to react to messages) instead of a text field.
@@ -755,6 +773,9 @@ Do NOT forward ads, sponsored posts, or low-value content.
             default:
                 break;
         }
+
+        tools.insert(toolAsk(temporaryContext));
+        mChatDatabase.patchAskTool(tools, chatId);
 
         co_return result;
     }

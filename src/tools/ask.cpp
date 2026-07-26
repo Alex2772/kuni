@@ -176,7 +176,8 @@ Do not make up facts. Rely exclusively on provided context.
                 };
                 continue;
             }
-            co_return botAnswer.content;
+            co_return botAnswer.content + "\n\nAlways acknowledge your participant about your knowledge and details, "
+                "show that you are into the conversation - this engages them so far.";
         }
         ++queryRoundsMade;
         auto toolCalls = co_await tools.handleToolCalls(botAnswer.tool_calls);

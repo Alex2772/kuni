@@ -198,14 +198,9 @@ void AppBase::reportPhaseTiming(AString phase, std::chrono::milliseconds duratio
 
 void AppBase::updateTools(OpenAITools& actions, const IOpenAIChat::Session& temporaryContext) {
     ALOG_TRACE(LOG_TAG) << "updateTools";
-    actions.insert(tools::ask([&temporaryContext] {
-        AString out;
-        for (const auto& msg : temporaryContext | ranges::view::take_last(2)) {
-            out += msg.content;
-            out += "\n";
-        }
-        return out;
-    }, openAI(), mDiary));
+    if (!actions.handlers().contains("ask")) {
+        actions.insert(toolAsk(temporaryContext));
+    }
     actions.onAfterToolCall << [this](const AString& toolName, std::chrono::milliseconds duration) {
         if (toolName == "wait") {
             return;
@@ -231,6 +226,17 @@ void AppBase::wakeUpIfSleeping() {
     for (const auto& worker : mWorkers) {
         worker->wakeUpIfSleeping();
     }
+}
+
+OpenAITools::Tool AppBase::toolAsk(const IOpenAIChat::Session& temporaryContext) {
+    return tools::ask([&temporaryContext] {
+            AString out;
+            for (const auto& msg : temporaryContext | ranges::view::take_last(2)) {
+                out += msg.content;
+                out += "\n";
+            }
+            return out;
+        }, openAI(), mDiary);
 }
 
 AString AppBase::getSystemPrompt()

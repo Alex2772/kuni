@@ -70,6 +70,7 @@ struct OpenAITools {
     AJson asJson() const;
 
     [[nodiscard]] AMap<AString, Tool> handlers() const { return mHandlers; }
+    [[nodiscard]] AMap<AString, Tool>& handlers() { return mHandlers; }
 
     void insert(Tool tool) { mHandlers[tool.name] = std::move(tool); }
 
