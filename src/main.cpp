@@ -72,7 +72,6 @@
 #include "tools/search_photo_in_gallery.h"
 
 
-#include "voicecalls/LlmVoiceCall.h"
 #include <Diary.h>
 
 using namespace std::chrono_literals;
@@ -88,23 +87,6 @@ AEventLoop gEventLoop;
 
 extern "C" AStringView project_version_info();
 
-#if KUNI_VOICE_CALLS
-class VoiceCallAcceptor: public VoiceCallManager::IAcceptor {
-public:
-    VoiceCallAcceptor(_<IOpenAIChat> openAI): mOpenAI(std::move(openAI)) {}
-
-    ~VoiceCallAcceptor() override = default;
-    std::variant<Accepted, Declined> onIncomingCall(int64_t fromUserId) override {
-        if (fromUserId != config().papikChatId) {
-            return Declined{};
-        }
-        return Accepted { _new<LlmVoiceCall>(mOpenAI) };
-    }
-private:
-    _<IOpenAIChat> mOpenAI;
-};
-#endif
-
 class App : public AppBase {
 public:
     AVector<_<IChatHistoryMessageProcessor>> chatHistoryMessageProcessors;
@@ -112,9 +94,6 @@ public:
     App(_<ITelegramClient> telegram, _<IOpenAIChat> openAI)
       : AppBase({ .workingDir = "data", .openAI = std::move(openAI) }), mTelegram(std::move(telegram)),
         mChatDatabase(mTelegram)
-#if KUNI_VOICE_CALLS
-        , mVoiceCallManager(_new<VoiceCallManager>(mTelegram, _new<VoiceCallAcceptor>(this->openAI())))
-#endif
     {
         ALOG_TRACE(LOG_TAG) << "App::App";
         connect(mTelegram->onEvent, [this](AArc<const td::td_api::Object> event) {
