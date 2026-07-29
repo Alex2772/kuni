@@ -388,10 +388,10 @@ AFuture<> Worker::handleNotification(std::shared_ptr<bool> alive, NotificationMa
 Worker::Worker(size_t name, AppBase& app): mName(name), mApp(app) {
     mAliveToken = _new<bool>(true);
 
-    getThread()->enqueue([=, alive = mAliveToken] {
+    getThread()->enqueue([=, this, alive = mAliveToken] {
         if (!*alive)
             return;
-        mCoroutine = mApp.notificationManager().run(mWorkerPins, [=](NotificationManager::Notification notification) -> AFuture<bool> {
+        mCoroutine = mApp.notificationManager().run(mWorkerPins, [=, this](NotificationManager::Notification notification) -> AFuture<bool> {
             co_await handleNotification(alive, std::move(notification));
             co_return *alive;
         });

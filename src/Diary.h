@@ -126,7 +126,8 @@ public:
          */
         double relatedness{};
 
-        auto operator<=>(const EntryExAndRelatedness&) const = default;
+        bool operator==(const EntryExAndRelatedness&) const = default;
+        bool operator!=(const EntryExAndRelatedness&) const = default;
     };
 
     struct Init {

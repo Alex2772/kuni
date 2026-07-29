@@ -30,7 +30,7 @@ using namespace std::chrono_literals;
 static constexpr auto LOG_TAG = "App";
 static const auto WORKING_MEMORY_PATH = "working_memory.md";
 
-extern std::default_random_engine gRandomEngine;
+std::default_random_engine gRandomEngine(std::time(nullptr));
 
 
 AppBase::AppBase(Init init): mInit(std::move(init)), mDiary({
