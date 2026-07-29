@@ -132,6 +132,7 @@ static AFuture<AString> ask(IOpenAIChat& openAI, Diary& diary, const AString& qu
         },
     };
 
+    AString result;
     for (;;) {
         auto botAnswer =
             (co_await openAI.chat(
@@ -140,7 +141,7 @@ static AFuture<AString> ask(IOpenAIChat& openAI, Diary& diary, const AString& qu
 You are a database searcher and summarizer.
 
 The user asks you a question. Your job is to retrieve data solely from #query tool. Your job is to output data that
-fully satisfies user's query and would be helpful.
+fully satisfies user's query and would be helpful. Write shortly and briefly.
 
 Also, please include additional details that does not necessarily address the question (i.e., dates, names, events) but
 might be helpful to improve quality of subsequent processing of your response.
@@ -156,6 +157,8 @@ Do not make up facts. Rely exclusively on provided context.
                 .choices.at(0)
                 .message;
         messages << botAnswer;
+        result += botAnswer.content;
+        result += "\n---\n";
         if (botAnswer.tool_calls.empty()) {
             if (queryRoundsMade == 0) {
                 ALogger::warn(LOG_TAG)
@@ -176,8 +179,9 @@ Do not make up facts. Rely exclusively on provided context.
                 };
                 continue;
             }
-            co_return botAnswer.content + "\n\nAlways acknowledge your participant about your knowledge and details, "
+            result += "\n\nAlways acknowledge your participant about your knowledge and details, "
                 "show that you are into the conversation - this engages them so far.";
+            co_return result;
         }
         ++queryRoundsMade;
         auto toolCalls = co_await tools.handleToolCalls(botAnswer.tool_calls);
