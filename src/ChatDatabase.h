@@ -7,6 +7,7 @@ public:
     explicit ChatDatabase(AArc<ITelegramClient> telegramClient) : mTelegramClient(std::move(telegramClient)) {}
     void patchAskTool(OpenAITools& tools, int64_t chatId);
     AOptional<AString> getLastAskResult(int64_t chatId);
+    AOptional<int> getPriorityOverrideFor(int64_t chatId);
 
 private:
     AArc<ITelegramClient> mTelegramClient;

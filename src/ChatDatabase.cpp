@@ -6,6 +6,8 @@
 
 #include "AUI/IO/AFileInputStream.h"
 
+static constexpr auto LOG_TAG = "ChatDatabase";
+
 void ChatDatabase::patchAskTool(OpenAITools& tools, int64_t chatId) {
     for (auto& i : tools.handlers()) {
         if (i.first != "ask") {
@@ -24,6 +26,20 @@ void ChatDatabase::patchAskTool(OpenAITools& tools, int64_t chatId) {
 AOptional<AString> ChatDatabase::getLastAskResult(int64_t chatId) {
     if (auto path = getChatPath(chatId) / "last_ask.md"; path.isRegularFileExists()) {
         return AString::fromUtf8(AByteBuffer::fromStream(AFileInputStream(path)));
+    }
+    return std::nullopt;
+}
+
+AOptional<int> ChatDatabase::getPriorityOverrideFor(int64_t chatId) {
+    if (auto path = getChatPath(chatId) / "priority_override"; path.isRegularFileExists()) {
+        try {
+            auto asStr = AString::fromUtf8(AByteBuffer::fromStream(AFileInputStream(path)));
+            asStr.removeAll(" ");
+            asStr.removeAll("\n");
+            return asStr.toIntOrException();
+        } catch(const AException& e) {
+            ALogger::err(LOG_TAG) << e;
+        }
     }
     return std::nullopt;
 }

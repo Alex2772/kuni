@@ -52,6 +52,13 @@ public:
          * @brief Resolved by the worker when the notification pass completely processed.
          */
         AFuture<> onProcessed;
+
+        /**
+         * @brief Priority with slightly randomized value.
+         * @details
+         * Randomized value gives an opportunity to notifications with lower values.
+         */
+        int priorityRandomized{};
     };
 
     /**

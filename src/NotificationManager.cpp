@@ -4,6 +4,8 @@
 
 #include "NotificationManager.h"
 
+#include "App.h"
+
 #include <range/v3/algorithm/any_of.hpp>
 #include <range/v3/algorithm/find_if.hpp>
 #include <range/v3/algorithm/remove_if.hpp>
@@ -13,10 +15,18 @@ static constexpr auto LOG_TAG = "NotificationManager";
 const NotificationManager::NotificationHandle&
 NotificationManager::passNotificationToAI(Notification notification) {
     ALOG_TRACE(LOG_TAG) << "passNotificationToAI";
+    const auto priorityRandomized = notification.priority
+#ifndef AUI_TESTS_MODULE
+        + std::uniform_int_distribution(-config().priorityRandomizationRadius, config().priorityRandomizationRadius)(gRandomEngine)
+#endif
+    ;
     const auto at = ranges::find_if(mNotifications, [&](const NotificationHandle& h) {
-        return notification.priority > h.notification.priority;
+        return priorityRandomized > h.priorityRandomized;
     });
-    const auto& result = *mNotifications.emplace(at, NotificationHandle { .notification = std::move(notification) });
+    const auto& result = *mNotifications.emplace(at, NotificationHandle {
+        .notification = std::move(notification),
+        .priorityRandomized = priorityRandomized,
+    });
 
     if (result.notification.pin) {
         // wake up suitable worker based on pin.

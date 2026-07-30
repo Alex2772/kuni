@@ -396,6 +396,9 @@ private:
             "You don't have any chat open. Use #open tool to open the chat";
 
         const int priority = [&] {
+            if (auto o = mChatDatabase.getPriorityOverrideFor(chat->id_)) {
+                return *o;
+            }
             if (userId == config().papikChatId) {
                 return 1000;
             }
@@ -424,7 +427,7 @@ private:
             .pin = "<chat id=\"{}\" />"_format(chat->id_),
         });
 
-        if (priority > 0) {
+        if (priority >= 100) {
             wakeUpIfSleeping();
         }
 
