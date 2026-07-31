@@ -97,6 +97,14 @@ public:
     const NotificationHandle& passNotificationToAI(Notification notification);
 
     /**
+     * @brief Returns true if any notification contains given substring.
+     * @param substring to search in notification texts. Must be unique enough to avoid false positives.
+     * @details
+     * Can be used to remove obsolete notifications from the queue.
+     */
+    bool contains(const AString& substring);
+
+    /**
      * @brief Removes notifications by the given substring.
      * @param substring to search in notification texts. Must be unique enough to avoid false positives.
      * @details

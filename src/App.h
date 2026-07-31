@@ -29,6 +29,7 @@
 #include "Prometheus.h"
 #include "prompts.h"
 #include "ChatDatabase.h"
+#include "IPlugin.h"
 #include "AUI/AppInfo.h"
 #include "llmui/image.h"
 #include "llmui/malicious_payloads.h"
@@ -81,7 +82,8 @@ private:
     static constexpr auto LOG_TAG = "App";
 
 public:
-    AVector<_<IChatHistoryMessageProcessor>> chatHistoryMessageProcessors;
+    AVector<AArc<IChatHistoryMessageProcessor>> chatHistoryMessageProcessors;
+    AVector<AArc<IPlugin>> plugins;
 
     App(_<ITelegramClient> telegram, _<IOpenAIChat> openAI)
       : AppBase({ .workingDir = "data", .openAI = std::move(openAI) }), mTelegram(std::move(telegram)),
@@ -395,7 +397,7 @@ private:
             "\n</notification>\n"
             "You don't have any chat open. Use #open tool to open the chat";
 
-        const int priority = [&] {
+        int priority = [&] {
             if (auto o = mChatDatabase.getPriorityOverrideFor(chat->id_)) {
                 return *o;
             }
@@ -411,6 +413,28 @@ private:
             }
             return 0;
         }();
+
+        // unread mentions: bonus priority
+        priority += chat->unread_mention_count_;
+
+        {
+            static td::td_api::array<td::td_api::int53> contacts;
+            AUI_DO_ONCE {
+                contacts = (co_await telegram()->sendQueryWithResult(ITelegramClient::toPtr(td::td_api::getContacts())))->user_ids_;
+            }
+            if (ranges::contains(contacts, chat->id_)) {
+                // contact: bonus priority
+                priority += 10;
+            }
+        }
+
+        try {
+            for (const auto& plugin : plugins) {
+                co_await plugin->updateChatPriority(priority, chat);
+            }
+        } catch (const AException& e) {
+            ALogger::err(LOG_TAG) << "kuni_private_plugin_update_priority failed: " << e;
+        }
 
         notificationManager().passNotificationToAI(NotificationManager::Notification{
             .message = std::move(notification),
@@ -599,6 +623,9 @@ public:
             if (!messages.empty()) {
                 mTelegram->sendQuery(
                     ITelegramClient::toPtr(td::td_api::viewMessages(chatId, td::td_api::array<td::td_api::int53>{messages.front()->id_}, nullptr, true)));
+                mTelegram->sendQuery(
+                    ITelegramClient::toPtr(td::td_api::readAllChatMentions(chatId)));
+                chat->unread_mention_count_ = 0;
             }
 
             auto prefix = "You switched to the chat \"{}\" in Telegram."_format(chat->title_);

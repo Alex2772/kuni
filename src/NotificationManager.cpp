@@ -49,6 +49,12 @@ NotificationManager::passNotificationToAI(Notification notification) {
     return result;
 
 }
+bool NotificationManager::contains(const AString& substring) {
+    ALOG_TRACE(LOG_TAG) << "removeNotifications: " << substring;
+    return ranges::any_of(mNotifications, [&](const NotificationHandle& h) {
+        return h.notification.message.contains(substring);
+    });
+}
 
 void NotificationManager::removeNotifications(const AString& substring) {
     ALOG_TRACE(LOG_TAG) << "removeNotifications: " << substring;
@@ -65,6 +71,7 @@ NotificationManager::nextNotification(ASet<AString>& pins) {
         if (notification.notification.pin) {
             pins << *notification.notification.pin;
         }
+        ALogger::info(LOG_TAG) << "Handling notification priority_randomized=" << notification.priorityRandomized << " priority=" << notification.notification.priority << " " << notification.notification.message;
         return notification;
     };
     for (auto it = mNotifications.begin(); it != mNotifications.end(); ++it) {

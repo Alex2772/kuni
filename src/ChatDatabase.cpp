@@ -45,7 +45,7 @@ AOptional<int> ChatDatabase::getPriorityOverrideFor(int64_t chatId) {
 }
 
 APath ChatDatabase::getChatPath(int64_t chatId) {
-    auto path = APath("chats") / "{}"_format(chatId);
+    auto path = APath("data") / "chats" / "{}"_format(chatId);
     if (!path.isDirectoryExists()) {
         path.makeDirs();
         mAsync << [this, path, chatId]() -> AFuture<> {

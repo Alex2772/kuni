@@ -28,7 +28,7 @@ option(BUILD_SHARED_LIBS OFF)
 option(KUNI_USE_FFMPEG "Enable FFmpeg. Enables video transcription" OFF)
 
 
-set(AUI_VERSION v8.0.0-rc.29)
+set(AUI_VERSION v8.0.0-rc.30)
 
 # Use AUI.Boot
 include(aui.boot.cmake)
@@ -133,6 +133,7 @@ aui_app(TARGET ${PROJECT_NAME}
         ICON "assets/img/icon.svg"
 )
 
+target_include_directories(Tests PRIVATE tests/)
 
 # optional features
 foreach (_feature_switch KUNI_USE_FFMPEG)

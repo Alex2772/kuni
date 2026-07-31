@@ -1,4 +1,5 @@
 #include "App.h"
+#include "IPlugin.h"
 
 using namespace std::chrono_literals;
 
@@ -9,7 +10,7 @@ constexpr auto LOG_TAG = "main";
 AEventLoop gEventLoop;
 }   // namespace
 
-AArc<AObject> __attribute__((weak)) kuni_private_plugin_init(AArc<App> app) {
+AArc<IPlugin> __attribute__((weak)) kuni_private_plugin_init(App& app) {
     // this is a mechanism allowing to non-intrusively modify kuni's kernel code without affecting kernel's code itself.
     // this allows you to easily sync with mainline public kuni kernel code while making exclusive features.
     //
@@ -26,14 +27,14 @@ AArc<AObject> __attribute__((weak)) kuni_private_plugin_init(AArc<App> app) {
     //
     // 3. create kuni-private/src/plugin.cpp:
     // #include <App.h>
-    // class KuniPrivatePlugin: public AObject {
+    // class KuniPrivatePlugin: public IPlugin {
     // public:
-    //    KuniPrivate(AArc<App> app) {
+    //    KuniPrivate(App& app) {
     //      // do whatever shit you want here
     //    }
     // };
-    // AArc<AObject> kuni_private_plugin_init(AArc<App> app) {
-    //    return _new<KuniPrivatePlugin>(std::move(app));
+    // AArc<IPlugin> kuni_private_plugin_init(App& app) {
+    //    return _new<KuniPrivatePlugin>(app);
     // }
     //
 
@@ -54,7 +55,6 @@ AUI_ENTRY {
     AAsyncHolder async;
     _<prometheus::IExporter> prometheus;
     _<App> app;
-    _<AObject> kuniPrivatePlugin;
     _<proxy_server::IProxyServer> proxyServer;
     _<proxy_server::ContextBridge> contextBridge;
 
@@ -75,7 +75,9 @@ AUI_ENTRY {
         AObject::connect(telegram->loggedIn, telegram, [&] {
             auto openAI = _new<OpenAIChatMeasurable>(std::make_unique<OpenAIChatImpl>());
             app = _new<App>(telegram, openAI);
-            kuni_private_plugin_init(app);
+            if (auto plugin = kuni_private_plugin_init(*app)) {
+                app->plugins << std::move(plugin);
+            }
             async << app->sendNotificationsOnInit();
 
             if (config().proxyEnabled) {
