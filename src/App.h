@@ -407,7 +407,7 @@ private:
             if (config().wakeUpOnPinnedChat) {
                 for (const auto& position : chat->positions_) {
                     if (position->is_pinned_) {
-                        return 100;
+                        return 200;
                     }
                 }
             }
@@ -475,10 +475,16 @@ public:
 
         co_await telegram()->waitForConnection();
         setOnline();
+
+        _<td::td_api::chat> chat = co_await mTelegram->getChat(chatId);
+
+        if (chat->block_list_ != nullptr) {
+            co_return "Error: you have banned this user";
+        }
+
         mTelegram->sendQuery(ITelegramClient::toPtr(td::td_api::openChat(chatId)));
         notificationManager().removeNotifications("<notification chat_id=\"{}\">\n"_format(chatId));
 
-        _<td::td_api::chat> chat = co_await mTelegram->getChat(chatId);
         mCurrentlyOpenedChat.emplace(*this, chat);
         mLastOpenedChatLastMetrics = std::list<MetricsBreadcumbs::Point> {};
         mLastOpenedChatLastMetrics.emplace_back(metricBreadcumbs(), "chat", chat->title_);
