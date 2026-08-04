@@ -3,9 +3,9 @@
 #include "AUI/Util/kAUI.h"
 #include "AUI/Thread/AFuture.h"
 
+#include <chrono>
 #include <deque>
 #include <list>
-#include <range/v3/algorithm/find_if.hpp>
 
 class NotificationManager {
 public:
@@ -54,11 +54,13 @@ public:
         AFuture<> onProcessed;
 
         /**
-         * @brief Priority with slightly randomized value.
+         * @brief Time point the notification was inserted into the queue.
          * @details
-         * Randomized value gives an opportunity to notifications with lower values.
+         * Used to compute an effective priority dynamically (see \c NotificationManager::effectivePriority),
+         * so waiting notifications age up over time and hot-pin boosts decay naturally once no longer
+         * applicable, instead of freezing a randomized priority at insertion time.
          */
-        int priorityRandomized{};
+        std::chrono::steady_clock::time_point insertedAt = std::chrono::steady_clock::now();
     };
 
     /**
@@ -126,5 +128,21 @@ private:
      * @return
      */
     AOptional<NotificationHandle> nextNotification(ASet<AString>& pins);
+
+    /**
+     * @brief Computes effective priority of a notification at the current moment in time.
+     * @details
+     * Effective priority is dynamic (recomputed on every call, never cached/frozen at insertion time):
+     * - \c notification.priority as base.
+     * - Aging bonus proportional to how long the notification has been waiting
+     *   (\c config().priorityAgingPerSecond), which guarantees no notification starves forever - unlike the
+     *   old fixed random jitter, this monotonically increases and is not subject to bad luck.
+     * - A "hot pin" bonus (\c config().notificationHotPinBoost) if some worker currently holds this
+     *   notification's pin, i.e. that worker's LLM context/cache is "warm" for this chat right now. This
+     *   naturally creates bursty back-and-forth exchanges within a chat while its context is cached, and
+     *   the bonus evaporates by itself once the worker flushes/loses the pin - no explicit cooldown timer
+     *   needed.
+     */
+    int effectivePriority(const NotificationHandle& handle) const;
 
 };

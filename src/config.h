@@ -49,7 +49,8 @@
   X(bool, canJoinChats, false, "misc.can_join_chats") \
   X(bool, canLeaveChats, true, "misc.can_leave_chats") \
   X(size_t, workerCount, 1, "misc.worker_count") \
-  X(int, priorityRandomizationRadius, 10, "misc.priority_randomization_radius") \
+  X(float, priorityAgingPerSecond, 0.001f, "misc.priority_aging_per_second") \
+  X(int, notificationHotPinBoost, 50, "misc.notification_hot_pin_boost") \
   X(bool, capabilityWebSearch, false, "capabilities.web_search.enabled") \
   X(AString, webSearchOllamaKey, "", "capabilities.web_search.ollama_bearer_key") \
   X(bool, capabilityVision, false, "capabilities.vision.enabled") \
