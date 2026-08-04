@@ -315,6 +315,7 @@ AFuture<VoiceGenerator::VoiceMessage> VoiceGenerator::generate(AString text, ASt
                     .model = config().recordVoiceOpenAIModel,
                     .voice = config().recordVoiceOpenAIVoice,
                     .response_format = config().recordVoiceOpenAIFormat,
+                    .num_step = 63,
                     .speed = speed,
                 };
                 auto ttsResponse = co_await ttsClient.textToSpeech(request);
