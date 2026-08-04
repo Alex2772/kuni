@@ -278,12 +278,12 @@ AJSON_FIELDS(IOpenAIChat::AudioTranscription::Segment,
              )
 
 AJSON_FIELDS(IOpenAIChat::AudioTranscription,
-             AJSON_FIELDS_ENTRY(task)
-             AJSON_FIELDS_ENTRY(language)
-             AJSON_FIELDS_ENTRY(language_probability)
-             AJSON_FIELDS_ENTRY(duration)
-             AJSON_FIELDS_ENTRY(duration_after_vad)
-             AJSON_FIELDS_ENTRY(text)
-             AJSON_FIELDS_ENTRY(segments)
+             (task, "task", AJsonFieldFlags::OPTIONAL)
+             (language, "language", AJsonFieldFlags::OPTIONAL)
+             (language_probability, "language_probability", AJsonFieldFlags::OPTIONAL)
+             (duration, "duration", AJsonFieldFlags::OPTIONAL)
+             (duration_after_vad, "duration_after_vad", AJsonFieldFlags::OPTIONAL)
+             (text, "text", AJsonFieldFlags::OPTIONAL)
+             (segments, "segments", AJsonFieldFlags::OPTIONAL)
              )
 
