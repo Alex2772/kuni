@@ -80,11 +80,12 @@ AOptional<NotificationManager::NotificationHandle>
 NotificationManager::nextNotification(ASet<AString>& pins) {
     auto take = [&](std::deque<NotificationHandle>::const_iterator it) {
         auto notification = std::move(*it);
+        const auto eP = effectivePriority(notification);
         mNotifications.erase(it);
         if (notification.notification.pin) {
             pins << *notification.notification.pin;
         }
-        ALogger::info(LOG_TAG) << "Handling notification effective_priority=" << effectivePriority(notification) << " priority=" << notification.notification.priority << " " << notification.notification.message;
+        ALogger::info(LOG_TAG) << "Handling notification effective_priority=" << eP << " priority=" << notification.notification.priority << " " << notification.notification.message;
         return notification;
     };
 

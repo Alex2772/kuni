@@ -10,6 +10,7 @@
 #include "NotificationManager.h"
 #include "OpenAITools.h"
 #include "Worker.h"
+#include "StickyNotes.h"
 
 class AppBase : public AObject {
 public:
@@ -120,6 +121,7 @@ private:
     _<ATimer> mWakeupTimer;
     NotificationManager mNotificationManager;
     AString mSystemPromptSuffix;
+    StickyNotes mStickyNotes;
 
     bool mWakeup = false;
 
