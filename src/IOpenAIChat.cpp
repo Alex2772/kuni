@@ -4,9 +4,12 @@
 
 #include "IOpenAIChat.h"
 
+#include "AUI/Image/jpg/JpgImageLoader.h"
 #include "AUI/Util/ARandom.h"
 
 #include <range/v3/view/zip.hpp>
+
+static constexpr auto LOG_TAG = "IOpenAIChat";
 
 AJson AJsonConv<IOpenAIChat::Session>::toJson(const IOpenAIChat::Session& v) {
     AJson::Array result;
@@ -68,6 +71,20 @@ void AJsonConv<IOpenAIChat::Session, void>::fromJson(AJson json, IOpenAIChat::Se
         out.reasoning_content  = in["reasoning_content"].asStringOpt().valueOr("");
         out.content  = in["content"].asStringOpt().valueOr("");
     }
+}
+
+AString IOpenAIChat::embedImage(AImageView image) {
+    ALOG_TRACE(LOG_TAG) << "embedImage";
+    AByteBuffer jpg;
+    auto resized = image.resizedLinearDownscale({672, 672 * float(image.height()) / float(image.width())});
+    JpgImageLoader::save(jpg, resized);
+    // JpgImageLoader::save(AFileOutputStream("test.jpg"), resized);
+    return embedBinary("image/jpg", jpg);
+}
+
+AString IOpenAIChat::embedBinary(AStringView mimeType, AByteBufferView data) {
+    ALOG_TRACE(LOG_TAG) << "embedBinary";
+    return "<{}>data:{};base64,{}</{}>"_format(EMBEDDING_TAG, mimeType, data.toBase64String(), EMBEDDING_TAG);
 }
 
 AString IOpenAIChat::Session::nextSessionId() {

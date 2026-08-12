@@ -27,7 +27,8 @@ OpenAITools::Tool tools::sendTelegramMessage(
     _<ITelegramClient> telegram,
     _<IOpenAIChat> openAI,
     _<td::td_api::chat> chat,
-    _<td::td_api::array<td::td_api::object_ptr<td::td_api::message>>> messages) {
+    _<td::td_api::array<td::td_api::object_ptr<td::td_api::message>>> messages,
+    SendTelegramMessageOpts opts) {
 
     struct State {
         int messagesInARow = 0;
@@ -77,11 +78,14 @@ OpenAITools::Tool tools::sendTelegramMessage(
                     openAI = std::move(openAI),
                     chat = std::move(chat),
                     state = _new<State>(0),
-                    messages = std::move(messages)
+                    messages = std::move(messages),
+                    opts = std::move(opts)
                     ](OpenAITools::Ctx ctx) -> AFuture<AString> {
-            if (state->messagesInARow > 10) {
-                // stupid AI can't recognize it spams messages despite the warning
-                throw AException("Too many messages in a row. Don't spam!");
+            if (opts.maxPossibleMessagesInARow) {
+                if (state->messagesInARow >= *opts.maxPossibleMessagesInARow) {
+                    // stupid AI can't recognize it spams messages despite the warning
+                    throw AException("Too many messages in a row. Don't spam!");
+                }
             }
 
             auto isTyping = _new<std::atomic_bool>(true);

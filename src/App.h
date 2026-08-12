@@ -749,8 +749,14 @@ Do NOT forward ads, sponsored posts, or low-value content.
         }
 
     naxyi:
+        const auto priorityOverride = mChatDatabase.getPriorityOverrideFor(chatId).valueOr(0);
+
         tools = OpenAITools {
-            tools::sendTelegramMessage(telegram(), openAI(), chat, _new<td::td_api::array<td::td_api::object_ptr<td::td_api::message>>>(std::move(messages))),
+            tools::sendTelegramMessage(telegram(), openAI(), chat, _new<td::td_api::array<td::td_api::object_ptr<td::td_api::message>>>(std::move(messages)), {
+                .maxPossibleMessagesInARow = priorityOverride >= 500
+                    ? AOptional<size_t>(std::nullopt)
+                    : 10,
+            }),
             tools::getChatPhoto(telegram(), openAI(), chat, temporaryContext),
             tools::reactWithEmoji(telegram(), chat),
             tools::removeMessage(telegram(), chat),

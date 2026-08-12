@@ -30,17 +30,6 @@ static constexpr auto LOG_TAG = "OpenAIChat";
 using namespace std::chrono_literals;
 
 
-
-AString IOpenAIChat::embedImage(AImageView image) {
-    ALOG_TRACE(LOG_TAG) << "embedImage";
-    AByteBuffer jpg;
-    auto resized = image.resizedLinearDownscale({672, 672 * float(image.height()) / float(image.width())});
-    JpgImageLoader::save(jpg, resized);
-    JpgImageLoader::save(AFileOutputStream("test.jpg"), resized);
-    return "<{}>data:image/jpg;base64,{}</{}>"_format(EMBEDDING_TAG, jpg.toBase64String(), EMBEDDING_TAG);
-}
-
-
 AJson OpenAIChatImpl::makeQueryString(Params params, const IOpenAIChat::Session& messages) {
     ALOG_TRACE(LOG_TAG) << "makeQueryString";
     AUI_ASSERT(!messages.sessionId.empty());
@@ -79,8 +68,8 @@ AJson OpenAIChatImpl::makeQueryString(Params params, const IOpenAIChat::Session&
     if (params.seed) {
         json["seed"] = *params.seed;
     }
-    if (config().llmReasoningEffort) {
-        json["reasoning_effort"] = *config().llmReasoningEffort;
+    if (params.reasoningEffort) {
+        json["reasoning_effort"] = *params.reasoningEffort;
     }
     return json;
 }

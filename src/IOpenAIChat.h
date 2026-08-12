@@ -26,11 +26,13 @@ struct IOpenAIChat {
         int maxOutputTokens = 8192;
         EndpointAndModel config = ::config().llm;
         AOptional<int64_t> seed;
+        AOptional<AString> reasoningEffort = ::config().llmReasoningEffort;
         AJson tools = AJson::Array{};
     };
 
     static constexpr auto EMBEDDING_TAG = "kuni_embedding";
     static AString embedImage(AImageView image);
+    static AString embedBinary(AStringView mimeType, AByteBufferView data);
 
     struct String: AString {
         using AString::AString;
