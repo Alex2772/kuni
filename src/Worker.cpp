@@ -19,6 +19,29 @@ using namespace std::chrono_literals;
 
 extern std::default_random_engine gRandomEngine;
 
+namespace {
+/**
+ * @brief RAII scoped timer that reports elapsed wall-clock time to AppBase::reportPhaseTiming on
+ * destruction.
+ * @details
+ * Used to break down a single Worker::handleNotification iteration into named phases (e.g.
+ * "thinking", "diary_lookup") so Grafana can render a per-iteration breakdown of where time went.
+ */
+struct ScopedPhaseTimer: aui::noncopyable {
+    ScopedPhaseTimer(AppBase& app, AString phase): mApp(app), mPhase(std::move(phase)), mStartedAt(std::chrono::steady_clock::now()) {}
+
+    ~ScopedPhaseTimer() {
+        const auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - mStartedAt);
+        mApp.reportPhaseTiming(mPhase, duration);
+    }
+
+private:
+    AppBase& mApp;
+    AString mPhase;
+    std::chrono::steady_clock::time_point mStartedAt;
+};
+}   // namespace
+
 
 AFuture<std::valarray<double>> contextEmbedding(ALogger& logger, IOpenAIChat& openAI, ranges::range auto&& rng) {
     logger.trace(LOG_TAG) << "contextEmbedding";
@@ -41,24 +64,22 @@ AFuture<std::valarray<double>> contextEmbedding(ALogger& logger, IOpenAIChat& op
 
 [[nodiscard]]
 static AFuture<> processRandomlyGoSleep(ALogger& logger, bool& wakeUp) {
-    if (config().randomlyGoSleep) {
-        if (std::uniform_real_distribution(0.0, 1.0)(gRandomEngine) < 0.01) {
-            // 1. randomly go afk is humane
-            // 2. reduce resource usage:
-            //    - less conversations would be made
-            //    - in case of group chats and telegram channels, messages would be processed in batches
-            const auto duration = std::chrono::minutes(std::uniform_int_distribution(15, 120)(gRandomEngine));
-            logger.info(LOG_TAG)
-                << "Going to sleep for " << std::chrono::duration_cast<std::chrono::minutes>(duration).count() << " minutes";
-            wakeUp = false;
-            for (int i = 0; i < std::chrono::duration_cast<std::chrono::seconds>(duration).count(); ++i) {
-                // костыль ну да сойдёт
-                if (wakeUp) {
-                    logger.info(LOG_TAG) << "Early wake up";
-                    break;
-                }
-                co_await AThread::asyncSleep(1s);
+    if (std::uniform_real_distribution(0.0, 1.0)(gRandomEngine) < config().randomlyGoSleepChance) {
+        // 1. randomly go afk is humane
+        // 2. reduce resource usage:
+        //    - less conversations would be made
+        //    - in case of group chats and telegram channels, messages would be processed in batches
+        const auto duration = std::chrono::minutes(std::uniform_int_distribution(15, 120)(gRandomEngine));
+        logger.info(LOG_TAG)
+            << "Going to sleep for " << std::chrono::duration_cast<std::chrono::minutes>(duration).count() << " minutes";
+        wakeUp = false;
+        for (int i = 0; i < std::chrono::duration_cast<std::chrono::seconds>(duration).count(); ++i) {
+            // костыль ну да сойдёт
+            if (wakeUp) {
+                logger.info(LOG_TAG) << "Early wake up";
+                break;
             }
+            co_await AThread::asyncSleep(1s);
         }
     }
 }
@@ -132,6 +153,13 @@ AFuture<> Worker::handleNotification(std::shared_ptr<bool> alive, NotificationMa
             .content = std::move(notification.message),
         };
 
+        if (mTemporaryContext.isTooLarge()) {
+            // we are stuck; ignore the event
+            mLogger.warn("AppBase") << "Fatal overflow of context; can't recover";
+            mTemporaryContext.clear();
+            co_return;
+        }
+
         // naxyi was here.
         // the reasons why I have moved it below diary lookup:
         // 1. Each lookup adds ~1s delay. So each time LLM uses send_telegram_message, there is a diary
@@ -149,6 +177,7 @@ AFuture<> Worker::handleNotification(std::shared_ptr<bool> alive, NotificationMa
         bool pauseFlag = false;
     naxyi_populate_ctx:
         if (!mApp.diary().list().empty()) {
+            ScopedPhaseTimer phaseTimer(mApp, "diary_lookup");
             AString diary;
 
             // performs scan on diary based on entire context.
@@ -223,6 +252,7 @@ AFuture<> Worker::handleNotification(std::shared_ptr<bool> alive, NotificationMa
         });
         IOpenAIChat::Response botAnswer = co_await [&]() -> AFuture<IOpenAIChat::Response> {
             MetricsBreadcumbs::Point metric(mApp.metricBreadcumbs(), "function", "notification processing loop");
+            ScopedPhaseTimer phaseTimer(mApp, "thinking");
             auto response = mApp.openAI()->chatStreaming(
                 {
                   .systemPrompt = mApp.getSystemPrompt(),
@@ -365,10 +395,10 @@ AFuture<> Worker::handleNotification(std::shared_ptr<bool> alive, NotificationMa
 Worker::Worker(size_t name, AppBase& app): mName(name), mApp(app) {
     mAliveToken = _new<bool>(true);
 
-    getThread()->enqueue([=, alive = mAliveToken] {
+    getThread()->enqueue([=, this, alive = mAliveToken] {
         if (!*alive)
             return;
-        mCoroutine = mApp.notificationManager().run(mWorkerPins, [=](NotificationManager::Notification notification) -> AFuture<bool> {
+        mCoroutine = mApp.notificationManager().run(mWorkerPins, [=, this](NotificationManager::Notification notification) -> AFuture<bool> {
             co_await handleNotification(alive, std::move(notification));
             co_return *alive;
         });
@@ -400,7 +430,7 @@ AString Worker::takeDiaryEntry(const Diary::EntryExAndRelatedness& i) {
 
 void Worker::updateTools(OpenAITools& tools) {
     mApp.updateTools(tools, mTemporaryContext);
-    tools.onAfterToolCall << [this](const AString& toolName) {
+    tools.onAfterToolCall << [this](const AString& toolName, std::chrono::milliseconds duration) {
         if (toolName == "ask") {
             mAskCalledThisTurn = true;
         }

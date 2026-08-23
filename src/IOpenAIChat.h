@@ -26,11 +26,13 @@ struct IOpenAIChat {
         int maxOutputTokens = 8192;
         EndpointAndModel config = ::config().llm;
         AOptional<int64_t> seed;
+        AOptional<AString> reasoningEffort = ::config().llmReasoningEffort;
         AJson tools = AJson::Array{};
     };
 
     static constexpr auto EMBEDDING_TAG = "kuni_embedding";
     static AString embedImage(AImageView image);
+    static AString embedBinary(AStringView mimeType, AByteBufferView data);
 
     struct String: AString {
         using AString::AString;
@@ -119,6 +121,8 @@ struct IOpenAIChat {
     public:
         using AVector<Message>::AVector;
         AString sessionId = nextSessionId();
+
+        bool isTooLarge() const;
 
     private:
         static AString nextSessionId();
@@ -278,12 +282,12 @@ AJSON_FIELDS(IOpenAIChat::AudioTranscription::Segment,
              )
 
 AJSON_FIELDS(IOpenAIChat::AudioTranscription,
-             AJSON_FIELDS_ENTRY(task)
-             AJSON_FIELDS_ENTRY(language)
-             AJSON_FIELDS_ENTRY(language_probability)
-             AJSON_FIELDS_ENTRY(duration)
-             AJSON_FIELDS_ENTRY(duration_after_vad)
-             AJSON_FIELDS_ENTRY(text)
-             AJSON_FIELDS_ENTRY(segments)
+             (task, "task", AJsonFieldFlags::OPTIONAL)
+             (language, "language", AJsonFieldFlags::OPTIONAL)
+             (language_probability, "language_probability", AJsonFieldFlags::OPTIONAL)
+             (duration, "duration", AJsonFieldFlags::OPTIONAL)
+             (duration_after_vad, "duration_after_vad", AJsonFieldFlags::OPTIONAL)
+             (text, "text", AJsonFieldFlags::OPTIONAL)
+             (segments, "segments", AJsonFieldFlags::OPTIONAL)
              )
 

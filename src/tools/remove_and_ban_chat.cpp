@@ -74,7 +74,7 @@ OpenAITools::Tool tools::removeAndBanChat(_<ITelegramClient> telegram) {
                     break;
             }
 
-            co_return "Success";
+            co_return "Successfully banned chat: \"{}\""_format(chat->title_);
         },
     };
 }

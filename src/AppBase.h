@@ -10,6 +10,7 @@
 #include "NotificationManager.h"
 #include "OpenAITools.h"
 #include "Worker.h"
+#include "StickyNotes.h"
 
 class AppBase : public AObject {
 public:
@@ -37,8 +38,34 @@ public:
         AString toolName;
         AMap<AString, AString> breadcrumbLabels;
         AOptional<std::chrono::seconds> lastOpenedChatLastMessageTime;
+
+        /**
+         * @brief Wall-clock time spent inside the tool's handler (dispatch to completion).
+         */
+        std::chrono::milliseconds toolCallDuration{0};
     };
     emits<ToolCallEvent> toolCallFired;
+
+    /**
+     * @brief Describes how long a named phase of the notification-processing coroutine took.
+     * @details
+     * Used to break down where Worker::handleNotification's time goes for a single loop iteration
+     * (e.g. "thinking" for LLM inference, "diary_lookup" for RAG lookup), so Grafana can render a
+     * per-iteration "flame"-like breakdown of the notification.
+     */
+    struct PhaseTimingEvent {
+        AString phase;
+        AMap<AString, AString> breadcrumbLabels;
+        std::chrono::milliseconds duration{0};
+    };
+    emits<PhaseTimingEvent> phaseTimingFired;
+
+    /**
+     * @brief Emits #phaseTimingFired with the current breadcrumb labels attached.
+     * @param phase short machine-readable name of the phase, e.g. "thinking", "diary_lookup".
+     * @param duration wall-clock duration of the phase, measured via std::chrono::steady_clock.
+     */
+    void reportPhaseTiming(AString phase, std::chrono::milliseconds duration);
 
     [[nodiscard]]
     const _<MetricsBreadcumbs>& metricBreadcumbs() const {
@@ -78,6 +105,9 @@ public:
     void wakeUpIfSleeping();
 
 protected:
+    OpenAITools::Tool toolAsk(const IOpenAIChat::Session& temporaryContext);
+
+protected:
     AAsyncHolder mAsync;
 
     // Set by llmuiOpenTelegramChat; read by updateTools to populate ToolCallEvent.
@@ -91,6 +121,7 @@ private:
     _<ATimer> mWakeupTimer;
     NotificationManager mNotificationManager;
     AString mSystemPromptSuffix;
+    StickyNotes mStickyNotes;
 
     bool mWakeup = false;
 

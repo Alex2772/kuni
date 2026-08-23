@@ -153,6 +153,11 @@ static const std::unordered_map<AStringView, AStringView> CONFIG_COMMENTS = {
       "Generally, deepseek-v4-flash is cheap and fine enough. Local models sub 26b are stupid.",
     },
     {
+      "general.llm_diary",
+      "LLM endpoint used for diary lookups. Can be text-only.\n"
+      "Generally, local/cheap models are fine enough.",
+    },
+    {
       "general.embedding",
       "Embeddings endpoint. Used for RAG. A local qwen3-embedding is good enough.\n"
       "You should specify an **embedding** model specifically.",
@@ -210,8 +215,8 @@ static const std::unordered_map<AStringView, AStringView> CONFIG_COMMENTS = {
       "tokens preservation mechanisms (sleep) are not applied to them.",
     },
     {
-      "misc.randomly_go_sleep",
-      "If true, Kuni will randomly go to sleep after some time of inactivity to save LLM tokens.\n"
+      "misc.randomly_go_sleep_chance",
+      "If greater than zero, Kuni will randomly go to sleep after some time of inactivity to save LLM tokens.\n"
       "While sleeping, Kuni won't respond to messages (except from papik_chat_id).\n",
     },
     {
@@ -239,6 +244,13 @@ static const std::unordered_map<AStringView, AStringView> CONFIG_COMMENTS = {
       "misc.diary_min_relatedness",
       "Minimum cosine similarity (0.0-1.0) for a diary entry to be injected into context.\n"
       "Higher values = only very relevant memories are recalled.",
+    },
+    {
+      "misc.diary_lexical_weight",
+      "Weight (0.0-1.0+) of lexical keyword overlap when scoring diary search results for\n"
+      "text-based queries (Diary::query(AString, ...)). Blended with embedding similarity so that\n"
+      "entries literally mentioning the query's keywords/names rank higher, reducing unrelated\n"
+      "results that happen to have a close embedding.",
     },
     {
       "misc.chat_max_history_length",
@@ -427,6 +439,16 @@ static const std::unordered_map<AStringView, AStringView> CONFIG_COMMENTS = {
       "misc.worker_count",
       "Amount of Kuni's subpersons that process messages. 1 is totally fine.\n"
       "This was implemented as a countermeasure to spamming Kuni's DM.",
+    },
+    {
+      "misc.reasoning_effort",
+      "`reasoning_effort` passed to the OpenAI api.\n"
+      "- \"none\" - unset (aka by default)\n"
+      "- \"off\" - reasoning completely disabled (replaced by \"none\")\n"
+      "- \"low\" - low reasoning effort\n"
+      "- \"medium\" - medium reasoning effort\n"
+      "- \"high\" - high reasoning effort\n"
+        ,
     },
 };
 

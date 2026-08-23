@@ -30,13 +30,16 @@ using namespace std::chrono_literals;
 static constexpr auto LOG_TAG = "App";
 static const auto WORKING_MEMORY_PATH = "working_memory.md";
 
-extern std::default_random_engine gRandomEngine;
+std::default_random_engine gRandomEngine(std::time(nullptr));
 
-
-AppBase::AppBase(Init init): mInit(std::move(init)), mDiary({
-    .diaryDir = mInit.workingDir / "diary",
-    .openAI = mInit.openAI,
-}), mWakeupTimer(_new<ATimer>(27min)) {
+AppBase::AppBase(Init init)
+  : mInit(std::move(init))
+  , mDiary({
+      .diaryDir = mInit.workingDir / "diary",
+      .openAI = mInit.openAI,
+    })
+  , mWakeupTimer(_new<ATimer>(27min))
+  , mStickyNotes({ .workingDir = mInit.workingDir }) {
     // mWakeupTimer fires on the timer thread; without this, its signal would be invoked directly on the
     // timer thread instead of being safely queued to AppBase's own thread, racing with mNotificationsSignal/
     // mNotifications access in the main coroutine below and causing a null AFuture dereference crash.
@@ -162,14 +165,15 @@ Act proactively!
 }
 
 AString AppBase::onCleanContext() const {
-    if ((mInit.workingDir / WORKING_MEMORY_PATH).isRegularFileExists()) {
-        AByteBuffer workingMemory;
-        workingMemory << AFileInputStream(mInit.workingDir / WORKING_MEMORY_PATH);
-        return R"(<things_to_remember>
+    AString result;
+
+    result += R"(<sticky_notes>
 {}
-</things_to_remember>
+</sticky_notes>
 <instructions>
 Your behaviour must be highly influenced by "physical state" and "emotional state" mentioned above.
+Use #set_emotional_state and #set_physical_state whenever your mood or physical condition changes - these
+persist across sessions and are always shown back to you.
 
 <example>
 Emotional state: anger
@@ -182,29 +186,40 @@ Emotional state: amused
 send_telegram_message("text":"мррр~")
 </example>
 </instruction>
-)"_format(AStringView(workingMemory.data(), workingMemory.size()));
+)"_format(mStickyNotes.readMemory());
+
+    if ((mInit.workingDir / WORKING_MEMORY_PATH).isRegularFileExists()) {
+        AByteBuffer workingMemory;
+        workingMemory << AFileInputStream(mInit.workingDir / WORKING_MEMORY_PATH);
+        result += "<things_to_remember>\n{}\n</things_to_remember>\n"_format(AStringView(workingMemory.data(), workingMemory.size()));
     }
-    return "";
+
+    return result;
 }
 
 
+void AppBase::reportPhaseTiming(AString phase, std::chrono::milliseconds duration) {
+    emit phaseTimingFired(AppBase::PhaseTimingEvent{
+        .phase = std::move(phase),
+        .breadcrumbLabels = metricBreadcumbs()->value(),
+        .duration = duration,
+    });
+}
+
 void AppBase::updateTools(OpenAITools& actions, const IOpenAIChat::Session& temporaryContext) {
     ALOG_TRACE(LOG_TAG) << "updateTools";
-    actions.insert(tools::ask([&temporaryContext] {
-        AString out;
-        for (const auto& msg : temporaryContext | ranges::view::take_last(2)) {
-            out += msg.content;
-            out += "\n";
-        }
-        return out;
-    }, openAI(), mDiary));
-    actions.onAfterToolCall << [this](const AString& toolName) {
+    if (!actions.handlers().contains("ask")) {
+        actions.insert(toolAsk(temporaryContext));
+    }
+    mStickyNotes.updateTools(actions);
+    actions.onAfterToolCall << [this](const AString& toolName, std::chrono::milliseconds duration) {
         if (toolName == "wait") {
             return;
         }
         if (toolName == "pause") {
             return;
         }
+        reportPhaseTiming(toolName, duration);
         auto labels = metricBreadcumbs()->value();
         emit toolCallFired(AppBase::ToolCallEvent{
             .toolName = toolName,
@@ -212,6 +227,7 @@ void AppBase::updateTools(OpenAITools& actions, const IOpenAIChat::Session& temp
             .lastOpenedChatLastMessageTime = mLastOpenedChatLastMessageTime.map([](std::chrono::system_clock::time_point t) {
                 return std::chrono::duration_cast<std::chrono::seconds>(std::chrono::system_clock::now() - t);
             }),
+            .toolCallDuration = duration,
         });
     };
 
@@ -221,6 +237,17 @@ void AppBase::wakeUpIfSleeping() {
     for (const auto& worker : mWorkers) {
         worker->wakeUpIfSleeping();
     }
+}
+
+OpenAITools::Tool AppBase::toolAsk(const IOpenAIChat::Session& temporaryContext) {
+    return tools::ask([&temporaryContext] {
+            AString out;
+            for (const auto& msg : temporaryContext | ranges::view::take_last(2)) {
+                out += msg.content;
+                out += "\n";
+            }
+            return out;
+        }, openAI(), mDiary);
 }
 
 AString AppBase::getSystemPrompt()

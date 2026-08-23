@@ -30,17 +30,6 @@ static constexpr auto LOG_TAG = "OpenAIChat";
 using namespace std::chrono_literals;
 
 
-
-AString IOpenAIChat::embedImage(AImageView image) {
-    ALOG_TRACE(LOG_TAG) << "embedImage";
-    AByteBuffer jpg;
-    auto resized = image.resizedLinearDownscale({672, 672});
-    JpgImageLoader::save(jpg, resized);
-    // JpgImageLoader::save(AFileOutputStream("test.jpg"), resized);
-    return "<{}>data:image/jpg;base64,{}</{}>"_format(EMBEDDING_TAG, jpg.toBase64String(), EMBEDDING_TAG);
-}
-
-
 AJson OpenAIChatImpl::makeQueryString(Params params, const IOpenAIChat::Session& messages) {
     ALOG_TRACE(LOG_TAG) << "makeQueryString";
     AUI_ASSERT(!messages.sessionId.empty());
@@ -79,6 +68,9 @@ AJson OpenAIChatImpl::makeQueryString(Params params, const IOpenAIChat::Session&
     if (params.seed) {
         json["seed"] = *params.seed;
     }
+    if (params.reasoningEffort) {
+        json["reasoning_effort"] = params.reasoningEffort->replacedAll("off", "none");
+    }
     return json;
 }
 
@@ -116,9 +108,15 @@ AFuture<AJson> OpenAIChatImpl::makeHttpRequest(Endpoint endpoint, std::string qu
 
 _<IOpenAIChat::StreamingResponse> OpenAIChatImpl::chatStreaming(Params params, IOpenAIChat::Session messages) {
     messages.insert(messages.begin(), {Message::Role::SYSTEM_PROMPT, params.systemPrompt});
+
+    if (messages.isTooLarge()) {
+        throw AException("context is too large");
+    }
+
     AString query = [&] {
         auto json = makeQueryString(params, messages);
         json["stream"] = true;
+        json["stream_options"] = AJson::Object {{ "include_usage", true }};
         return AJson::toString(json);
     }();
     AFileOutputStream("last_query.json") << query.toStdString();
