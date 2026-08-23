@@ -440,6 +440,16 @@ static const std::unordered_map<AStringView, AStringView> CONFIG_COMMENTS = {
       "Amount of Kuni's subpersons that process messages. 1 is totally fine.\n"
       "This was implemented as a countermeasure to spamming Kuni's DM.",
     },
+    {
+      "misc.reasoning_effort",
+      "`reasoning_effort` passed to the OpenAI api.\n"
+      "- \"none\" - unset (aka by default)\n"
+      "- \"off\" - reasoning completely disabled (replaced by \"none\")\n"
+      "- \"low\" - low reasoning effort\n"
+      "- \"medium\" - medium reasoning effort\n"
+      "- \"high\" - high reasoning effort\n"
+        ,
+    },
 };
 
 static constexpr auto CONFIG_TOML = "config.toml";

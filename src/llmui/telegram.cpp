@@ -492,7 +492,7 @@ AFuture<AString> llmui::formatChatHistoryMessage(
             xmlTag += " emoji=\"{}\""_format(sticker.sticker_->emoji_);
         }
         if (config().capabilityUseStickers) {
-            xmlTag += " sticker_id=\"{}\""_format(sticker.sticker_->id_);
+            xmlTag += " sticker_id=\"{}\""_format(fmt::group_digits(sticker.sticker_->id_));
         }
         if (sticker.sticker_->sticker_) {
             result += co_await llmui::image(

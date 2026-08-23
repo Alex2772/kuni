@@ -69,7 +69,7 @@ AJson OpenAIChatImpl::makeQueryString(Params params, const IOpenAIChat::Session&
         json["seed"] = *params.seed;
     }
     if (params.reasoningEffort) {
-        json["reasoning_effort"] = *params.reasoningEffort;
+        json["reasoning_effort"] = params.reasoningEffort->replacedAll("off", "none");
     }
     return json;
 }
@@ -108,6 +108,11 @@ AFuture<AJson> OpenAIChatImpl::makeHttpRequest(Endpoint endpoint, std::string qu
 
 _<IOpenAIChat::StreamingResponse> OpenAIChatImpl::chatStreaming(Params params, IOpenAIChat::Session messages) {
     messages.insert(messages.begin(), {Message::Role::SYSTEM_PROMPT, params.systemPrompt});
+
+    if (messages.isTooLarge()) {
+        throw AException("context is too large");
+    }
+
     AString query = [&] {
         auto json = makeQueryString(params, messages);
         json["stream"] = true;
