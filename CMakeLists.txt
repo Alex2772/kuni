@@ -38,7 +38,7 @@ auib_mark_var_forwardable(AUI_COROUTINES)
 
 # import AUI
 auib_import(aui https://github.com/aui-framework/aui
-        COMPONENTS core json curl crypt image views
+        COMPONENTS core json curl crypt image views audio
         VERSION ${AUI_VERSION})
 
 
@@ -75,6 +75,7 @@ aui_link(${PROJECT_NAME} PUBLIC
         aui::crypt
         aui::image
         aui::views
+        aui::audio
         Td::TdStatic
         toml11::toml11
         prometheus-cpp::pull

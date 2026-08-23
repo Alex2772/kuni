@@ -153,6 +153,13 @@ AFuture<> Worker::handleNotification(std::shared_ptr<bool> alive, NotificationMa
             .content = std::move(notification.message),
         };
 
+        if (mTemporaryContext.isTooLarge()) {
+            // we are stuck; ignore the event
+            mLogger.warn("AppBase") << "Fatal overflow of context; can't recover";
+            mTemporaryContext.clear();
+            co_return;
+        }
+
         // naxyi was here.
         // the reasons why I have moved it below diary lookup:
         // 1. Each lookup adds ~1s delay. So each time LLM uses send_telegram_message, there is a diary

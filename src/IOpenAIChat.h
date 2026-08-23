@@ -122,6 +122,8 @@ struct IOpenAIChat {
         using AVector<Message>::AVector;
         AString sessionId = nextSessionId();
 
+        bool isTooLarge() const;
+
     private:
         static AString nextSessionId();
     };

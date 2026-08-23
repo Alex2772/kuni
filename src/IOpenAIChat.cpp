@@ -8,6 +8,10 @@
 #include "AUI/Util/ARandom.h"
 
 #include <range/v3/view/zip.hpp>
+#include <range/v3/numeric/accumulate.hpp>
+#include <range/v3/view/transform.hpp>
+
+static constexpr auto MAX_REQUEST_LENGTH = 200'000; // ~65k tokens
 
 static constexpr auto LOG_TAG = "IOpenAIChat";
 
@@ -85,6 +89,14 @@ AString IOpenAIChat::embedImage(AImageView image) {
 AString IOpenAIChat::embedBinary(AStringView mimeType, AByteBufferView data) {
     ALOG_TRACE(LOG_TAG) << "embedBinary";
     return "<{}>data:{};base64,{}</{}>"_format(EMBEDDING_TAG, mimeType, data.toBase64String(), EMBEDDING_TAG);
+}
+
+bool IOpenAIChat::Session::isTooLarge() const {
+    static constexpr auto TRANSFORM_LENGTH = ranges::view::transform([](const IOpenAIChat::Message& i) {
+        return i.reasoning.utf8().length() + i.reasoning_content.utf8().length() + i.content.utf8().length();
+    });
+    const auto length = ranges::accumulate(*this | TRANSFORM_LENGTH, size_t(0));
+    return length >= MAX_REQUEST_LENGTH;
 }
 
 AString IOpenAIChat::Session::nextSessionId() {

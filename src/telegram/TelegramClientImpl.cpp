@@ -311,6 +311,13 @@ void TelegramClientImpl::commonHandler(td::tl::unique_ptr<td::td_api::Object> ob
                   dst->populated.supplyValue();
               }
           },
+          [this](td::td_api::updateChatAddedToList& u) {
+              auto chat = getChat(u.chat_id_);
+              if (!chat.hasValue()) {
+                  return;
+              }
+              (*chat)->chat_lists_.push_back(std::move(u.chat_list_));
+          },
           [this](td::td_api::updateChatPosition& u) {
               auto chat = getChat(u.chat_id_);
               if (!chat.hasValue()) {

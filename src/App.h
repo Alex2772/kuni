@@ -351,6 +351,11 @@ private:
         }
 
         auto chat = co_await mTelegram->getChat(u->message_->chat_id_);
+        if (chat->chat_lists_.empty()) {
+            // telegram may report events for random chats we are not subscribed to.
+            co_return;
+        }
+        // ALogger::info(LOG_TAG) << "Queued chat: " << chat->title_;
 
         if (chat->notification_settings_) {
             if (chat->notification_settings_->mute_for_ > 0) {
