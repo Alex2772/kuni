@@ -116,6 +116,14 @@ OpenAITools::Tool tools::sendTelegramMessage(
             const auto allowTypos = ctx.args["allow_typos"].asBoolOpt().valueOr(true);
             const auto replyTo = [&]() -> int64_t {
                 const auto value = util::jsonAsLongInt(ctx.args["reply_to_message_id"]).valueOr(0);
+                if (value == 0) {
+                    if (chat->type_->get_id() == td::td_api::chatTypeBasicGroup::ID
+                        || chat->type_->get_id() == td::td_api::chatTypeSupergroup::ID) {
+                        if (std::uniform_real_distribution(0.f, 1.f)(gRandomEngine) > 0.5f) {
+                            throw AException("please specify `reply_to_message_id` to address specific message in group chat");
+                        }
+                    }
+                }
                 if (state->lastReplyToMessageId == value) {
                     // we don't need to reply to the same message multiple times in a row.
                     return 0;
