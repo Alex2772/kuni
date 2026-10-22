@@ -15,18 +15,13 @@ public:
     ImageGenerator(_<IStableDiffusionClient> sdClient, _<IOpenAIChat> openAI, IOpenAIChat::Params chatParams)
         : mSdClient(std::move(sdClient)), mOpenAI(std::move(openAI)), mChatParams(std::move(chatParams)) {}
 
-    struct GalleryImage {
-        _<AImage> image;
-        APath path;
-    };
-
     /**
      * Generates an image from a description.
      * Uses IOpenAIChat to transform the description into an SD-optimized prompt,
      * pulls character details from KuniCharacter, and iteratively refines the prompt
      * based on vision-based assessment of the generated images.
      */
-    AFuture<GalleryImage> generate(AString description);
+    AFuture<_<AImage>> generate(AString description);
 
 private:
     _<IStableDiffusionClient> mSdClient;

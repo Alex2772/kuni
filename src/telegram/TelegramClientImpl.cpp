@@ -89,7 +89,7 @@ void TelegramClientImpl::update() {
 }
 
 void TelegramClientImpl::processResponse(td::ClientManager::Response response) {
-    ALOG_TRACE(LOG_TAG) << "processResponse";
+    ALOG_TRACE(LOG_TAG) << "processResponse object=" << td::td_api::to_string(response.object);
     if (!response.object) {
         return;
     }
@@ -310,6 +310,13 @@ void TelegramClientImpl::commonHandler(td::tl::unique_ptr<td::td_api::Object> ob
               if (!dst->populated.hasResult()) {
                   dst->populated.supplyValue();
               }
+          },
+          [this](td::td_api::updateChatAddedToList& u) {
+              auto chat = getChat(u.chat_id_);
+              if (!chat.hasValue()) {
+                  return;
+              }
+              (*chat)->chat_lists_.push_back(std::move(u.chat_list_));
           },
           [this](td::td_api::updateChatPosition& u) {
               auto chat = getChat(u.chat_id_);

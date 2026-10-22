@@ -14,6 +14,7 @@ struct OpenAISpeechClient {
         AString model;
         AString voice;
         AString response_format = "mp3";
+        double num_step = 32.0;
         double speed = 1.0;
     };
 

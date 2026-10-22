@@ -26,8 +26,10 @@ namespace {
 
 struct OutputContextDeleter {
     void operator()(AVFormatContext* ctx) const {
-        if (!ctx) return;
-        if (ctx->pb) avio_closep(&ctx->pb);
+        if (!ctx)
+            return;
+        if (ctx->pb)
+            avio_closep(&ctx->pb);
         avformat_free_context(ctx);
     }
 };
@@ -35,49 +37,54 @@ using OutputContextPtr = std::unique_ptr<AVFormatContext, OutputContextDeleter>;
 
 struct CodecContextDeleter {
     void operator()(AVCodecContext* ctx) const {
-        if (ctx) avcodec_free_context(&ctx);
+        if (ctx)
+            avcodec_free_context(&ctx);
     }
 };
 using CodecContextPtr = std::unique_ptr<AVCodecContext, CodecContextDeleter>;
 
 struct SwrContextDeleter {
     void operator()(SwrContext* ctx) const {
-        if (ctx) swr_free(&ctx);
+        if (ctx)
+            swr_free(&ctx);
     }
 };
 using SwrContextPtr = std::unique_ptr<SwrContext, SwrContextDeleter>;
 
 struct AudioFifoDeleter {
     void operator()(AVAudioFifo* f) const {
-        if (f) av_audio_fifo_free(f);
+        if (f)
+            av_audio_fifo_free(f);
     }
 };
 using AudioFifoPtr = std::unique_ptr<AVAudioFifo, AudioFifoDeleter>;
 
 struct FrameDeleter {
     void operator()(AVFrame* f) const {
-        if (f) av_frame_free(&f);
+        if (f)
+            av_frame_free(&f);
     }
 };
 using FramePtr = std::unique_ptr<AVFrame, FrameDeleter>;
 
 struct PacketDeleter {
     void operator()(AVPacket* p) const {
-        if (p) av_packet_free(&p);
+        if (p)
+            av_packet_free(&p);
     }
 };
 using PacketPtr = std::unique_ptr<AVPacket, PacketDeleter>;
 
-constexpr int OPUS_SAMPLE_RATE = 48000;   // Opus always operates at 48 kHz internally
-constexpr int64_t OPUS_BIT_RATE = 32000;  // matches the previous "-b:a 32k"
+constexpr int OPUS_SAMPLE_RATE = 48000;    // Opus always operates at 48 kHz internally
+constexpr int64_t OPUS_BIT_RATE = 32000;   // matches the previous "-b:a 32k"
 
 // The encoder's preferred input sample format (libopus: S16; swresample converts the PCM to it).
 AVSampleFormat preferredSampleFormat(const AVCodec* codec) {
 #if LIBAVCODEC_VERSION_INT >= AV_VERSION_INT(61, 13, 100)
     const enum AVSampleFormat* fmts = nullptr;
-    if (avcodec_get_supported_config(nullptr, codec, AV_CODEC_CONFIG_SAMPLE_FORMAT, 0,
-                                     reinterpret_cast<const void**>(&fmts), nullptr) >= 0
-        && fmts && fmts[0] != AV_SAMPLE_FMT_NONE) {
+    if (avcodec_get_supported_config(
+            nullptr, codec, AV_CODEC_CONFIG_SAMPLE_FORMAT, 0, reinterpret_cast<const void**>(&fmts), nullptr) >= 0 &&
+        fmts && fmts[0] != AV_SAMPLE_FMT_NONE) {
         return fmts[0];
     }
 #else
@@ -111,7 +118,7 @@ bool encodeAndMux(AVCodecContext* codecCtx, AVFormatContext* oc, AVStream* strea
     }
 }
 
-}  // namespace
+}   // namespace
 
 /**
  * @brief Transcodes raw signed-16-bit-LE mono PCM into an OGG/Opus voice note using libav (libopus).
@@ -154,9 +161,9 @@ static bool transcodePcmToOpus(const AByteBuffer& pcm, const APath& out, int sam
         return false;
     }
     codecCtx->sample_rate = OPUS_SAMPLE_RATE;
-    codecCtx->bit_rate    = OPUS_BIT_RATE;
-    codecCtx->sample_fmt  = preferredSampleFormat(codec);
-    av_channel_layout_default(&codecCtx->ch_layout, 1);  // mono
+    codecCtx->bit_rate = OPUS_BIT_RATE;
+    codecCtx->sample_fmt = preferredSampleFormat(codec);
+    av_channel_layout_default(&codecCtx->ch_layout, 1);   // mono
     if (oc->oformat->flags & AVFMT_GLOBALHEADER) {
         codecCtx->flags |= AV_CODEC_FLAG_GLOBAL_HEADER;
     }
@@ -168,7 +175,7 @@ static bool transcodePcmToOpus(const AByteBuffer& pcm, const APath& out, int sam
     if (avcodec_parameters_from_context(stream->codecpar, codecCtx.get()) < 0) {
         return false;
     }
-    stream->time_base = AVRational{1, OPUS_SAMPLE_RATE};
+    stream->time_base = AVRational { 1, OPUS_SAMPLE_RATE };
 
     if (avio_open(&oc->pb, out.toStdString().c_str(), AVIO_FLAG_WRITE) < 0) {
         ALogger::err(LOG_TAG) << "PCM->Opus: can't open output file " << out;
@@ -183,10 +190,9 @@ static bool transcodePcmToOpus(const AByteBuffer& pcm, const APath& out, int sam
     AVChannelLayout monoLayout;
     av_channel_layout_default(&monoLayout, 1);
     SwrContext* rawSwr = nullptr;
-    if (swr_alloc_set_opts2(&rawSwr,
-                            &codecCtx->ch_layout, codecCtx->sample_fmt, OPUS_SAMPLE_RATE,
-                            &monoLayout, AV_SAMPLE_FMT_S16, sampleRate,
-                            0, nullptr) < 0 || !rawSwr) {
+    if (swr_alloc_set_opts2(
+            &rawSwr, &codecCtx->ch_layout, codecCtx->sample_fmt, OPUS_SAMPLE_RATE, &monoLayout, AV_SAMPLE_FMT_S16, sampleRate, 0, nullptr) < 0 ||
+        !rawSwr) {
         ALogger::err(LOG_TAG) << "PCM->Opus: swr_alloc_set_opts2 failed";
         return false;
     }
@@ -196,7 +202,7 @@ static bool transcodePcmToOpus(const AByteBuffer& pcm, const APath& out, int sam
         return false;
     }
 
-    const int frameSize = codecCtx->frame_size > 0 ? codecCtx->frame_size : 960;  // 20 ms @ 48 kHz
+    const int frameSize = codecCtx->frame_size > 0 ? codecCtx->frame_size : 960;   // 20 ms @ 48 kHz
     AudioFifoPtr fifo(av_audio_fifo_alloc(codecCtx->sample_fmt, 1, frameSize));
     PacketPtr pkt(av_packet_alloc());
     if (!fifo || !pkt) {
@@ -205,8 +211,8 @@ static bool transcodePcmToOpus(const AByteBuffer& pcm, const APath& out, int sam
 
     // Resample a chunk of input (or a flush when inData == nullptr) into the FIFO.
     auto pushResampled = [&](const uint8_t* inData, int nbIn) -> bool {
-        int outCount = static_cast<int>(av_rescale_rnd(swr_get_delay(swr.get(), sampleRate) + nbIn,
-                                                       OPUS_SAMPLE_RATE, sampleRate, AV_ROUND_UP));
+        int outCount = static_cast<int>(
+            av_rescale_rnd(swr_get_delay(swr.get(), sampleRate) + nbIn, OPUS_SAMPLE_RATE, sampleRate, AV_ROUND_UP));
         if (outCount <= 0) {
             return true;
         }
@@ -215,8 +221,7 @@ static bool transcodePcmToOpus(const AByteBuffer& pcm, const APath& out, int sam
             return false;
         }
         int got = swr_convert(swr.get(), &outData, outCount, inData ? &inData : nullptr, nbIn);
-        bool ok = got >= 0
-            && (got == 0 || av_audio_fifo_write(fifo.get(), reinterpret_cast<void**>(&outData), got) == got);
+        bool ok = got >= 0 && (got == 0 || av_audio_fifo_write(fifo.get(), reinterpret_cast<void**>(&outData), got) == got);
         av_freep(&outData);
         return ok;
     };
@@ -235,8 +240,8 @@ static bool transcodePcmToOpus(const AByteBuffer& pcm, const APath& out, int sam
         if (!frame) {
             return false;
         }
-        frame->nb_samples  = frameSize;
-        frame->format      = codecCtx->sample_fmt;
+        frame->nb_samples = frameSize;
+        frame->format = codecCtx->sample_fmt;
         frame->sample_rate = OPUS_SAMPLE_RATE;
         av_channel_layout_copy(&frame->ch_layout, &codecCtx->ch_layout);
         if (av_frame_get_buffer(frame.get(), 0) < 0) {
@@ -264,15 +269,60 @@ static bool transcodePcmToOpus(const AByteBuffer& pcm, const APath& out, int sam
     return true;
 }
 
-#else  // !KUNI_USE_FFMPEG
+#else   // !KUNI_USE_FFMPEG
 
 static bool transcodePcmToOpus(const AByteBuffer&, const APath&, int) {
-    ALogger::err(LOG_TAG)
-        << "PCM voice transcoding requires building with -DKUNI_USE_FFMPEG=ON (libav is not compiled in)";
+    ALogger::err(LOG_TAG) << "PCM voice transcoding requires building with -DKUNI_USE_FFMPEG=ON (libav is not compiled "
+                             "in)";
     return false;
 }
 
-#endif  // KUNI_USE_FFMPEG
+#endif   // KUNI_USE_FFMPEG
+
+AFuture<AByteBuffer> VoiceGenerator::generate(AString text, GenerateOpts opts) {
+    switch (config().recordVoiceBackend) {
+        case Config::TTSBackend::ELEVENLABS: {
+            ElevenLabsClient ttsClient {
+                .baseUrl = "https://api.elevenlabs.io/",
+                .apiKey = config().recordVoiceElevenLabsKey,
+                .voiceId = config().recordVoiceElevenLabsVoice,
+            };
+            ElevenLabsClient::TextToSpeechRequest request {
+                .text = text,
+                .model_id = "eleven_v3",
+                .language_code = std::move(opts.languageCode),
+                .voice_settings = { .speed = opts.speed },
+            };
+            auto ttsResponse = co_await ttsClient.textToSpeech(request);
+            if (ttsResponse.audioData.empty()) {
+                throw AException("ElevenLabs returned empty audio data");
+            }
+            co_return ttsResponse.audioData;
+        }
+        case Config::TTSBackend::OPENAI: {
+            OpenAISpeechClient ttsClient {
+                .baseUrl = config().recordVoiceOpenAIUrl,
+                .apiKey = config().recordVoiceOpenAIKey,
+                .model = config().recordVoiceOpenAIModel,
+                .voice = config().recordVoiceOpenAIVoice,
+            };
+            OpenAISpeechClient::TextToSpeechRequest request {
+                .input = text,
+                .model = config().recordVoiceOpenAIModel,
+                .voice = config().recordVoiceOpenAIVoice,
+                .response_format = std::move(opts.responseFormat),
+                .num_step = 63,
+                .speed = opts.speed,
+            };
+            auto ttsResponse = co_await ttsClient.textToSpeech(request);
+            if (ttsResponse.audioData.empty()) {
+                throw AException("OpenAI Speech returned empty audio data");
+            }
+            co_return ttsResponse.audioData;
+        }
+    }
+    throw AException("unsupported");
+}
 
 AFuture<VoiceGenerator::VoiceMessage> VoiceGenerator::generate(AString text, AString languageCode, double speed) {
     ALogger::info(LOG_TAG) << "Generating voice message for text: " << text;
@@ -281,64 +331,25 @@ AFuture<VoiceGenerator::VoiceMessage> VoiceGenerator::generate(AString text, ASt
         APath voiceDir("data/voice_messages");
         voiceDir.makeDirs();
 
-        AByteBuffer audioData;
-
-        switch (config().recordVoiceBackend) {
-            case Config::TTSBackend::ELEVENLABS: {
-                ElevenLabsClient ttsClient{
-                    .baseUrl = "https://api.elevenlabs.io/",
-                    .apiKey = config().recordVoiceElevenLabsKey,
-                    .voiceId = config().recordVoiceElevenLabsVoice,
-                };
-                ElevenLabsClient::TextToSpeechRequest request{
-                    .text = text,
-                    .model_id = "eleven_v3",
-                    .language_code = languageCode,
-                    .voice_settings = {.speed = speed},
-                };
-                auto ttsResponse = co_await ttsClient.textToSpeech(request);
-                if (ttsResponse.audioData.empty()) {
-                    throw AException("ElevenLabs returned empty audio data");
-                }
-                audioData = std::move(ttsResponse.audioData);
-                break;
-            }
-            case Config::TTSBackend::OPENAI: {
-                OpenAISpeechClient ttsClient{
-                    .baseUrl = config().recordVoiceOpenAIUrl,
-                    .apiKey = config().recordVoiceOpenAIKey,
-                    .model = config().recordVoiceOpenAIModel,
-                    .voice = config().recordVoiceOpenAIVoice,
-                };
-                OpenAISpeechClient::TextToSpeechRequest request{
-                    .input = text,
-                    .model = config().recordVoiceOpenAIModel,
-                    .voice = config().recordVoiceOpenAIVoice,
-                    .response_format = config().recordVoiceOpenAIFormat,
-                    .speed = speed,
-                };
-                auto ttsResponse = co_await ttsClient.textToSpeech(request);
-                if (ttsResponse.audioData.empty()) {
-                    throw AException("OpenAI Speech returned empty audio data");
-                }
-                audioData = std::move(ttsResponse.audioData);
-                break;
-            }
-        }
+        AByteBuffer audioData = co_await generate(std::move(text), GenerateOpts{
+            .languageCode = std::move(languageCode),
+            .speed = speed,
+        });
 
         auto timestamp = std::chrono::system_clock::now().time_since_epoch().count();
 
         // Telegram voice notes require OGG/Opus. Providers that return raw PCM (e.g. Gemini via RouterAI)
         // are transcoded here; anything else is saved as-is.
-        const bool needsPcmTranscode = config().recordVoiceBackend == Config::TTSBackend::OPENAI
-            && config().recordVoiceOpenAIFormat == "pcm";
+        const bool needsPcmTranscode =
+            config().recordVoiceBackend == Config::TTSBackend::OPENAI && config().recordVoiceOpenAIFormat == "pcm";
 
         APath outputPath;
         if (needsPcmTranscode) {
             outputPath = voiceDir / "{}.ogg"_format(timestamp);
             if (!transcodePcmToOpus(audioData, outputPath, config().recordVoiceOpenAIPcmSampleRate)) {
-                throw AException("Failed to transcode PCM voice message to OGG/Opus "
-                                 "(build with -DKUNI_USE_FFMPEG=ON)");
+                throw AException(
+                    "Failed to transcode PCM voice message to OGG/Opus "
+                    "(build with -DKUNI_USE_FFMPEG=ON)");
             }
         } else {
             outputPath = voiceDir / "{}.mp3"_format(timestamp);
@@ -349,7 +360,7 @@ AFuture<VoiceGenerator::VoiceMessage> VoiceGenerator::generate(AString text, ASt
 
         ALogger::info(LOG_TAG) << "Voice message saved to: " << outputPath.absolute();
 
-        co_return VoiceMessage{ .path = outputPath.absolute() };
+        co_return VoiceMessage { .path = outputPath.absolute() };
     } catch (const AException& e) {
         ALogger::err(LOG_TAG) << "Failed to generate voice message: " << e;
         throw;

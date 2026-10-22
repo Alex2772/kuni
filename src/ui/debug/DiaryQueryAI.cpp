@@ -153,7 +153,7 @@ struct State {
                 },
                 .handler = [this, opts, &includedIds](OpenAITools::Ctx ctx) -> AFuture<AString> {
                     auto cue = ctx.args["text"].asStringOpt().valueOrException("text is required string");
-                    auto diaryResponse = co_await diary.query(co_await openAI->embedding({ .config = config().embedding }, cue), opts);
+                    auto diaryResponse = co_await diary.query(cue, opts);
                     AString formattedResponse;
                     ALOG_DEBUG("Diary")
                         << "queryAI cue=\""
@@ -210,6 +210,7 @@ Do not alter facts.
 
 Do not make up facts. Rely exclusively on provided context.
     )",
+            .config = config().llmDiary,
             .tools = tools.asJson(),
         };
 

@@ -11,6 +11,7 @@ AJSON_FIELDS(OpenAISpeechClient::TextToSpeechRequest,
              AJSON_FIELDS_ENTRY(model)
              AJSON_FIELDS_ENTRY(voice)
              AJSON_FIELDS_ENTRY(response_format)
+             AJSON_FIELDS_ENTRY(num_step)
              AJSON_FIELDS_ENTRY(speed))
 
 AFuture<OpenAISpeechClient::TextToSpeechResponse>

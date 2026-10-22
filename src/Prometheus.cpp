@@ -167,6 +167,40 @@ struct PrometheusImpl: AObject, prometheus::IExporter {
                 responseTimeGauge.Add(labels).Set(static_cast<double>(ev.lastOpenedChatLastMessageTime->count()));
             }
         });
+
+        // Per-iteration timing breakdown ("thinking", "diary_lookup", tool call durations, etc.).
+        // Labelled by "phase" (e.g. "thinking", "diary_lookup", or the tool's name), so in Grafana one
+        // can hover a single notification-processing iteration and see how many seconds went into each
+        // phase, forming a "layered pie"/breakdown of where the time was spent.
+        auto& phaseDurationGauge = prometheus::BuildGauge()
+            .Name("notification_phase_duration_seconds_gauge")
+            .Help("Wall-clock duration of a single phase within one notification-processing iteration (thinking, "
+                  "diary lookup, tool calls), as a gauge; labelled by \"phase\"")
+            .Register(*registry)
+        ;
+        auto& phaseDurationHistogram = prometheus::BuildHistogram()
+            .Name("notification_phase_duration_seconds")
+            .Help("Wall-clock duration of a single phase within one notification-processing iteration (thinking, "
+                  "diary lookup, tool calls), as a histogram; labelled by \"phase\"")
+            .Register(*registry)
+        ;
+        static const prometheus::Histogram::BucketBoundaries kPhaseDurationBuckets = {
+            1, 2, 5, 10, 15, 20, 30, 40, 50, 60, 90, 120, 180, 300, 600
+        };
+        connect(app.phaseTimingFired, [&](AppBase::PhaseTimingEvent ev) {
+            auto labels = fromMap(ev.breadcrumbLabels);
+            labels["phase"] = ev.phase;
+            const auto seconds = std::chrono::duration<double>(ev.duration).count();
+            phaseDurationGauge.Add(labels).Set(seconds);
+            phaseDurationHistogram.Add(labels, kPhaseDurationBuckets).Observe(seconds);
+        });
+        connect(app.toolCallFired, [&](AppBase::ToolCallEvent ev) {
+            auto labels = fromMap(ev.breadcrumbLabels);
+            labels["phase"] = ev.toolName;
+            const auto seconds = std::chrono::duration<double>(ev.toolCallDuration).count();
+            phaseDurationGauge.Add(labels).Set(seconds);
+            phaseDurationHistogram.Add(labels, kPhaseDurationBuckets).Observe(seconds);
+        });
     }
 };
 

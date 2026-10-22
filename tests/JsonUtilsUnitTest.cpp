@@ -125,6 +125,13 @@ TEST(JsonAsLongIntUnit, StringFloat) {
     EXPECT_EQ(*result, 3);
 }
 
+TEST(JsonAsLongIntUnit, StringLarge) {
+    AJson v("5,233,462,979,260,874,478");
+    auto result = util::jsonAsLongInt(v);
+    ASSERT_TRUE(result.hasValue());
+    EXPECT_EQ(*result, 5'233'462'979'260'874'478);
+}
+
 // --- Edge cases: null, bool, array, object ---
 
 TEST(JsonAsLongIntUnit, NullReturnsNullopt) {
