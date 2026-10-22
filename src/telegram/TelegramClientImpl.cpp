@@ -89,7 +89,7 @@ void TelegramClientImpl::update() {
 }
 
 void TelegramClientImpl::processResponse(td::ClientManager::Response response) {
-    ALOG_TRACE(LOG_TAG) << "processResponse";
+    ALOG_TRACE(LOG_TAG) << "processResponse object=" << td::td_api::to_string(response.object);
     if (!response.object) {
         return;
     }
