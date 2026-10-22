@@ -1,12 +1,29 @@
 services:
+  # kuni:
+  #   build:
+  #     context: .
+  #     dockerfile: Dockerfile
+  #   restart: always
+  #   volumes:
+  #     - ./bin/kuni/cache:/home/kuni/app/cache
+  #     - ./bin/kuni/data:/home/kuni/app/data
+  #     - ./bin/kuni/logs:/home/kuni/app/logs
+  #     - ./bin/kuni/logs_proxy:/home/kuni/app/logs_proxy
+  #     - ./bin/kuni/prompts:/home/kuni/app/prompts
+  #     - ./bin/kuni/tdlib:/home/kuni/app/tdlib
+  #     - ./bin/kuni/config.toml:/home/kuni/app/config.toml
+
   ollama:
-    image: ollama/ollama:0.20.6
+    image: ollama/ollama:0.32.15
     volumes:
       - ./bin/ollama:/root/.ollama
       - ./ollama_setup.sh:/ollama_setup.sh
     ports:
       - "11434:11434"
     restart: always
+    environment:
+      - OLLAMA_KEEP_ALIVE=1m
+      - OLLAMA_CONTEXT_LENGTH=65536
     entrypoint: [ "/usr/bin/bash", "/ollama_setup.sh" ]
     deploy:
       resources:
@@ -19,6 +36,8 @@ services:
   sd:
     image: universonic/stable-diffusion-webui:full
     command: --medvram --api
+    mem_limit: 12g
+    memswap_limit: 12g # same value = no swap, OOM-kill + restart instead of leaking
 #    command: --lowvram --api # replace with this if your PC is a potato
     restart: always
     ports:
@@ -47,16 +66,20 @@ services:
               capabilities: [gpu]
 
   whisper:
-    image: hwdsl2/whisper-server:cuda
+    image: hwdsl2/whisper-live-server:cuda
+    mem_limit: 6g
+    memswap_limit: 6g # same value = no swap, OOM-kill + restart instead of leaking
     restart: always
     ports:
-      - "9000:9000"
+      - "9000:8000"
+      - "9001:9090"
     volumes:
       - ./bin/whisper:/var/lib/whisper
     environment:
 #      - WHISPER_DEVICE=cuda
-      - WHISPER_API_KEY=
-      - WHISPER_MODEL=large-v3-turbo
+      - WHISPERLIVE_API_KEY=
+      - WHISPERLIVE_MODEL=large-v3-turbo
+      - WHISPERLIVE_LOG_LEVEL=DEBUG
     deploy:
       resources:
         reservations:
@@ -70,6 +93,8 @@ services:
     # you need to build this first
     image: omnivoice-server
     pull_policy: never # only use local image
+    mem_limit: 6g
+    memswap_limit: 6g # same value = no swap, OOM-kill + restart instead of leaking
     container_name: omnivoice-server
     ports:
       - "8880:8880"
@@ -108,35 +133,35 @@ services:
       start_period: 60s
 
 # uncomment below if you want a dashboard with stats
-#
-#  prometheus:
-#    image: prom/prometheus:latest
-#    volumes:
-#      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml
-#      - ./bin/prometheus/data:/prometheus
-#    ports:
-#      - "9090:9090"
-#    restart: always
-#    command:
-#      - '--config.file=/etc/prometheus/prometheus.yml'
-#      - '--storage.tsdb.path=/prometheus'
-##      - '--web.enable-admin-api'
-#    extra_hosts:
-#      - "host.docker.internal:host-gateway"
-#
-#  grafana:
-#    image: grafana/grafana:latest
-#    volumes:
-#      - ./bin/grafana/data:/var/lib/grafana
-#      - ./grafana/dashboards:/var/lib/grafana/dashboards
-#      - ./grafana/dashboards.yml:/etc/grafana/provisioning/dashboards/main.yaml
-#      - ./grafana/datasources:/etc/grafana/provisioning/datasources
-#    ports:
-#      - "3000:3000"
-#    restart: always
-#    depends_on:
-#      - prometheus
-#    environment:
-#      - GF_SECURITY_ADMIN_USER=admin
-#      - GF_SECURITY_ADMIN_PASSWORD=admin # IMPORTANT: change this
-#      - GF_USERS_ALLOW_SIGN_UP=false
+
+  prometheus:
+    image: prom/prometheus:latest
+    volumes:
+      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml
+      - ./bin/prometheus/data:/prometheus
+    ports:
+      - "9090:9090"
+    restart: always
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+#      - '--web.enable-admin-api'
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+  grafana:
+    image: grafana/grafana:latest
+    volumes:
+      - ./bin/grafana/data:/var/lib/grafana
+      - ./grafana/dashboards:/var/lib/grafana/dashboards
+      - ./grafana/dashboards.yml:/etc/grafana/provisioning/dashboards/main.yaml
+      - ./grafana/datasources:/etc/grafana/provisioning/datasources
+    ports:
+      - "3000:3000"
+    restart: always
+    depends_on:
+      - prometheus
+    environment:
+      - GF_SECURITY_ADMIN_USER=admin
+      - GF_SECURITY_ADMIN_PASSWORD=admin # IMPORTANT: change this
+      - GF_USERS_ALLOW_SIGN_UP=false
