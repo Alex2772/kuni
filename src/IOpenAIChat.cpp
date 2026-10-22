@@ -11,7 +11,7 @@
 #include <range/v3/numeric/accumulate.hpp>
 #include <range/v3/view/transform.hpp>
 
-static constexpr auto MAX_REQUEST_LENGTH = 200'000; // ~65k tokens
+static constexpr auto MAX_REQUEST_LENGTH = 400'000; // ~128k tokens
 
 static constexpr auto LOG_TAG = "IOpenAIChat";
 
