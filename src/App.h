@@ -672,16 +672,22 @@ public:
 
             auto prefix = "You switched to the chat \"{}\" in Telegram."_format(chat->title_);
 
-            {
-                const auto tag = "<previous_history chat_id=\"{}\">"_format(chatId);
-                if (!ranges::any_of(temporaryContext, [&](const IOpenAIChat::Message& ctx) {
-                    return ctx.content.contains(tag);
-                })) {
-                    if (auto lastAsk = mChatDatabase.getLastAskResult(chatId)) {
-                        prefix += "\n{}\n{}\n</previous_history>\n"_format(tag, *lastAsk);
-                    }
-                }
-            }
+            // Alex2772 (Sep 1 2026):
+            // commented out: this apparently is the wrong place for "prev ask result optimization" because LLM starts
+            // to rely on a possibly outdated ask result only and refrains to make a new ask call.
+            //
+            // After introducing previous_history here, Kuni started to "lose the thread" (Russian: куня теряет нить
+            // диалога). When I commented this out, Kuni returned to keeping the thread normally.
+            // {
+            //     const auto tag = "<previous_history chat_id=\"{}\">"_format(chatId);
+            //     if (!ranges::any_of(temporaryContext, [&](const IOpenAIChat::Message& ctx) {
+            //         return ctx.content.contains(tag);
+            //     })) {
+            //         if (auto lastAsk = mChatDatabase.getLastAskResult(chatId)) {
+            //             prefix += "\n{}\n{}\n</previous_history>\n"_format(tag, *lastAsk);
+            //         }
+            //     }
+            // }
 
             prefix += " You see last messages:\n";
             result = prefix + result;
