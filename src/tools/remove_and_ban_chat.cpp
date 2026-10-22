@@ -14,7 +14,7 @@
 
 using namespace std::chrono_literals;
 
-OpenAITools::Tool tools::removeAndBanChat(_<ITelegramClient> telegram) {
+OpenAITools::Tool tools::removeAndBanChat(_<ITelegramClient> telegram, _<ChatDatabase> chatDatabase) {
     return {
         .name = "remove_and_ban_chat",
         .description = "Removes specified chat from chat list. If a chat is a DM with a user, prevents this "
@@ -36,11 +36,15 @@ OpenAITools::Tool tools::removeAndBanChat(_<ITelegramClient> telegram) {
                     },
                 .required = {"chat_id"},
             },
-        .handler = [telegram = std::move(telegram)](OpenAITools::Ctx ctx) -> AFuture<AString> {
+        .handler = [telegram = std::move(telegram), chatDatabase = std::move(chatDatabase)](OpenAITools::Ctx ctx) -> AFuture<AString> {
             auto chatId = util::jsonAsLongInt(ctx.args["chat_id"]).valueOrException("chat_id integer is required");
             ALogger::info("remove_and_ban_chat") << "remove_and_ban_chat: chat_id" << chatId;
             if (chatId == config().papikChatId) {
                 // precaution -- can't delete chat with papik
+                co_return "Failed";
+            }
+            if (chatDatabase->getPriorityOverrideFor(chatId).valueOr(0) >= 100) {
+                // precaution -- can't delete chat with important people
                 co_return "Failed";
             }
 

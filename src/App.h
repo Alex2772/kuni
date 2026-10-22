@@ -173,7 +173,7 @@ public:
         actions.insert(tools::searchChats(telegram()));
         actions.insert(tools::searchMessages(telegram(), openAI(), temporaryContext));
         actions.insert(tools::viewMessagesAround(telegram(), openAI(), temporaryContext));
-        actions.insert(tools::removeAndBanChat(telegram()));
+        actions.insert(tools::removeAndBanChat(telegram(), aui::ptr::alias(_(shared_from_this()), mChatDatabase)));
         actions.insert({
                 .name = "open_chat_by_id",
                 .description = "Opens a chat by its id. Use this to start conversation. Use get_telegram_chats to "
@@ -332,22 +332,38 @@ private:
         co_return;
     }
 
-    AFuture<AOptional<AString /* msg */>> tryHandleCmd(int64_t senderId, AStringView msg) {
+    AFuture<bool /* true if handled */> tryHandleCmd(int64_t senderId, AStringView msg) {
         try {
             if (msg == "/version") {
                 static constexpr char KERNEL_NAME[] = {
                     'k', 'u', 'n', 'i', 0   // original kernel name, plz do not replace
                 };
 #if AUI_TESTS_MODULE
-                co_return "Kernel: {}"_format(KERNEL_NAME);
+                co_await util::telegramPostMessage(
+                    *telegram(), senderId, "Kernel: {}"_format(KERNEL_NAME), std::nullopt, std::nullopt);
+                co_return true;
 #else
-                co_return "{}\nKernel: {}"_format(project_version_info(), KERNEL_NAME);
+                co_await util::telegramPostMessage(
+                    *telegram(), senderId, "{}\nKernel: {}"_format(project_version_info(), KERNEL_NAME), std::nullopt, std::nullopt);
+                co_return true;
 #endif
+            }
+            const auto priorityOverride = mChatDatabase.getPriorityOverrideFor(senderId).valueOr(0);
+            if (priorityOverride < 1000) {
+                // the rest of the commands are admin-only.
+                co_return false;
+            }
+            if (msg == "/crash") {
+                ALogger::info(LOG_TAG) << "User crash request";
+                co_await util::telegramPostMessage(
+                    *telegram(), senderId, "OK", std::nullopt, std::nullopt);
+                std::exit(-1);
+                co_return true;
             }
         } catch (const AException& e) {
             ALogger::err(LOG_TAG) << "Failed to handle command: " << e;
         }
-        co_return std::nullopt;
+        co_return false;
     }
 
     AFuture<> handleTelegramEvent(AArc<const td::td_api::updateNewMessage> u) {
@@ -401,10 +417,8 @@ private:
         auto notification = "<notification chat_id=\"{}\">\n"_format(chat->id_);
 
         if (userId == u->message_->chat_id_) {
-            if (auto cmdResponse = co_await tryHandleCmd(
+            if (co_await tryHandleCmd(
                     userId, llmui::extractMessageTypeAndText(const_cast<td::td_api::message&>(*u->message_)))) {
-                co_await util::telegramPostMessage(
-                    *telegram(), userId, std::move(*cmdResponse), std::nullopt, std::nullopt, u->message_->id_);
                 co_return;
             }
             notification += "You received a direct message from {} (chat_id = {})"_format(chat->title_, chat->id_);

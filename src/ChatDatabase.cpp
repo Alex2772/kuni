@@ -31,6 +31,9 @@ AOptional<AString> ChatDatabase::getLastAskResult(int64_t chatId) {
 }
 
 AOptional<int> ChatDatabase::getPriorityOverrideFor(int64_t chatId) {
+    if (chatId == config().papikChatId) {
+        return 1000;
+    }
     if (auto path = getChatPath(chatId) / "priority_override"; path.isRegularFileExists()) {
         try {
             auto asStr = AString::fromUtf8(AByteBuffer::fromStream(AFileInputStream(path)));
