@@ -42,8 +42,46 @@ AArc<IPlugin> __attribute__((weak)) kuni_private_plugin_init(App& app) {
     return nullptr;
 }
 
+/**
+ * @brief "database-query" mode: prints diary entries (md files) related to the query to stdout and exits.
+ * @details
+ * Read-only: usage counters and scores of the entries are not touched. Intended for external tools (i.e., Claude Code)
+ * to look into kuni's diary.
+ */
+static int databaseQuery(const AString& query) {
+    IEventLoop::Handle h(&gEventLoop);
+    try {
+        auto openAI = _new<OpenAIChatImpl>();
+        Diary diary(Diary::Init { .diaryDir = "data/diary", .openAI = _<IOpenAIChat>(openAI) });
+        auto future = diary.query(query, {});
+        while (!future.hasResult()) {
+            gEventLoop.iteration();
+        }
+        auto entries = *future;
+        if (entries.empty()) {
+            std::cout << "No data was found\n";
+            return 0;
+        }
+        for (const auto& e : entries) {
+            std::cout << "===== " << e.entry->id.toStdString() << ".md (relatedness=" << e.relatedness << ") =====\n"
+                      << e.entry->freeformBody.toStdString() << "\n\n";
+        }
+        return 0;
+    } catch (const AException& e) {
+        std::cerr << "database-query failed: " << e.getMessage().toStdString() << std::endl;
+        return 1;
+    }
+}
+
 AUI_ENTRY {
     config();   // load config
+    if (auto it = std::find(args.begin(), args.end(), "database-query"); it != args.end()) {
+        if (++it == args.end()) {
+            std::cerr << "usage: kuni database-query \"<query>\"" << std::endl;
+            return 2;
+        }
+        return databaseQuery(*it);
+    }
     if (args.contains("--debug")) {
         ALogger::info(LOG_TAG) << "--debug mode enabled; service is not running";
         _new<KuniDebugWindow>()->show();
