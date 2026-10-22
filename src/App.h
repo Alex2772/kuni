@@ -501,7 +501,7 @@ private:
 
 
 public:
-    AFuture<AString> llmuiOpenTelegramChat(ALogger& logger, OpenAITools& tools, int64_t chatId, const IOpenAIChat::Session& temporaryContext) {
+    AFuture<AString> llmuiOpenTelegramChat(ALogger& logger, OpenAITools& tools, int64_t chatId, const IOpenAIChat::Session& temporaryContext, bool isChannelComments = false) {
         // Check lockdown mode - only allow PAPIK_CHAT_ID if lockdown is enabled
         if (!co_await util::isAccessibleFromLockdown(*telegram(), chatId)) {
             logger.err(LOG_TAG) << "Error: Lockdown mode is enabled. You can only open chat with ID {} (PAPIK_CHAT_ID)."_format(
@@ -697,27 +697,29 @@ public:
             if (chat->type_->get_id() == td::td_api::chatTypeBasicGroup::ID ||
                 chat->type_->get_id() == td::td_api::chatTypeSupergroup::ID) {
                 bool isMember = true;
-                try {
-                    auto member = co_await mTelegram->sendQueryWithResult(ITelegramClient::toPtr(td::td_api::getChatMember(
-                        chatId, ITelegramClient::toPtr(td::td_api::messageSenderUser(mTelegram->myId())))));
-                    switch (member->status_->get_id()) {
-                        case td::td_api::chatMemberStatusLeft::ID:
-                        case td::td_api::chatMemberStatusBanned::ID:
-                            isMember = false;
-                            break;
-                        case td::td_api::chatMemberStatusCreator::ID:
-                        case td::td_api::chatMemberStatusAdministrator::ID:
-                            isAdmin = true;
-                            break;
-                        default:
-                            break;
+                if (!isChannelComments) {
+                    try {
+                        auto member = co_await mTelegram->sendQueryWithResult(ITelegramClient::toPtr(td::td_api::getChatMember(
+                            chatId, ITelegramClient::toPtr(td::td_api::messageSenderUser(mTelegram->myId())))));
+                        switch (member->status_->get_id()) {
+                            case td::td_api::chatMemberStatusLeft::ID:
+                            case td::td_api::chatMemberStatusBanned::ID:
+                                isMember = false;
+                                break;
+                            case td::td_api::chatMemberStatusCreator::ID:
+                            case td::td_api::chatMemberStatusAdministrator::ID:
+                                isAdmin = true;
+                                break;
+                            default:
+                                break;
+                        }
+                    } catch (const AException& e) {
+                        // either:
+                        // USER_NOT_PARTICIPANT - treat as not a member.
+                        // or - member list is not accessible (for large channels)
+                        // fallback to chat_lists.
+                        isMember = !chat->chat_lists_.empty();
                     }
-                } catch (const AException& e) {
-                    // either:
-                    // USER_NOT_PARTICIPANT - treat as not a member.
-                    // or - member list is not accessible (for large channels)
-                    // fallback to chat_lists.
-                    isMember = !chat->chat_lists_.empty();
                 }
 
                 if (!isMember) {
@@ -753,13 +755,25 @@ You are in private chat with {} (also known as direct messages or DM).
                     break;
                 case td::td_api::chatTypeBasicGroup::ID:
                 basicGroup:
-                    result += R"(
+                    if (isChannelComments) {
+                        result += R"(
+<instructions>
+You are in the comments of \"{}\".
+
+{}
+
+Be nice, never use explicit language.
+</instructions>
+)"_format(chat->title_, prompts().messagesEpilogue);
+                    } else {
+                        result += R"(
 <instructions>
 You are in group chat called \"{}\".
 
 {}
 </instructions>
 )"_format(chat->title_, prompts().messagesEpilogue);
+                    }
                     break;
                 case td::td_api::chatTypeSupergroup::ID: {
                     if (!static_cast<td::td_api::chatTypeSupergroup&>(*chat->type_).is_channel_) {
@@ -784,7 +798,57 @@ Do NOT forward ads, sponsored posts, or low-value content.
                     tools = OpenAITools {
                         tools::reactWithEmoji(telegram(), chat),
                         tools::forwardMessage(telegram(), chat),
+
                     };
+                    if (ranges::any_of(messages, [](const td::td_api::object_ptr<td::td_api::message>& msg) {
+                        return msg->interaction_info_ != nullptr && msg->interaction_info_->reply_info_ != nullptr;
+                    })) {
+                        tools.insert({
+                            .name = "open_comments",
+                            .description = "Opens the comments thread of a post in \"{}\" (if comments are "
+                                           "enabled for that post). Comments live in a chat linked to the channel; "
+                                           "this switches you into that chat, showing you the comment messages, so "
+                                           "you can read and reply to them with #send_telegram_message."_format(chat->title_),
+                            .parameters =
+                                {
+                                    .properties =
+                                        {
+                                            {"message_id", {
+                                                .type = "integer",
+                                                .description = "The message_id of the channel post whose comments "
+                                                "you want to open. Taken from the message_id attribute in <message> tags."},
+                                            },
+                                        },
+                                    .required = {"message_id"},
+                                },
+                            .handler = [this, telegram = telegram(), chat](OpenAITools::Ctx ctx) -> AFuture<AString> {
+                                auto messageId = util::jsonAsLongInt(ctx.args["message_id"]).valueOrException("message_id integer is required");
+
+                                td::td_api::object_ptr<td::td_api::messageThreadInfo> thread;
+                                try {
+                                    thread = co_await telegram->sendQueryWithResult(
+                                        ITelegramClient::toPtr(td::td_api::getMessageThread(chat->id_, messageId)));
+                                } catch (const AException& e) {
+                                    ALogger::err(LOG_TAG) << "Failed to open comments for message " << messageId << " in chat " << chat->id_ << ": " << e;
+                                    co_return "Error: this post has no comments (or comments are disabled): {}"_format(e.getMessage());
+                                }
+
+                                // Alex2772 (25-08-2026):
+                                // Telegram channel posts comments are strange: given a telegram channel, the admin can
+                                // link a "discussion chat" to it. Posts from the channel are forwarded to the
+                                // discussion chat automatically. Comments appear as "replies" to the forwarded post.
+                                //
+                                // However, you can also click on "Comments >" button under the post, which throws you
+                                // into the special "chat" dedicated to this specific post only.
+                                //
+                                // The problem is: Kuni has joined to various channels, when attempted to join
+                                // "discussion" chat and received insta ban (likely from a stupid moderator bot).
+                                //
+                                // Solution: provide dedicated functionality for commenting posts.
+                                co_return co_await llmuiOpenTelegramChat(ctx.logger, ctx.tools, thread->chat_id_, ctx.temporaryContext, /* isChannelComments= */ true);
+                            },
+                        });
+                    }
                     co_return result;   // no send_telegram_message for channels
                 }
             }
