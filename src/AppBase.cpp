@@ -208,15 +208,16 @@ void AppBase::reportPhaseTiming(AString phase, std::chrono::milliseconds duratio
 
 void AppBase::updateTools(OpenAITools& actions, const IOpenAIChat::Session& temporaryContext) {
     ALOG_TRACE(LOG_TAG) << "updateTools";
-    if (!actions.handlers().contains("ask")) {
-        actions.insert(toolAsk(temporaryContext));
-    }
+    actions.insertIfNotContains(toolAsk(temporaryContext));
     mStickyNotes.updateTools(actions);
     actions.onAfterToolCall << [this](const AString& toolName, std::chrono::milliseconds duration) {
         if (toolName == "wait") {
             return;
         }
         if (toolName == "pause") {
+            return;
+        }
+        if (toolName == "sleep") {
             return;
         }
         reportPhaseTiming(toolName, duration);

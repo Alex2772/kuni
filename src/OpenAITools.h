@@ -73,6 +73,12 @@ struct OpenAITools {
     [[nodiscard]] AMap<AString, Tool>& handlers() { return mHandlers; }
 
     void insert(Tool tool) { mHandlers[tool.name] = std::move(tool); }
+    void insertIfNotContains(Tool tool) {
+        if (mHandlers.contains(tool.name)) {
+            return;
+        }
+        mHandlers[tool.name] = std::move(tool);
+    }
 
 private:
     AMap<AString, Tool> mHandlers;

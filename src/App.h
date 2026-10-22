@@ -77,6 +77,13 @@
 extern "C" AStringView project_version_info();
 extern std::default_random_engine gRandomEngine;
 
+static AFuture<AString> deepsleepImpl() {
+    const auto timeToSleep = std::chrono::minutes(std::uniform_int_distribution(120, 360)(gRandomEngine));
+    ALogger::info("App") << "Deepsleep: " << "{:%R}"_format(timeToSleep);
+    co_await AThread::asyncSleep(timeToSleep);
+    co_return "Success.\n\nYou have been sleeping for {} minutes. Current time: "_format(timeToSleep.count(), std::chrono::system_clock::now());
+}
+
 class App : public AppBase {
 private:
     static constexpr auto LOG_TAG = "App";
@@ -233,6 +240,16 @@ public:
             actions.insert(tools::stickers::list(telegram(), openAI()));
             actions.insert(tools::stickers::save(telegram()));
         }
+
+        actions.insertIfNotContains({
+          .name = "sleep",
+          .description = "Use this if you want to sleep. Use after you have wished a good night.",
+          .handler = [this](OpenAITools::Ctx) -> AFuture<AString> {
+              onOffline();
+              co_return co_await deepsleepImpl();
+          },
+        });
+
     }
 
     AFuture<> sendNotificationsOnInit() {
