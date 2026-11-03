@@ -174,6 +174,7 @@ public:
         actions.insert(tools::searchMessages(telegram(), openAI(), temporaryContext));
         actions.insert(tools::viewMessagesAround(telegram(), openAI(), temporaryContext));
         actions.insert(tools::removeAndBanChat(telegram(), aui::ptr::alias(_(shared_from_this()), mChatDatabase)));
+        actions.insert(tools::unbanChat(telegram()));
         actions.insert({
                 .name = "open_chat_by_id",
                 .description = "Opens a chat by its id. Use this to start conversation. Use get_telegram_chats to "
