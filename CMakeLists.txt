@@ -28,7 +28,7 @@ option(BUILD_SHARED_LIBS OFF)
 option(KUNI_USE_FFMPEG "Enable FFmpeg. Enables video transcription" OFF)
 
 
-set(AUI_VERSION v8.0.0-rc.30)
+set(AUI_VERSION 190a6953018eb6b9fb78024af90470cb0750b91e)
 
 # Use AUI.Boot
 include(aui.boot.cmake)

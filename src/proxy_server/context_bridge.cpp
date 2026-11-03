@@ -3,6 +3,7 @@
 #include "OpenAIChatImpl.h"
 #include "json_fingerprint.h"
 #include "util/diary_save_entries.h"
+#include "util/timeouts.h"
 
 #include <range/v3/algorithm/remove_if.hpp>
 #include <range/v3/range/conversion.hpp>
@@ -75,13 +76,19 @@ AFuture<AVector<AString>> proxy_server::ContextBridge::collectAndSaveSessionsNot
         session.asObject().removeIf([](const auto& pair) {
             return pair.first == "tools";
         });
+        int attempts = 0;
         naxyi:
         auto sessionId = session["session_id"].asStringOpt().valueOr("context_save");
         session["session_id"] = sessionId;
+        ALOG_TRACE(LOG_TAG) << "collectAndSaveSessionsNotNewerThan: makeHttpRequest session_id=" << sessionId << " (awaiting)";
         auto response = aui::from_json<IOpenAIChat::Response>(co_await OpenAIChatImpl::makeHttpRequest(mConfig.endpoint, AJson::toString(session), sessionId));
+        ALOG_TRACE(LOG_TAG) << "collectAndSaveSessionsNotNewerThan: diarySaveEntries (awaiting)";
         auto savedEntries = co_await util::diarySaveEntries(*mConfig.diary, response.choices.at(0).message.content);
         if (savedEntries.empty()) {
             ALogger::warn(LOG_TAG) << "LLM returned empty response";
+            if (++attempts >= timeouts::LLM_EMPTY_RESPONSE_ATTEMPTS) {
+                throw AException("LLM keeps returning empty responses, giving up");
+            }
             session["messages"].asArray() << aui::to_json(response.choices.at(0).message);
             session["messages"].asArray() << aui::to_json(IOpenAIChat::Message {
                 .role = IOpenAIChat::Message::Role::USER,

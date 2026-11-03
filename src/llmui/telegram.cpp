@@ -18,6 +18,8 @@
 
 #include <range/v3/algorithm/max_element.hpp>
 
+static constexpr auto LOG_TAG = "llmui::telegram";
+
 static AFuture<AString> extractSenderName(ITelegramClient& telegram, int64_t senderId) {
     AString senderName;
     if (senderId == telegram.myId()) {
@@ -59,8 +61,11 @@ AFuture<AString> llmui::extractSenderName(ITelegramClient& telegram, td::td_api:
 
 AFuture<APath> llmui::fetchMedia(ITelegramClient& telegram, td::td_api::object_ptr<td::td_api::file>& file) {
     if (!file->local_ || !file->local_->is_downloading_completed_) {
+        ALOG_TRACE(LOG_TAG) << "fetchMedia: downloadFile file_id=" << file->id_ << " (awaiting)";
         file = co_await telegram.sendQueryWithResult(
-            ITelegramClient::toPtr(td::td_api::downloadFile(file->id_, 16, 0, 0, true)));
+            ITelegramClient::toPtr(td::td_api::downloadFile(file->id_, 16, 0, 0, true)),
+            timeouts::TELEGRAM_DOWNLOAD);
+        ALOG_TRACE(LOG_TAG) << "fetchMedia: downloadFile done";
     }
     AUI_ASSERT(file->local_ != nullptr);
     AUI_ASSERT(!file->local_->path_.empty());
@@ -115,6 +120,9 @@ llmui::formatChatSingle(ITelegramClient& telegram, AString& result, td::td_api::
 AFuture<>
 llmui::formatChatList(ITelegramClient& telegram, AString& result, std::span<_<td::td_api::chat>> chats) {
     for (auto& chat : chats) {
+        if (chat == nullptr) {
+            continue;
+        }
         co_await formatChatSingle(telegram, result, *chat);
     }
 }
@@ -349,7 +357,10 @@ AFuture<AString> llmui::formatChatHistoryMessage(
     IOpenAIChat& openAI,
     std::span<const IOpenAIChat::Message> temporaryContext,
     AStringView xmlTag) {
+    ALOG_TRACE(LOG_TAG) << "formatChatHistoryMessage: message_id=" << msg.id_
+                           << " content_id=" << msg.content_->get_id() << " extractSenderName (awaiting)";
     AString senderName = co_await extractSenderName(telegram, *msg.sender_id_);
+    ALOG_TRACE(LOG_TAG) << "formatChatHistoryMessage: message_id=" << msg.id_ << " extractSenderName done";
     AString formattedXmlTag = "{} message_id=\"{}\" date=\"{}\""_format(
         xmlTag, msg.id_, std::chrono::time_point<std::chrono::system_clock, std::chrono::seconds>(std::chrono::seconds(msg.date_)));
     int64_t senderId {};
@@ -404,6 +415,7 @@ AFuture<AString> llmui::formatChatHistoryMessage(
                     return td::td_api::int53(0);
             }
         }();
+        ALOG_TRACE(LOG_TAG) << "formatChatHistoryMessage: forwarded extractSenderName (awaiting)";
         formattedXmlTag += co_await extractSenderName(telegram, forwardedFromChatId);
         formattedXmlTag += "\"";
 
@@ -457,6 +469,7 @@ AFuture<AString> llmui::formatChatHistoryMessage(
                     } else {
                         reactionsAttr += ", ";
                     }
+                    ALOG_TRACE(LOG_TAG) << "formatChatHistoryMessage: reaction extractSenderName (awaiting)";
                     reactionsAttr += co_await extractSenderName(telegram, *sender);
                 }
             }
@@ -480,7 +493,9 @@ AFuture<AString> llmui::formatChatHistoryMessage(
         if (auto targetPhotoIt = ranges::max_element(
                 photo.photo_->sizes_, std::less {}, [&](const auto& s) { return s->width_ * s->height_; });
             targetPhotoIt != photo.photo_->sizes_.end()) {
+            ALOG_TRACE(LOG_TAG) << "formatChatHistoryMessage: photo (awaiting)";
             result += co_await llmui::image(temporaryContext, openAI, co_await fetchMedia(telegram, targetPhotoIt->get()->photo_));
+            ALOG_TRACE(LOG_TAG) << "formatChatHistoryMessage: photo done";
         }
     }
 
@@ -495,6 +510,7 @@ AFuture<AString> llmui::formatChatHistoryMessage(
             xmlTag += " sticker_id=\"{}\""_format(fmt::group_digits(sticker.sticker_->id_));
         }
         if (sticker.sticker_->sticker_) {
+            ALOG_TRACE(LOG_TAG) << "formatChatHistoryMessage: sticker (awaiting)";
             result += co_await llmui::image(
                 temporaryContext, openAI, co_await fetchMedia(telegram, sticker.sticker_->sticker_), xmlTag);
         }
@@ -516,6 +532,7 @@ AFuture<AString> llmui::formatChatHistoryMessage(
                 xmlTag += " emoji=\"{}\""_format(gift.gift_->sticker_->emoji_);
             }
 
+            ALOG_TRACE(LOG_TAG) << "formatChatHistoryMessage: gift (awaiting)";
             result += co_await llmui::image(
                 temporaryContext, openAI, co_await fetchMedia(telegram, gift.gift_->sticker_->sticker_), xmlTag);
         } else {
@@ -526,6 +543,7 @@ AFuture<AString> llmui::formatChatHistoryMessage(
     if (msg.content_->get_id() == td::td_api::messageAnimation::ID) {
         auto& animation = static_cast<td::td_api::messageAnimation&>(*msg.content_);
         if (animation.animation_->thumbnail_) {
+            ALOG_TRACE(LOG_TAG) << "formatChatHistoryMessage: animation (awaiting)";
             result += co_await llmui::image(
                 temporaryContext,
                 openAI,
@@ -537,6 +555,7 @@ AFuture<AString> llmui::formatChatHistoryMessage(
     if (msg.content_->get_id() == td::td_api::messageVideo::ID) {
         auto& videoMsg = static_cast<td::td_api::messageVideo&>(*msg.content_);
         if (videoMsg.video_) {
+            ALOG_TRACE(LOG_TAG) << "formatChatHistoryMessage: video (awaiting)";
             result += co_await llmui::video(
                 temporaryContext,
                 openAI,
@@ -548,13 +567,16 @@ AFuture<AString> llmui::formatChatHistoryMessage(
     if (msg.content_->get_id() == td::td_api::messageVoiceNote::ID) {
         auto& voiceNote = static_cast<td::td_api::messageVoiceNote&>(*msg.content_);
         if (voiceNote.voice_note_) {
+            ALOG_TRACE(LOG_TAG) << "formatChatHistoryMessage: voice note (awaiting)";
             result += co_await llmui::voiceMessageTranscription(telegram, voiceNote, msg.chat_id_, msg.id_, openAI);
+            ALOG_TRACE(LOG_TAG) << "formatChatHistoryMessage: voice note done";
         }
     }
 
     if (msg.content_->get_id() == td::td_api::messageVideoNote::ID) {
         auto& videoNote = static_cast<td::td_api::messageVideoNote&>(*msg.content_);
         if (videoNote.video_note_) {
+            ALOG_TRACE(LOG_TAG) << "formatChatHistoryMessage: video note (awaiting)";
             result += co_await llmui::videoNoteTranscription(telegram, openAI, videoNote, msg.chat_id_, msg.id_);
         }
     }
@@ -562,6 +584,7 @@ AFuture<AString> llmui::formatChatHistoryMessage(
     result += extractMessageTypeAndText(msg);
 
     result += "\n</{}>\n"_format(formattedXmlTag);
+    ALOG_TRACE(LOG_TAG) << "formatChatHistoryMessage: message_id=" << msg.id_ << " done";
     co_return result;
 }
 

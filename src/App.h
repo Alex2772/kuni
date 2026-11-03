@@ -609,11 +609,14 @@ public:
         bool isAdmin = false;
         {
             for (auto& msg : messages | ranges::view::reverse) {
+                ALOG_TRACE(LOG_TAG) << "formatChatHistoryMessage message_id=" << msg->id_ << " (awaiting)";
                 auto msgFormatted =
                     co_await llmui::formatChatHistoryMessage(*telegram(), *msg, *chat, *openAI(), temporaryContext);
                 for (const auto& i : chatHistoryMessageProcessors) {
+                    ALOG_TRACE(LOG_TAG) << "processChatHistoryMessage message_id=" << msg->id_ << " (awaiting)";
                     msgFormatted = co_await i->processChatHistoryMessage(*chat, *msg, std::move(msgFormatted));
                 }
+                ALOG_TRACE(LOG_TAG) << "message_id=" << msg->id_ << " formatted";
                 result += msgFormatted;
                 td::td_api::int53 senderId = 0;
                 td::td_api::downcast_call(
@@ -699,6 +702,7 @@ public:
                 bool isMember = true;
                 if (!isChannelComments) {
                     try {
+                        ALOG_TRACE(LOG_TAG) << "getChatMember (awaiting)";
                         auto member = co_await mTelegram->sendQueryWithResult(ITelegramClient::toPtr(td::td_api::getChatMember(
                             chatId, ITelegramClient::toPtr(td::td_api::messageSenderUser(mTelegram->myId())))));
                         switch (member->status_->get_id()) {

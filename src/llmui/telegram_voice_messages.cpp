@@ -8,8 +8,11 @@
 #include "audio.h"
 #include "malicious_payloads.h"
 #include "telegram.h"
+#include "util/timeouts.h"
 #include "AUI/Thread/AFuture.h"
 #include "AUI/Util/kAUI.h"
+
+static constexpr auto LOG_TAG = "llmui::voice";
 
 static AFuture<AOptional<AString>> tryTelegramPremiumTranscription(
     ITelegramClient& telegram,
@@ -71,7 +74,13 @@ static AFuture<AOptional<AString>> tryTelegramPremiumTranscription(
         co_return std::nullopt;
     }
 
-    auto text = co_await transcriptionFuture;
+    AString text;
+    try {
+        text = co_await transcriptionFuture.withTimeout(timeouts::TELEGRAM_SPEECH_RECOGNITION);
+    } catch (const AException& e) {
+        ALogger::warn(LOG_TAG) << "tryTelegramPremiumTranscription: no transcription result, falling back: " << e;
+        co_return std::nullopt;
+    }
     llmui::checkForMaliciousPayloads(text);
     co_return text;
 }

@@ -23,6 +23,7 @@
 #include "AUI/IO/AByteBufferInputStream.h"
 #include "AUI/Util/ATokenizer.h"
 #include "util/openai_streaming.h"
+#include "util/timeouts.h"
 #include "util/tui_streaming.h"
 
 static constexpr auto LOG_TAG = "OpenAIChat";
@@ -87,7 +88,8 @@ AFuture<AJson> OpenAIChatImpl::makeHttpRequest(Endpoint endpoint, std::string qu
                                            .withTimeout(config().requestTimeoutSecs)
                                            .withHeaders(headers)
                                            .withBody(query)
-                                           .runAsync())
+                                           .runAsync()
+                                           .withTimeout(timeouts::LLM_INFERENCE))
                                           .body);
 
     if (response.contains("error")) {
