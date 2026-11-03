@@ -1,6 +1,9 @@
 #include "config.h"
 
 #include <toml.hpp>
+#include <fstream>
+#include <iterator>
+#include <stdexcept>
 
 #include "AUI/IO/APath.h"
 #include "AUI/Logging/ALogger.h"
@@ -519,7 +522,33 @@ static void save(toml::ordered_value toml) {
 
     AString formatted = toml::format<toml::ordered_type_config>(toml);
     formatted.replaceAll("#{}"_format(REPLACE_ME_WITH_NEWLINE_SHITFIX), "");
+
+    // do not touch the file if nothing changed. Every write triggers a reload in the other running kuni instances
+    // (FileWatcher), and since the write is not atomic, they might read a partially written file.
+    {
+        std::ifstream existing(CONFIG_TOML, std::ios::binary);
+        if (existing) {
+            std::string current((std::istreambuf_iterator<char>(existing)), std::istreambuf_iterator<char>());
+            if (current == formatted.toStdString()) {
+                return;
+            }
+        }
+    }
+
+    // NOTE: we can't write to a temporary file and rename it over config.toml: inotify watches the inode, so the
+    // rename would silently break hot reload.
     AFileOutputStream(CONFIG_TOML) << formatted;
+}
+
+namespace {
+/**
+ * @brief Thrown when config.toml is unusable. load() never terminates the process by itself: it may be called from
+ * the IO thread (hot reload), and std::exit from a non-main thread deadlocks in static destructors (gEventLoop's
+ * condition variable is destroyed while the main thread is waiting on it).
+ */
+struct ConfigError : std::runtime_error {
+    using std::runtime_error::runtime_error;
+};
 }
 
 static void scanUnaccessedValues(const toml::ordered_table& table) {
@@ -540,6 +569,10 @@ static Config load(bool saveBack = false) {
     // }
     bool aNewFile = false;
     if (auto file = APath(CONFIG_TOML); !file.isRegularFileExists()) {
+        if (!saveBack) {
+            // hot reload: the file is being replaced/removed by someone; keep the current config.
+            throw ConfigError("{} does not exist"_format(CONFIG_TOML).toStdString());
+        }
         file.touch();
         ALogger::info(LOG_TAG) << "Created fresh config file";
         aNewFile = true;
@@ -586,8 +619,7 @@ static Config load(bool saveBack = false) {
 #                                                     and restart                                                      #
 ########################################################################################################################
 )";
-        std::exit(-1);
-        return {};
+        throw ConfigError("fresh config file created, please populate it");
     }
 #endif
 
@@ -615,27 +647,24 @@ static Config load(bool saveBack = false) {
         {
             const auto& value = toml["general"]["telegram_api_id"];
             if (value.as_integer() == 0) {
-                ALogger::err(LOG_TAG) << toml::format_error((toml::make_error_info(
-                    "general.telegram_api_id should be populated", value, "the actual value is 0")));
-                std::exit(-1);
+                throw ConfigError(toml::format_error((toml::make_error_info(
+                    "general.telegram_api_id should be populated", value, "the actual value is 0"))));
             }
         }
         {
             const auto& value = toml["general"]["telegram_api_hash"];
             if (value.as_string().empty()) {
-                ALogger::err(LOG_TAG) << toml::format_error((toml::make_error_info(
-                    "general.telegram_api_hash should be populated", value, "the actual string is empty")));
-                std::exit(-1);
+                throw ConfigError(toml::format_error((toml::make_error_info(
+                    "general.telegram_api_hash should be populated", value, "the actual string is empty"))));
             }
         }
         {
             const auto& value = toml["misc"]["suggest_ignore_chance"];
             if (value.as_floating() < 0 || value.as_floating() > 0.98f) {
-                ALogger::err(LOG_TAG) << toml::format_error((toml::make_error_info(
+                throw ConfigError(toml::format_error((toml::make_error_info(
                     "misc.suggest_ignore_chance should be between 0.0 and 1.0",
                     value,
-                    "the actual value is out of valid range")));
-                std::exit(-1);
+                    "the actual value is out of valid range"))));
             }
         }
     }
@@ -647,7 +676,17 @@ static Config load(bool saveBack = false) {
 emits<> gConfigUpdated;
 
 const Config& config() {
-    static Config cfg = load(true);
+    static Config cfg = [] {
+        try {
+            return load(true);
+        } catch (const AException& e) {
+            ALogger::err(LOG_TAG) << e;
+        } catch (const std::exception& e) {
+            ALogger::err(LOG_TAG) << e.what();
+        }
+        // initial load happens during startup, before any event loop is running - safe to terminate here.
+        std::exit(-1);
+    }();
     AUI_DO_ONCE {
         static auto watcher = _new<util::FileWatcher>();
         auto h = watcher->addWatch(APath(CONFIG_TOML).absolute(), util::FileWatcher::Mask::MODIFY);
@@ -659,9 +698,11 @@ const Config& config() {
             try {
                 cfg = load();
             } catch (const AException& e) {
-                ALogger::err(LOG_TAG) << e;
+                ALogger::err(LOG_TAG) << e << " - keeping the previous config";
+                return;
             } catch (const std::exception& e) {
-                ALogger::err(LOG_TAG) << e;
+                ALogger::err(LOG_TAG) << e.what() << " - keeping the previous config";
+                return;
             }
             *watcher ^ gConfigUpdated();
         });
