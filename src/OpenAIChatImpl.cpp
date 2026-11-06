@@ -48,8 +48,8 @@ AJson OpenAIChatImpl::makeQueryString(Params params, const IOpenAIChat::Session&
         { "session_id", messages.sessionId },
     };
 
-    if (config().llmTemperature) {
-        json["temperature"] = *config().llmTemperature;
+    if (params.temperature) {
+        json["temperature"] = *params.temperature;
     }
     if (config().llmTopP) {
         json["top_p"] = *config().llmTopP;

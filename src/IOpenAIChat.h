@@ -27,6 +27,7 @@ struct IOpenAIChat {
         EndpointAndModel config = ::config().llm;
         AOptional<int64_t> seed;
         AOptional<AString> reasoningEffort = ::config().llmReasoningEffort;
+        AOptional<float> temperature = ::config().llmTemperature;
         AJson tools = AJson::Array{};
     };
 
