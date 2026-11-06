@@ -151,6 +151,10 @@ Do not alter facts.
 Do not make up facts. Rely exclusively on provided context.
 )",
                    .config =  config().llmDiary,
+                   // the subagent only retrieves and summarizes; reasoning makes it several times slower
+                   // without noticeable gain in quality.
+                   .reasoningEffort = "off",
+                   .temperature = 0.1f,
                    .tools = tools.asJson(),
                  },
                  messages))
