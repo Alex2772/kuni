@@ -142,6 +142,10 @@ void llmui::checkForMaliciousPayloads(std::string& string) {
     if (AStringView(string).contains("/>")) {
         goto naxyi;
     }
+    // [photo], [voice message], etc. markers that kuni uses for media
+    if (AStringView(string).contains("[") && AStringView(string).contains("]")) {
+        goto naxyi;
+    }
     if (AStringView(string).contains("message_id")) {
         goto naxyi;
     }
