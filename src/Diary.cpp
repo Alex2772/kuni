@@ -5,6 +5,8 @@
 #include <random>
 #include <range/v3/action/sort.hpp>
 
+#include "AUI/Common/AMap.h"
+#include "AUI/Common/ASet.h"
 #include "AUI/IO/AFileInputStream.h"
 #include "AUI/IO/AFileOutputStream.h"
 #include "AUI/Logging/ALogger.h"
@@ -22,6 +24,69 @@
 using namespace std::chrono_literals;
 
 static constexpr auto LOG_TAG = "Diary";
+
+namespace {
+
+/**
+ * @brief Splits text into a set of lowercase word tokens for lexical matching.
+ * @details
+ * A "word" is a maximal run of alphanumeric bytes (ASCII letters/digits, or any UTF-8
+ * continuation/multi-byte sequence, which covers Cyrillic and other non-ASCII alphabets since
+ * those bytes are always > 0x7F and thus not touched as delimiters). Everything else (spaces,
+ * punctuation, quotes, etc.) is treated as a separator. Tokens shorter than 2 bytes are dropped
+ * as they carry little discriminative power (and are noisy for CJK-less languages).
+ */
+ASet<AString> tokenize(AStringView text) {
+    ASet<AString> tokens;
+    const auto lower = text.lowercase();
+    const auto& bytes = lower.bytes();
+    size_t tokenStart = AString::NPOS;
+    auto flush = [&](size_t end) {
+        if (tokenStart == AString::NPOS) {
+            return;
+        }
+        if (end - tokenStart >= 2) {
+            tokens << AString(bytes.substr(tokenStart, end - tokenStart));
+        }
+        tokenStart = AString::NPOS;
+    };
+    for (size_t i = 0; i < bytes.size(); ++i) {
+        const auto c = static_cast<unsigned char>(bytes[i]);
+        const bool isWordByte = (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c >= 0x80;
+        if (isWordByte) {
+            if (tokenStart == AString::NPOS) {
+                tokenStart = i;
+            }
+        } else {
+            flush(i);
+        }
+    }
+    flush(bytes.size());
+    return tokens;
+}
+
+/**
+ * @brief Computes a normalized lexical overlap score in [0, 1] between query and entry tokens.
+ * @details
+ * Uses Jaccard-like overlap biased towards the query: the fraction of query tokens that are
+ * also present in the entry. This rewards entries that literally mention the keywords/names the
+ * user asked about (e.g., "kiriko", "overwatch"), regardless of how the embedding model happened
+ * to place them in vector space.
+ */
+double lexicalOverlap(const ASet<AString>& queryTokens, const ASet<AString>& entryTokens) {
+    if (queryTokens.empty()) {
+        return 0.0;
+    }
+    size_t matches = 0;
+    for (const auto& token : queryTokens) {
+        if (entryTokens.contains(token)) {
+            ++matches;
+        }
+    }
+    return double(matches) / double(queryTokens.size());
+}
+
+}   // namespace
 
 Diary::Diary(Init init): mInit(std::move(init)) {
     ALOG_TRACE(LOG_TAG) << "Diary::Diary: " << mInit.diaryDir;
@@ -119,6 +184,40 @@ AFuture<AVector<Diary::EntryExAndRelatedness>> Diary::query(const std::valarray<
     //     result.erase(result.begin());
     // }
     co_return result;
+}
+
+AFuture<AVector<Diary::EntryExAndRelatedness>> Diary::query(const AString& query, QueryOpts opts) {
+    ALOG_TRACE(LOG_TAG) << "Diary::query(text): \"" << query << "\"";
+    const auto queryTokens = tokenize(query);
+    const auto embedding = co_await openAI()->embedding({ .config = config().embedding }, query);
+
+    // over-fetch on the embedding pass so the lexical re-ranking below has enough candidates to
+    // pick from - a semantically-close-but-unrelated entry might otherwise push out a lexically
+    // exact match before we even get to re-rank.
+    auto overFetchOpts = opts;
+    overFetchOpts.maxEntryCount = std::max(opts.maxEntryCount * 10, opts.maxEntryCount + 32);
+    auto candidates = co_await this->query(embedding, overFetchOpts);
+
+    for (auto& candidate : candidates) {
+        const auto overlap = lexicalOverlap(queryTokens, tokenize(candidate.entry->freeformBody));
+        // blend: embedding similarity stays the dominant signal, lexical overlap boosts entries
+        // that literally mention the query's keywords/names (e.g., "Kiriko"), and penalizes (by
+        // omission of the boost) those that merely happen to be nearby in embedding space.
+        candidate.relatedness += overlap * config().diaryLexicalWeight;
+    }
+
+    ranges::sort(candidates, [](const auto& a, const auto& b) { return a.relatedness > b.relatedness; });
+    if (candidates.size() > opts.maxEntryCount) {
+        candidates.resize(opts.maxEntryCount);
+    }
+
+    // drop entries clearly below the relevance bar - avoids returning "random" unrelated memories
+    // just to fill up maxEntryCount.
+    while (!candidates.empty() && candidates.last().relatedness < config().diaryMinRelatedness) {
+        candidates.pop_back();
+    }
+
+    co_return candidates;
 }
 
 AFuture<double> Diary::entryIsRelated(const std::valarray<double>& context, EntryEx& entry, QueryOpts opts) {
@@ -296,7 +395,7 @@ AFuture<> Diary::sleepingConsolidation() {
             try {
                 response = co_await openAI()->chat({
                 .systemPrompt = prompts().sleepConsolidator,
-                .config = config().llm,
+                .config = config().llmDiary,
             }, { { .role = IOpenAIChat::Message::Role::USER, .content = body }});
             } catch (const AException& e) {
                 ALogger::err("Diary") << "sleepingConsolidation can't chat " << e;

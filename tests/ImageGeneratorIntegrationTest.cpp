@@ -25,7 +25,7 @@ TEST(ImageGeneratorIntegration, Generate)
         ImageGenerator generator(std::move(sdClient), _new<OpenAIChatImpl>(), std::move(chatParams));
 
         try {
-            auto image = (co_await generator.generate("Kuni makes a selfie")).image;
+            auto image = co_await generator.generate("Kuni makes a selfie");
             EXPECT_NE(image, nullptr);
             PngImageLoader::save(AFileOutputStream{ "out_generator.png" }, *image);
             EXPECT_GT(image->width(), 0);

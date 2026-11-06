@@ -14,8 +14,18 @@ inline AOptional<long long> jsonAsLongInt(const AJson& v) {
     }
     if (auto s = v.asStringOpt()) {
         try {
-            auto result = static_cast<long long>(std::stod(s->toStdString()));
-            ALogger::warn("jsonAsLongInt") << "coerced string " << AJson::toString(v) << " to long long: " << result;
+            const bool isScientific = s->contains("e") || s->contains("E");
+            if (isScientific) {
+                // conversion with losses.
+                auto result = static_cast<long long>(std::stod(s
+                    ->replacedAll(",", "")
+                    .toStdString()));
+                ALogger::warn("jsonAsLongInt") << "coerced string " << AJson::toString(v) << " to long long: " << result;
+                return result;
+            }
+            auto result = std::stoll(s
+                ->replacedAll(",", "")
+                .toStdString());
             return result;
         } catch (...) {}
     }

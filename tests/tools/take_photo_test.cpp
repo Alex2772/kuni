@@ -1,6 +1,7 @@
 // Created by alex2772 on 5/9/26.
 //
 
+#include "StableDiffusionClientImpl.h"
 #include "tools/take_photo.h"
 #include "../common.h"
 #include "AUI/Thread/AAsyncHolder.h"
@@ -8,6 +9,8 @@
 #include "util/await_synchronously.h"
 
 #include "../OpenAIMock.h"
+#include "AUI/Image/png/PngImageLoader.h"
+
 #include <gmock/gmock.h>
 
 namespace {
@@ -68,4 +71,17 @@ TEST(TakePhotoTest, PhotoDescNotStringThrows) {
         })),
         AException
     );
+}
+
+TEST(TakePhotoIntegrationTest, Basic) {
+    auto tool = tools::takePhoto(_new<StableDiffusionClientImpl>(), _new<OpenAIChatImpl>());
+
+    OpenAITools tools{};
+    auto result = util::await_synchronously(tool.handler({
+            .tools = tools,
+            .args = AJson::Object{{"photo_desc", "Kuni makes a selfie"}},
+            .temporaryContext = {},
+            .allToolCalls = {},
+        }));
+    ASSERT_FALSE(result.empty());
 }

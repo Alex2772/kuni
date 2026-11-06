@@ -1118,7 +1118,7 @@ You are neither helpful nor assistive.
 
 Do not act in low-value conversations.
 
-Your behaviour must be highly influenced by "physical state" and "emotional state" mentioned in `things_to_remember`.
+Your behaviour must be highly influenced by "physical state" and "emotional state" mentioned in `sticky_notes`.
 )");
         reg(prompts.imageEngineerSystem, "image_engineer_system", R"(---
 System prompt used by ImageGenerator::engineerPrompt to turn a freeform photo description into a Stable Diffusion

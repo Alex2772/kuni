@@ -9,6 +9,7 @@
 #include "AUI/Common/ASignal.h"
 #include "AUI/Thread/AAsyncHolder.h"
 #include "AUI/Thread/AFuture.h"
+#include "util/timeouts.h"
 
 /**
  * @brief Abstract interface for Telegram client operations.
@@ -20,9 +21,13 @@ struct ITelegramClient {
 
     virtual AFuture<Object> sendQuery(td::td_api::object_ptr<td::td_api::Function> f) = 0;
 
+    /**
+     * @param timeout if TDLib does not reply in time, the returned future fails with an exception.
+     */
     template<aui::derived_from<td::td_api::Function> F>
-    AFuture<td::td_api::object_ptr<typename F::ReturnType::element_type>> sendQueryWithResult(td::td_api::object_ptr<F> f) {
-        auto object = co_await sendQuery(std::move(f));
+    AFuture<td::td_api::object_ptr<typename F::ReturnType::element_type>> sendQueryWithResult(
+        td::td_api::object_ptr<F> f, std::chrono::milliseconds timeout = timeouts::TELEGRAM_QUERY) {
+        auto object = co_await sendQuery(std::move(f)).withTimeout(timeout);
         if (object->get_id() == td::td_api::error::ID) {
             auto error = td::move_tl_object_as<td::td_api::error>(std::move(object));
             if (AStringView(error->message_).contains("FROZEN_METHOD_INVALID")) {

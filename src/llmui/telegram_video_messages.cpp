@@ -8,8 +8,11 @@
 #include "malicious_payloads.h"
 #include "telegram.h"
 #include "video.h"
+#include "util/timeouts.h"
 #include "AUI/Thread/AFuture.h"
 #include "AUI/Util/kAUI.h"
+
+static constexpr auto LOG_TAG = "llmui::video_note";
 
 static AFuture<AOptional<AString>> tryTelegramPremiumTranscription(
     ITelegramClient& telegram, td::td_api::messageVideoNote& videoNote, int64_t chatId, int64_t messageId) {
@@ -25,7 +28,9 @@ static AFuture<AOptional<AString>> tryTelegramPremiumTranscription(
 
     // Check if the account has Telegram Premium before attempting transcription
     {
+        ALOG_TRACE(LOG_TAG) << "tryTelegramPremiumTranscription: getUser(myId) (awaiting)";
         auto our = co_await telegram.getUser(telegram.myId());
+        ALOG_TRACE(LOG_TAG) << "tryTelegramPremiumTranscription: is_premium=" << our->is_premium_;
         if (!our->is_premium_) {
             co_return std::nullopt;
         }
@@ -41,6 +46,7 @@ static AFuture<AOptional<AString>> tryTelegramPremiumTranscription(
         if (update->chat_id_ != chatId || update->message_id_ != messageId) {
             return;
         }
+        ALOG_TRACE(LOG_TAG) << "updateMessageContent received for message_id=" << messageId;
         if (!update->new_content_ || update->new_content_->get_id() != td::td_api::messageVideoNote::ID) {
             return;
         }
@@ -56,19 +62,32 @@ static AFuture<AOptional<AString>> tryTelegramPremiumTranscription(
                 *updateVideo->video_note_->speech_recognition_result_)) {
             transcriptionFuture.supplyValue(error->error_->message_);
         }
+        else {
+            ALOG_TRACE(LOG_TAG) << "speech recognition result is pending, keep waiting";
+        }
         // speechRecognitionResultPending — keep waiting
     });
     AUI_DEFER { eventSubscription->disconnect(); };
 
     // Request transcription via Telegram Premium
     try {
+        ALOG_TRACE(LOG_TAG) << "tryTelegramPremiumTranscription: recognizeSpeech (awaiting)";
         co_await telegram.sendQueryWithResult(ITelegramClient::toPtr(td::td_api::recognizeSpeech(chatId, messageId)));
+        ALOG_TRACE(LOG_TAG) << "tryTelegramPremiumTranscription: recognizeSpeech done";
     } catch (const AException&) {
         // No premium or other error
         co_return std::nullopt;
     }
 
-    auto text = co_await transcriptionFuture;
+    ALOG_TRACE(LOG_TAG) << "tryTelegramPremiumTranscription: transcriptionFuture (awaiting)";
+    AString text;
+    try {
+        text = co_await transcriptionFuture.withTimeout(timeouts::TELEGRAM_SPEECH_RECOGNITION);
+    } catch (const AException& e) {
+        ALogger::warn(LOG_TAG) << "tryTelegramPremiumTranscription: no transcription result, falling back: " << e;
+        co_return std::nullopt;
+    }
+    ALOG_TRACE(LOG_TAG) << "tryTelegramPremiumTranscription: transcriptionFuture done";
     llmui::checkForMaliciousPayloads(text);
     co_return text;
 }
@@ -77,9 +96,15 @@ AFuture<AString>
 llmui::videoNoteTranscription(ITelegramClient& telegram, IOpenAIChat& openAI, td::td_api::messageVideoNote& voiceNote, int64_t chatId, int64_t messageId) {
     try {
         if (config().capabilityHearing && config().capabilityVision) {
-            co_return co_await video({}, openAI, co_await fetchMedia(telegram, voiceNote.video_note_->video_), "video_note");
+            ALOG_TRACE(LOG_TAG) << "videoNoteTranscription: fetchMedia (awaiting)";
+            auto path = co_await fetchMedia(telegram, voiceNote.video_note_->video_);
+            ALOG_TRACE(LOG_TAG) << "videoNoteTranscription: llmui::video (awaiting) " << path;
+            co_return co_await video({}, openAI, std::move(path), "video_note");
         }
-    } catch (const AException&) {}
+    } catch (const AException& e) {
+        ALogger::warn(LOG_TAG) << "videoNoteTranscription: video failed, falling back: " << e;
+    }
+    ALOG_TRACE(LOG_TAG) << "videoNoteTranscription: tryTelegramPremiumTranscription (awaiting)";
     auto text = co_await tryTelegramPremiumTranscription(telegram, voiceNote, chatId, messageId);
     if (text.hasValue()) {
         co_return "[video note]: " + *text + "\n";

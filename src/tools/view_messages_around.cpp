@@ -25,7 +25,7 @@ OpenAITools::Tool tools::viewMessagesAround(_<ITelegramClient> telegram, _<IOpen
             "Fetches the chat messages surrounding a specific message, so you can see what was said before and "
             "after it. Use this after #search_messages found an interesting message but you need more context "
             "around it (e.g. to understand what was being discussed).\n"
-            "- message_id is taken from the message_id attribute of a <message> tag you've previously seen.\n"
+            "- `message_id` is taken from the `message_id` or `reply_to` attribute of a <message> tag you've previously seen.\n"
             "- The target message itself is included in the result and marked with a `target` attribute.",
         .parameters =
             {

@@ -17,10 +17,14 @@ OpenAITools::Tool tools::forwardMessage(_<ITelegramClient> telegram, _<td::td_ap
                        "interesting after the forward."_format(fromChat->title_),
         .parameters = {
             .properties = {
+                {"from_chat_id", {
+                    .type = "integer",
+                    .description = "ID of the source chat. Use #get_telegram_chats to find chat IDs.",
+                }},
                 {"message_ids", {
                     .type = "array",
                     .description = "IDs of the messages to forward. Taken from message_id attributes in <message> tags. "
-                                   "Pass a single-element array to forward just one message.",
+                                   "Pass a single-element array to forward just one message. These message_ids must belong to from_chat_id.",
                     .items = OpenAITools::Tool::Parameters::Property::make({.type = "integer"}),
                 }},
                 {"to_chat_id", {
@@ -38,7 +42,14 @@ OpenAITools::Tool tools::forwardMessage(_<ITelegramClient> telegram, _<td::td_ap
             },
             .required = {"message_ids", "to_chat_id", "comment"},
         },
-        .handler = [telegram, fromChat](OpenAITools::Ctx ctx) -> AFuture<AString> {
+        .handler = [telegram, fromChatDefault = fromChat](OpenAITools::Ctx ctx) -> AFuture<AString> {
+            auto fromChat = co_await [&]() -> AFuture<_<td::td_api::chat>> {
+                auto fromChatId = util::jsonAsLongInt(ctx.args["from_chat_id"]);
+                if (!fromChatId) {
+                    co_return fromChatDefault;
+                }
+                co_return co_await telegram->getChat(*fromChatId);
+            }();
             auto toChatId  = util::jsonAsLongInt(ctx.args["to_chat_id"]).valueOrException("to_chat_id integer required");
             auto comment   = ctx.args["comment"].asStringOpt();
 

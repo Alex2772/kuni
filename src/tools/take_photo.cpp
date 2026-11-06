@@ -6,13 +6,18 @@
 
 #include "ImageGenerator.h"
 #include "StableDiffusionClientImpl.h"
+#include "comfyui.h"
+#include "AUI/IO/AFileInputStream.h"
+#include "AUI/Image/png/PngImageLoader.h"
 #include "llmui/image.h"
 
 OpenAITools::Tool tools::takePhoto(_<IStableDiffusionClient> stableDiffusion, _<IOpenAIChat> openAI) {
     return {
         .name = "take_photo",
-        .description = "Takes a photo by Kuni. This tool is useful for creating selfies, photos of "
+        .description = "Takes a NEW photo by Kuni. This tool is useful for creating selfies, photos of "
                          "surroundings, or any other images. "
+                         "Use #search_photo_in_gallery to send a photo from gallery instead to avoid spending "
+                         "time on making a new photo."
                          "The result of this tool is a photo description and a filename. "
                          "The filename can then be sent to someone else using #send_telegram_message.",
         .parameters =
@@ -63,12 +68,17 @@ OpenAITools::Tool tools::takePhoto(_<IStableDiffusionClient> stableDiffusion, _<
         .handler = [stableDiffusion = std::move(stableDiffusion),
                     openAI = std::move(openAI)](OpenAITools::Ctx ctx) -> AFuture<AString> {
             auto photoDesc = ctx.args["photo_desc"].asStringOpt().valueOrException("photo_desc is required");
-            auto galleryImage = co_await ImageGenerator{_new<StableDiffusionClientImpl>(), openAI, IOpenAIChat::Params{.config = config().llmImageToText}}.generate(photoDesc);
-            auto description = co_await llmui::image({}, *openAI, galleryImage.path);
+            auto image = co_await ImageGenerator{_new<StableDiffusionClientImpl>(), openAI, IOpenAIChat::Params{.config = config().llmImageToText}}.generate(photoDesc);
+
+
+            auto dst = APath("data/gallery/{}.png"_format(std::chrono::system_clock::now()));
+            dst.parent().makeDirs();
+            PngImageLoader::save(AFileOutputStream{ dst }, *image);
+            auto description = co_await llmui::image({}, *openAI, dst);
 
             co_return "{}\n\nFilename: {}\n"
             "When writing diary, do not forget to mention this photo and its filename verbatim - you might need this in the future!\n\n"
-            "You have created photo successfully. Review it carefully. Send it only if you are fully satisfied; use take_photo again to make another photo"_format(description, galleryImage.path.filename());
+            "You have created photo successfully. Review it carefully. Send it only if you are fully satisfied; use take_photo again to make another photo or search_photo_in_gallery to search for an old photo."_format(description, dst.filename());
         },
     };
 }

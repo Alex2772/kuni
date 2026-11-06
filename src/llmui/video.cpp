@@ -299,6 +299,7 @@ AFuture<AVector<llmui::Frame>> llmui::videoFrames(std::span<const IOpenAIChat::M
             auto response = co_await openAI.chat({
                 .systemPrompt = framePrompt,
                 .config = config().llmImageToText,
+                .reasoningEffort = "none", // not required for video frames
             }, { { .role = IOpenAIChat::Message::Role::USER, .content = frameContext } });
 
             auto currentFrameDescription = std::move(response.choices.at(0).message.content);
