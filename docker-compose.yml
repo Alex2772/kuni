@@ -36,8 +36,8 @@ services:
   sd:
     image: universonic/stable-diffusion-webui:full
     command: --medvram --api
-    mem_limit: 12g
-    memswap_limit: 12g # same value = no swap, OOM-kill + restart instead of leaking
+    mem_limit: 24g
+    memswap_limit: 24g # same value = no swap, OOM-kill + restart instead of leaking
 #    command: --lowvram --api # replace with this if your PC is a potato
     restart: always
     ports:
