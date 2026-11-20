@@ -59,6 +59,7 @@ AFuture<AString> llmui::image(std::span<const IOpenAIChat::Message> temporaryCon
         auto response = co_await openAI.chat({
             .systemPrompt = prompt,
             .config = config().llmImageToText,
+            .reasoningEffort = "none",
         }, { { .role = IOpenAIChat::Message::Role::USER, .content = context }});
         auto content = std::move(response.choices.at(0).message.content);
         if (content.trim().empty()) {

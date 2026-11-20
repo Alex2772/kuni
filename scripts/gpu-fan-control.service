@@ -1,0 +1,15 @@
+[Unit]
+Description=GPU fan speed control by temperature
+After=multi-user.target
+
+[Service]
+Type=simple
+# Adjust --pwm / --curve / --interval as needed.
+ExecStart=/usr/bin/python3 /var/home/alex2772/CLionProjects/kuni/scripts/gpu_fan_control.py --pwm /sys/class/hwmon/hwmon1/pwm7 --interval 2
+Restart=on-failure
+RestartSec=3
+# Needs root to write to /sys/class/hwmon/*/pwmN.
+User=root
+
+[Install]
+WantedBy=multi-user.target

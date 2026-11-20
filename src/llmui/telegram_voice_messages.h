@@ -17,7 +17,7 @@ namespace llmui {
  * Falls back to local Whisper transcription if Premium is unavailable,
  * the request errors out, or the result times out.
  *
- * @returns Transcribed text wrapped in a "[voice transcription]: ..." string.
+ * @returns Transcribed text wrapped in a "<voice>...</voice>" string.
  */
 [[nodiscard]]
 AFuture<AString> voiceMessageTranscription(

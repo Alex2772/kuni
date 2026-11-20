@@ -1,0 +1,22 @@
+# Build artifacts (heavy, regenerated inside the image anyway)
+build/
+cmake-build-*/
+bin/
+
+# VCS / IDE / caches
+.git/
+.github/
+.idea/
+.vscode/
+.cache/
+
+# Runtime data that shouldn't leak into the build context / image
+data/
+docs/
+grafana/
+prometheus/
+test_data_cb/
+
+# Misc
+*.md
+docker-compose.yml

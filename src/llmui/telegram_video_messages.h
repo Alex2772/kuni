@@ -19,7 +19,7 @@ namespace llmui {
  * - otherwise calls recognizeSpeech and waits for updateMessageContent.
  * Returns nullopt if Premium is unavailable or transcription fails.
  *
- * @returns Transcribed text wrapped in a "[video note transcription]: ..." string, or empty string.
+ * @returns Transcribed text wrapped in a "<video_note transcription>...</video_note>" string, or empty string.
  */
 [[nodiscard]]
 AFuture<AString> videoNoteTranscription(
