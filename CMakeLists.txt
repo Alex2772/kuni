@@ -56,7 +56,7 @@ set(AUIB_HTTPLIB_VALIDATE OFF)
 
 auib_import(httplib https://github.com/yhirose/cpp-httplib
         VERSION v0.43.1
-        CMAKE_ARGS -DHTTPLIB_USE_BROTLI_IF_AVAILABLE=OFF)
+        CMAKE_ARGS -DHTTPLIB_USE_BROTLI_IF_AVAILABLE=OFF -DHTTPLIB_REQUIRE_OPENSSL=ON)
 
 
 auib_import(date https://github.com/HowardHinnant/date)
