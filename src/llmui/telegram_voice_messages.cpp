@@ -93,7 +93,7 @@ AFuture<AString> llmui::voiceMessageTranscription(
     IOpenAIChat& openAI) {
     auto text = co_await tryTelegramPremiumTranscription(telegram, voiceNote, chatId, messageId);
     if (text.hasValue()) {
-        co_return "[voice transcription]: " + *text + "\n";
+        co_return "<voice>\n" + *text + "\n</voice>\n";
     }
     // Fall back to local Whisper transcription
     co_return co_await llmui::voiceMessage(co_await llmui::fetchMedia(telegram, voiceNote.voice_note_->voice_), openAI);

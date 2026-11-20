@@ -107,7 +107,7 @@ llmui::videoNoteTranscription(ITelegramClient& telegram, IOpenAIChat& openAI, td
     ALOG_TRACE(LOG_TAG) << "videoNoteTranscription: tryTelegramPremiumTranscription (awaiting)";
     auto text = co_await tryTelegramPremiumTranscription(telegram, voiceNote, chatId, messageId);
     if (text.hasValue()) {
-        co_return "[video note]: " + *text + "\n";
+        co_return "<video_note transcription>\n" + *text + "\n</video_note>\n";
     }
     co_return "";
 }

@@ -12,7 +12,7 @@ AFuture<> formatChatSingle(
     ITelegramClient& telegram, AString& result, td::td_api::chat& chat);
 
 [[nodiscard]]
-AString extractMessageTypeAndText(td::td_api::message& msg);
+AString extractMessageTypeAndText(td::td_api::message& msg, bool includeMediaMarker = true);
 
 [[nodiscard]]
 AFuture<>

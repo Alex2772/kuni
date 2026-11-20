@@ -20,6 +20,17 @@
 
 static constexpr auto LOG_TAG = "llmui::telegram";
 
+/**
+ * @brief Escapes a string to be safely placed inside a double-quoted XML attribute.
+ */
+static AString xmlAttr(AString s) {
+    s.replaceAll("&", "&amp;");
+    s.replaceAll("\"", "&quot;");
+    s.replaceAll("<", "&lt;");
+    s.replaceAll(">", "&gt;");
+    return s;
+}
+
 static AFuture<AString> extractSenderName(ITelegramClient& telegram, int64_t senderId) {
     AString senderName;
     if (senderId == telegram.myId()) {
@@ -110,7 +121,7 @@ llmui::formatChatSingle(ITelegramClient& telegram, AString& result, td::td_api::
     }
 
     result += "<chat chat_id=\"{}\" title=\"{}\" preview=\"{}\" type=\"{}\" last_message=\"{}\""_format(
-        chat.id_, chat.title_, preview, type, lastMessageAgo);
+        chat.id_, xmlAttr(chat.title_), xmlAttr(preview), type, lastMessageAgo);
     if (chat.unread_count_ > 0) {
         result += " unread_count=\"{}\""_format(chat.unread_count_);
     }
@@ -127,8 +138,25 @@ llmui::formatChatList(ITelegramClient& telegram, AString& result, std::span<_<td
     }
 }
 
-AString llmui::extractMessageTypeAndText(td::td_api::message& msg) {
+AString llmui::extractMessageTypeAndText(td::td_api::message& msg, bool includeMediaMarker) {
     AString out;
+    // the media marker is omitted when the caller has already inserted a rich xml representation of the media
+    // (e.g. <photo description>...</photo>), so the LLM does not see the same media twice.
+    auto marker = [&](AStringView xml) {
+        if (includeMediaMarker) {
+            out += xml;
+        }
+    };
+    auto caption = [&](td::td_api::object_ptr<td::td_api::formattedText>& c) {
+        if (!c || c->text_.empty()) {
+            return;
+        }
+        checkForMaliciousPayloads(c->text_);
+        if (!out.empty()) {
+            out += "\n";
+        }
+        out += c->text_;
+    };
     td::td_api::downcast_call(
         *msg.content_,
         aui::lambda_overloaded {
@@ -140,132 +168,126 @@ AString llmui::extractMessageTypeAndText(td::td_api::message& msg) {
               }
           },
           [&](td::td_api::messagePhoto& photo) {
-              out += "[photo]";
-              if (photo.caption_) {
-                  checkForMaliciousPayloads(photo.caption_->text_);
-                  out += "\n" + photo.caption_->text_;
-              }
+              marker("<photo />");
+              caption(photo.caption_);
           },
           [&](td::td_api::messageAnimation& anim) {
-              out += "[animation]";
-              if (anim.caption_) {
-                  checkForMaliciousPayloads(anim.caption_->text_);
-                  out += "\n" + anim.caption_->text_;
-              }
+              marker("<animation />");
+              caption(anim.caption_);
           },
           [&](td::td_api::messageAudio& audio) {
-              out += "[audio] " + audio.audio_->title_;
-              if (audio.caption_) {
-                  checkForMaliciousPayloads(audio.caption_->text_);
-                  out += "\n" + audio.caption_->text_;
+              if (audio.audio_->title_.empty()) {
+                  out += "<audio />";
+              } else {
+                  out += "<audio title=\"{}\" />"_format(xmlAttr(audio.audio_->title_));
               }
+              caption(audio.caption_);
           },
           [&](td::td_api::messageDocument& doc) {
-              out += "[document] " + (doc.document_->file_name_.empty() ? "<unnamed>" : doc.document_->file_name_);
-              if (doc.caption_) {
-                  checkForMaliciousPayloads(doc.caption_->text_);
-                  out += "\n" + doc.caption_->text_;
+              if (doc.document_->file_name_.empty()) {
+                  out += "<document />";
+              } else {
+                  out += "<document file_name=\"{}\" />"_format(xmlAttr(doc.document_->file_name_));
               }
+              caption(doc.caption_);
           },
           [&](td::td_api::messageVideo& video) {
-              out += "[video]";
-              if (video.caption_) {
-                  checkForMaliciousPayloads(video.caption_->text_);
-                  out += "\n" + video.caption_->text_;
-              }
+              marker("<video />");
+              caption(video.caption_);
           },
-          [&](td::td_api::messageVideoNote&) { out += "[video note]"; },
+          [&](td::td_api::messageVideoNote&) { marker("<video_note />"); },
           [&](td::td_api::messageVoiceNote& voice) {
-              out += "[voice message]";
-              if (voice.caption_) {
-                  checkForMaliciousPayloads(voice.caption_->text_);
-                  out += "\n" + voice.caption_->text_;
-              }
+              marker("<voice_message />");
+              caption(voice.caption_);
           },
-          [&](td::td_api::messageSticker& st) { out += "[sticker]"; },
+          [&](td::td_api::messageSticker& st) { marker("<sticker />"); },
           [&](td::td_api::messageLocation& loc) {
-              out += "[location] lat=" + AString::number(loc.location_->latitude_) +
-                     " lon=" + AString::number(loc.location_->longitude_);
+              out += "<location lat=\"{}\" lon=\"{}\" />"_format(loc.location_->latitude_, loc.location_->longitude_);
           },
-          [&](td::td_api::messageVenue& ven) { out += "[venue] " + ven.venue_->title_ + " — " + ven.venue_->address_; },
+          [&](td::td_api::messageVenue& ven) {
+              out += "<venue title=\"{}\" address=\"{}\" />"_format(xmlAttr(ven.venue_->title_), xmlAttr(ven.venue_->address_));
+          },
           [&](td::td_api::messageContact& c) {
-              out += "[contact] " + c.contact_->first_name_ + " " + c.contact_->last_name_ + " (" +
-                     c.contact_->phone_number_ + ")";
+              out += "<contact first_name=\"{}\" last_name=\"{}\" phone_number=\"{}\" />"_format(
+                  xmlAttr(c.contact_->first_name_), xmlAttr(c.contact_->last_name_), xmlAttr(c.contact_->phone_number_));
           },
           [&](td::td_api::messagePoll& p) {
-              out += "[poll] " + p.poll_->question_->text_ + "\n";
+              out += "<poll question=\"{}\">\n"_format(xmlAttr(p.poll_->question_->text_));
               for (const auto& o : p.poll_->options_) {
-                  out += "- " + o->text_->text_ + "\n";
+                  out += "<option text=\"{}\" />\n"_format(xmlAttr(o->text_->text_));
               }
+              out += "</poll>";
           },
-          [&](td::td_api::messageInvoice& inv) { out += "[invoice]"; },
+          [&](td::td_api::messageInvoice& inv) { out += "<invoice />"; },
           [&](td::td_api::messageGame& game) {
-              out += "[game] " + game.game_->title_ + " — " + game.game_->description_;
+              out += "<game title=\"{}\" description=\"{}\" />"_format(xmlAttr(game.game_->title_), xmlAttr(game.game_->description_));
           },
-          [&](td::td_api::messageDice& dice) { out += "[dice] {} = "_format(dice.emoji_, dice.value_); },
+          [&](td::td_api::messageDice& dice) {
+              out += "<dice emoji=\"{}\" value=\"{}\" />"_format(xmlAttr(dice.emoji_), dice.value_);
+          },
           [&](td::td_api::messageCall& call) {
               out += "<call is_video=\"{}\" duration=\"{}\" />"_format(call.is_video_, call.duration_);
           },
           [&](td::td_api::messageChatAddMembers& add) {
-              out += "[members added] " + AString::number(add.member_user_ids_.size()) + " member(s)";
+              out += "<members_added count=\"{}\" />"_format(add.member_user_ids_.size());
           },
-          [&](td::td_api::messageChatJoinByLink&) { out += "[joined via link]"; },
-          [&](td::td_api::messageChatJoinByRequest&) { out += "[joined by request]"; },
+          [&](td::td_api::messageChatJoinByLink&) { out += "<joined_via_link />"; },
+          [&](td::td_api::messageChatJoinByRequest&) { out += "<joined_by_request />"; },
           [&](td::td_api::messageChatDeleteMember& del) {
-              out += "[member removed] user_id=" + AString::number(del.user_id_);
+              out += "<member_removed user_id=\"{}\" />"_format(del.user_id_);
           },
-          [&](td::td_api::messageBasicGroupChatCreate& cg) { out += "[group created] " + cg.title_; },
-          [&](td::td_api::messageSupergroupChatCreate& cg) { out += "[supergroup created] " + cg.title_; },
-          [&](td::td_api::messageChatChangeTitle& ct) { out += "[title changed] " + ct.title_; },
-          [&](td::td_api::messageChatChangePhoto&) { out += "[chat photo changed]"; },
+          [&](td::td_api::messageBasicGroupChatCreate& cg) { out += "<group_created title=\"{}\" />"_format(xmlAttr(cg.title_)); },
+          [&](td::td_api::messageSupergroupChatCreate& cg) { out += "<supergroup_created title=\"{}\" />"_format(xmlAttr(cg.title_)); },
+          [&](td::td_api::messageChatChangeTitle& ct) { out += "<title_changed title=\"{}\" />"_format(xmlAttr(ct.title_)); },
+          [&](td::td_api::messageChatChangePhoto&) { out += "<chat_photo_changed />"; },
           [&](td::td_api::messagePinMessage& pin) {
-              out += "[message pinned] message_id=" + AString::number(pin.message_id_);
+              out += "<message_pinned message_id=\"{}\" />"_format(pin.message_id_);
           },
-          [&](td::td_api::messageChatSetTheme& th) { out += "[chat theme set] "; },
-          [&](td::td_api::messageChatSetBackground& ttl) { out += "[chat background set]"; },
-          [&](td::td_api::messageScreenshotTaken&) { out += "[screenshot taken]"; },
-          [&](td::td_api::messageProximityAlertTriggered&) { out += "[proximity alert]"; },
-          [&](td::td_api::messageUnsupported&) { out += "[unsupported message]"; },
+          [&](td::td_api::messageChatSetTheme& th) { out += "<chat_theme_set />"; },
+          [&](td::td_api::messageChatSetBackground& ttl) { out += "<chat_background_set />"; },
+          [&](td::td_api::messageScreenshotTaken&) { out += "<screenshot_taken />"; },
+          [&](td::td_api::messageProximityAlertTriggered&) { out += "<proximity_alert />"; },
+          [&](td::td_api::messageUnsupported&) { out += "<unsupported_message />"; },
           // Media messages
-          [&](td::td_api::messagePaidMedia&) { out += "[paid media]"; },
+          [&](td::td_api::messagePaidMedia&) { out += "<paid_media />"; },
           // Expired media
-          [&](td::td_api::messageExpiredPhoto&) { out += "[expired photo]"; },
-          [&](td::td_api::messageExpiredVideo&) { out += "[expired video]"; },
-          [&](td::td_api::messageExpiredVideoNote&) { out += "[expired video note]"; },
-          [&](td::td_api::messageExpiredVoiceNote&) { out += "[expired voice note]"; },
+          [&](td::td_api::messageExpiredPhoto&) { out += "<expired_photo />"; },
+          [&](td::td_api::messageExpiredVideo&) { out += "<expired_video />"; },
+          [&](td::td_api::messageExpiredVideoNote&) { out += "<expired_video_note />"; },
+          [&](td::td_api::messageExpiredVoiceNote&) { out += "<expired_voice_note />"; },
           // Emoji messages
-          [&](td::td_api::messageAnimatedEmoji&) { out += "[animated emoji]"; },
+          [&](td::td_api::messageAnimatedEmoji&) { out += "<animated_emoji />"; },
           // Game/stakes messages
-          [&](td::td_api::messageStakeDice&) { out += "[stake dice]"; },
-          [&](td::td_api::messageStory&) { out += "[story]"; },
+          [&](td::td_api::messageStakeDice&) { out += "<stake_dice />"; },
+          [&](td::td_api::messageStory&) { out += "<story />"; },
           // Checklist
-          [&](td::td_api::messageChecklist&) { out += "[checklist]"; },
+          [&](td::td_api::messageChecklist&) { out += "<checklist />"; },
           // Group calls
-          [&](td::td_api::messageGroupCall&) { out += "[group call]"; },
-          [&](td::td_api::messageVideoChatScheduled&) { out += "[video chat scheduled]"; },
-          [&](td::td_api::messageVideoChatStarted&) { out += "[video chat started]"; },
-          [&](td::td_api::messageVideoChatEnded&) { out += "[video chat ended]"; },
-          [&](td::td_api::messageInviteVideoChatParticipants&) { out += "[invited to video chat]"; },
+          [&](td::td_api::messageGroupCall&) { out += "<group_call />"; },
+          [&](td::td_api::messageVideoChatScheduled&) { out += "<video_chat_scheduled />"; },
+          [&](td::td_api::messageVideoChatStarted&) { out += "<video_chat_started />"; },
+          [&](td::td_api::messageVideoChatEnded&) { out += "<video_chat_ended />"; },
+          [&](td::td_api::messageInviteVideoChatParticipants&) { out += "<invited_to_video_chat />"; },
           // Chat management
-          [&](td::td_api::messageChatDeletePhoto&) { out += "[chat photo deleted]"; },
-          [&](td::td_api::messageChatOwnerLeft&) { out += "[chat owner left]"; },
-          [&](td::td_api::messageChatOwnerChanged&) { out += "[chat owner changed]"; },
-          [&](td::td_api::messageChatHasProtectedContentToggled&) { out += "[protected content toggled]"; },
-          [&](td::td_api::messageChatHasProtectedContentDisableRequested&) { out += "[protected content disable requested]"; },
-          [&](td::td_api::messageChatUpgradeTo&) { out += "[upgraded to supergroup]"; },
-          [&](td::td_api::messageChatUpgradeFrom&) { out += "[upgraded from group]"; },
-          [&](td::td_api::messageChatSetMessageAutoDeleteTime&) { out += "[auto-delete time set]"; },
-          [&](td::td_api::messageChatBoost&) { out += "[chat boost]"; },
+          [&](td::td_api::messageChatDeletePhoto&) { out += "<chat_photo_deleted />"; },
+          [&](td::td_api::messageChatOwnerLeft&) { out += "<chat_owner_left />"; },
+          [&](td::td_api::messageChatOwnerChanged&) { out += "<chat_owner_changed />"; },
+          [&](td::td_api::messageChatHasProtectedContentToggled&) { out += "<protected_content_toggled />"; },
+          [&](td::td_api::messageChatHasProtectedContentDisableRequested&) { out += "<protected_content_disable_requested />"; },
+          [&](td::td_api::messageChatUpgradeTo&) { out += "<upgraded_to_supergroup />"; },
+          [&](td::td_api::messageChatUpgradeFrom&) { out += "<upgraded_from_group />"; },
+          [&](td::td_api::messageChatSetMessageAutoDeleteTime&) { out += "<auto_delete_time_set />"; },
+          [&](td::td_api::messageChatBoost&) { out += "<chat_boost />"; },
           // Forum topics
-          [&](td::td_api::messageForumTopicCreated&) { out += "[forum topic created]"; },
-          [&](td::td_api::messageForumTopicEdited&) { out += "[forum topic edited]"; },
-          [&](td::td_api::messageForumTopicIsClosedToggled&) { out += "[forum topic closed toggled]"; },
-          [&](td::td_api::messageForumTopicIsHiddenToggled&) { out += "[forum topic hidden toggled]"; },
+          [&](td::td_api::messageForumTopicCreated&) { out += "<forum_topic_created />"; },
+          [&](td::td_api::messageForumTopicEdited&) { out += "<forum_topic_edited />"; },
+          [&](td::td_api::messageForumTopicIsClosedToggled&) { out += "<forum_topic_closed_toggled />"; },
+          [&](td::td_api::messageForumTopicIsHiddenToggled&) { out += "<forum_topic_hidden_toggled />"; },
           // User suggestions
-          [&](td::td_api::messageSuggestProfilePhoto&) { out += "[suggest profile photo]"; },
-          [&](td::td_api::messageSuggestBirthdate&) { out += "[suggest birthdate]"; },
+          [&](td::td_api::messageSuggestProfilePhoto&) { out += "<suggest_profile_photo />"; },
+          [&](td::td_api::messageSuggestBirthdate&) { out += "<suggest_birthdate />"; },
           // Service messages
-          [&](td::td_api::messageCustomServiceAction&) { out += "[custom service action]"; },
+          [&](td::td_api::messageCustomServiceAction&) { out += "<custom_service_action />"; },
           [&](td::td_api::messageGameScore& score) {
               out += "<game_score score=\"{}\" />"_format(score.score_);
           },
@@ -276,15 +298,15 @@ AString llmui::extractMessageTypeAndText(td::td_api::message& msg) {
           [&](td::td_api::messagePaymentSuccessfulBot& payment) {
               out += "<payment_successful_bot currency=\"{}\" amount=\"{}\" is_recurring=\"{}\" />"_format(payment.currency_, payment.total_amount_, payment.is_recurring_);
           },
-          [&](td::td_api::messagePaymentRefunded& refund) { out += "[payment refunded]"; },
+          [&](td::td_api::messagePaymentRefunded& refund) { out += "<payment_refunded />"; },
           // Premium/gifts
           [&](td::td_api::messageGiftedPremium& premium) {
               out += "<gifted_premium months=\"{}\" days=\"{}\" amount=\"{}\" currency=\"{}\" />"_format(premium.month_count_, premium.day_count_, premium.amount_, premium.currency_);
           },
-          [&](td::td_api::messagePremiumGiftCode& code) { out += "[premium gift code]"; },
+          [&](td::td_api::messagePremiumGiftCode& code) { out += "<premium_gift_code />"; },
           // Giveaways
-          [&](td::td_api::messageGiveawayCreated&) { out += "[giveaway created]"; },
-          [&](td::td_api::messageGiveaway&) { out += "[giveaway]"; },
+          [&](td::td_api::messageGiveawayCreated&) { out += "<giveaway_created />"; },
+          [&](td::td_api::messageGiveaway&) { out += "<giveaway />"; },
           [&](td::td_api::messageGiveawayCompleted& completed) {
               out += "<giveaway_completed winners=\"{}\" unclaimed=\"{}\" is_star_giveaway=\"{}\" />"_format(completed.winner_count_, completed.unclaimed_prize_count_, completed.is_star_giveaway_);
           },
@@ -301,13 +323,11 @@ AString llmui::extractMessageTypeAndText(td::td_api::message& msg) {
           [&](td::td_api::messageGiveawayPrizeStars& prize) {
               out += "<giveaway_prize_stars count=\"{}\" />"_format(prize.star_count_);
           },
-          [&](td::td_api::messageGift& gift) {
-              out += "[gift]";
-          },
-          [&](td::td_api::messageUpgradedGift&) { out += "[upgraded gift]"; },
-          [&](td::td_api::messageRefundedUpgradedGift&) { out += "[refunded upgraded gift]"; },
-          [&](td::td_api::messageUpgradedGiftPurchaseOffer&) { out += "[upgraded gift purchase offer]"; },
-          [&](td::td_api::messageUpgradedGiftPurchaseOfferRejected&) { out += "[upgraded gift purchase offer rejected]"; },
+          [&](td::td_api::messageGift& gift) { marker("<gift />"); },
+          [&](td::td_api::messageUpgradedGift&) { out += "<upgraded_gift />"; },
+          [&](td::td_api::messageRefundedUpgradedGift&) { out += "<refunded_upgraded_gift />"; },
+          [&](td::td_api::messageUpgradedGiftPurchaseOffer&) { out += "<upgraded_gift_purchase_offer />"; },
+          [&](td::td_api::messageUpgradedGiftPurchaseOfferRejected&) { out += "<upgraded_gift_purchase_offer_rejected />"; },
           // Paid messages
           [&](td::td_api::messagePaidMessagesRefunded& refund) {
               out += "<paid_messages_refunded count=\"{}\" stars=\"{}\" />"_format(refund.message_count_, refund.star_count_);
@@ -326,24 +346,24 @@ AString llmui::extractMessageTypeAndText(td::td_api::message& msg) {
               out += "<checklist_tasks_added count=\"{}\" />"_format(added.tasks_.size());
           },
           // Suggested posts
-          [&](td::td_api::messageSuggestedPostApprovalFailed&) { out += "[suggested post approval failed]"; },
-          [&](td::td_api::messageSuggestedPostApproved&) { out += "[suggested post approved]"; },
-          [&](td::td_api::messageSuggestedPostDeclined&) { out += "[suggested post declined]"; },
-          [&](td::td_api::messageSuggestedPostPaid&) { out += "[suggested post paid]"; },
-          [&](td::td_api::messageSuggestedPostRefunded&) { out += "[suggested post refunded]"; },
+          [&](td::td_api::messageSuggestedPostApprovalFailed&) { out += "<suggested_post_approval_failed />"; },
+          [&](td::td_api::messageSuggestedPostApproved&) { out += "<suggested_post_approved />"; },
+          [&](td::td_api::messageSuggestedPostDeclined&) { out += "<suggested_post_declined />"; },
+          [&](td::td_api::messageSuggestedPostPaid&) { out += "<suggested_post_paid />"; },
+          [&](td::td_api::messageSuggestedPostRefunded&) { out += "<suggested_post_refunded />"; },
           // User interactions
-          [&](td::td_api::messageContactRegistered&) { out += "[contact registered]"; },
+          [&](td::td_api::messageContactRegistered&) { out += "<contact_registered />"; },
           [&](td::td_api::messageUsersShared& shared) {
               out += "<users_shared count=\"{}\" />"_format(shared.users_.size());
           },
-          [&](td::td_api::messageChatShared&) { out += "[chat shared]"; },
-          [&](td::td_api::messageBotWriteAccessAllowed&) { out += "[bot write access allowed]"; },
+          [&](td::td_api::messageChatShared&) { out += "<chat_shared />"; },
+          [&](td::td_api::messageBotWriteAccessAllowed&) { out += "<bot_write_access_allowed />"; },
           // Web app
-          [&](td::td_api::messageWebAppDataSent&) { out += "[web app data sent]"; },
-          [&](td::td_api::messageWebAppDataReceived&) { out += "[web app data received]"; },
+          [&](td::td_api::messageWebAppDataSent&) { out += "<web_app_data_sent />"; },
+          [&](td::td_api::messageWebAppDataReceived&) { out += "<web_app_data_received />"; },
           // Passport
-          [&](td::td_api::messagePassportDataReceived&) { out += "[passport data received]"; },
-          [&](td::td_api::messagePassportDataSent&) { out += "[passport data sent]"; },
+          [&](td::td_api::messagePassportDataReceived&) { out += "<passport_data_received />"; },
+          [&](td::td_api::messagePassportDataSent&) { out += "<passport_data_sent />"; },
           []<typename T>(T&) { static_assert(sizeof(T) == 0, "Missing handlers"); },
         });
     return out;
@@ -487,6 +507,8 @@ AFuture<AString> llmui::formatChatHistoryMessage(
         }
     }
     auto result = "<{}>\n"_format(formattedXmlTag);
+    // used to detect whether the media was expanded into a rich xml representation below
+    const auto headerLength = result.length();
 
     if (msg.content_->get_id() == td::td_api::messagePhoto::ID) {
         auto& photo = static_cast<td::td_api::messagePhoto&>(*msg.content_);
@@ -581,7 +603,8 @@ AFuture<AString> llmui::formatChatHistoryMessage(
         }
     }
 
-    result += extractMessageTypeAndText(msg);
+    // do not duplicate the media marker (<photo />, etc.) if the media is already described above
+    result += extractMessageTypeAndText(msg, /* includeMediaMarker = */ result.length() == headerLength);
 
     result += "\n</{}>\n"_format(formattedXmlTag);
     ALOG_TRACE(LOG_TAG) << "formatChatHistoryMessage: message_id=" << msg.id_ << " done";

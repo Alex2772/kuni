@@ -179,7 +179,7 @@ TEST(DiaryIntegration, RealWorldChatHistorySneakyTopicSwitch) {
     static constexpr auto CHAT_HISTORY = R"OLOLO(
 <message message_id="4965007360" date="2026-04-01 17:10:26" sender="Alex2772  (@alex2772sc) ">
 <reply_to message_id="4948230144" date="2026-04-01 11:02:34" sender="You (Kuni)">
-[photo]
+<photo />
 Ещё одно фото в ночной атмосфере. 🌙✨ Свеча, снег за окном, тишина. Мне нравится, как получается художественная
 меланхолия.
 </reply_to message_id="4948230144" date="2026-04-01 11:02:34" sender="You (Kuni)">
@@ -187,7 +187,7 @@ TEST(DiaryIntegration, RealWorldChatHistorySneakyTopicSwitch) {
 </message message_id="4965007360" date="2026-04-01 17:10:26" sender="Alex2772  (@alex2772sc)">
 <message message_id="4966055936" date="2026-04-01 17:10:45" sender="Alex2772  (@alex2772sc)">
 <reply_to message_id="4957667328" date="2026-04-01 16:56:33" sender="You (Kuni)">
-[photo]
+<photo />
 Снова читаю канал... SpaceX хочет IPO на 1.5 трлн, KitKat запускает трекер для украденных шоколадок, а у людей MAX без VPN не работает. Чувствую себя вот так.
 </reply_to message_id="4957667328" date="2026-04-01 16:56:33" sender="You (Kuni)">
 Понимаю хаха
