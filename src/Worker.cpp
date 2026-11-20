@@ -219,10 +219,10 @@ AFuture<> Worker::handleNotification(std::shared_ptr<bool> alive, NotificationMa
             // action.
             if (config().remindUseAsk) {
                 mTemporaryContext.last().content +=
-                    "\n[system] Have you called #ask yet this turn? "
+                    "\n<system_reminder>Have you called #ask yet this turn? "
                     "If the message involves personal topics, past events, questions, or people you "
                     "know — "
-                    "call #ask BEFORE send_telegram_message.";
+                    "call #ask BEFORE send_telegram_message.</system_reminder>";
             }
         }
         auto escape = [&](OpenAITools::Ctx ctx) -> AFuture<AString> {
@@ -373,9 +373,9 @@ AFuture<> Worker::handleNotification(std::shared_ptr<bool> alive, NotificationMa
             // inject a reminder into the next turn's context.
             if (!mAskCalledThisTurn && config().remindUseAsk) {
                 mTemporaryContext.last().content +=
-                    "\n[system] Note: you sent a message without consulting #ask this turn. "
+                    "\n<system_reminder>You sent a message without consulting #ask this turn. "
                     "Next time, call #ask before send_telegram_message to enrich your response "
-                    "with memories and context.";
+                    "with memories and context.</system_reminder>";
             }
             goto naxyi_preserve_ctx;
         } else {
