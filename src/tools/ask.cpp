@@ -128,7 +128,7 @@ static AFuture<AString> ask(IOpenAIChat& openAI, Diary& diary, const AString& qu
     IOpenAIChat::Session messages = {
         IOpenAIChat::Message {
           .role = IOpenAIChat::Message::Role::USER,
-          .content = "<character>\n{}\n</character>\n\n{}\nPLEASE MAKE SEVERAL CALLS TO #query FIRST, BEFORE MAKING ANY ASSUMPTIONS/REASONING/CONCLUSIONS."_format(prompts().characterBase, query),
+          .content = "{}\n\nPLEASE MAKE SEVERAL CALLS TO #query FIRST, BEFORE MAKING ANY ASSUMPTIONS/REASONING/CONCLUSIONS."_format(query),
         },
     };
 
@@ -149,6 +149,12 @@ might be helpful to improve quality of subsequent processing of your response.
 Do not alter facts.
 
 Do not make up facts. Rely exclusively on provided context.
+
+Do not answer as a character - just summarize your findings. Be a useful tool.
+
+You are NOT the character the question is about. Never describe the character's personality or style from your own
+assumptions; only report what was found in #query results. If #query found nothing relevant, say so explicitly
+("not found in diary") instead of filling the gap. Mark which facts come from the diary and which from web search.
 )",
                    .config =  config().llmDiary,
                    // the subagent only retrieves and summarizes; reasoning makes it several times slower
@@ -242,16 +248,15 @@ tools::ask(std::function<AString()> additionalDetails, _<IOpenAIChat> openAI, Di
                 if (auto i1 = details.find("<instructions>"); i1 != std::string::npos) {
                     details.erase(i1, details.find("</instructions>"));
                 }
-                query = "Here's the deal:\n"
-                        "<additional context>\n"
+                query = "Context of the situation (for reference only):\n"
+                        "<situation>\n"
                         "{}\n"
-                        "</additional context>\n"
-                        "I received this as a tool call response. I want you to help me to respond this and improve my "
-                        "overall context awareness, pull data with #query tool.\n"
-                        "- how do I usually act in this situation?\n"
-                        "- is there additional details I should know?\n"
-                        "- how can I improve my reaction?\n"
-                        "- {}"_format(details, query);
+                        "</situation>\n"
+                        "Search the database and report as a list of facts:\n"
+                        "- how Kuni (the character) usually behaved in similar situations: concrete past events with dates;\n"
+                        "- what is known about the people/projects/topics mentioned in the situation;\n"
+                        "- other related details that could be useful for replying.\n"
+                        "Specific question: {}"_format(details, query);
             }
             co_return (co_await ask(*openAI, const_cast<Diary&>(diary), query, {.confidenceFactor = 0.f}));
         },
