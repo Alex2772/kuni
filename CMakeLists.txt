@@ -36,6 +36,9 @@ include(aui.boot.cmake)
 set(AUI_COROUTINES "Use C++20 coroutines" ON)
 auib_mark_var_forwardable(AUI_COROUTINES)
 
+# aui.audio links CoreAudio etc. by absolute SDK paths on macOS, which fails AUI.Boot's portability check
+set(AUIB_AUI_VALIDATE OFF)
+
 # import AUI
 auib_import(aui https://github.com/aui-framework/aui
         COMPONENTS core json curl crypt image views audio
