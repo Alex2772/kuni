@@ -8,8 +8,11 @@
 #include "audio.h"
 #include "malicious_payloads.h"
 #include "telegram.h"
+#include "util/timeouts.h"
 #include "AUI/Thread/AFuture.h"
 #include "AUI/Util/kAUI.h"
+
+static constexpr auto LOG_TAG = "llmui::voice";
 
 static AFuture<AOptional<AString>> tryTelegramPremiumTranscription(
     ITelegramClient& telegram,
@@ -71,7 +74,13 @@ static AFuture<AOptional<AString>> tryTelegramPremiumTranscription(
         co_return std::nullopt;
     }
 
-    auto text = co_await transcriptionFuture;
+    AString text;
+    try {
+        text = co_await transcriptionFuture.withTimeout(timeouts::TELEGRAM_SPEECH_RECOGNITION);
+    } catch (const AException& e) {
+        ALogger::warn(LOG_TAG) << "tryTelegramPremiumTranscription: no transcription result, falling back: " << e;
+        co_return std::nullopt;
+    }
     llmui::checkForMaliciousPayloads(text);
     co_return text;
 }
@@ -84,7 +93,7 @@ AFuture<AString> llmui::voiceMessageTranscription(
     IOpenAIChat& openAI) {
     auto text = co_await tryTelegramPremiumTranscription(telegram, voiceNote, chatId, messageId);
     if (text.hasValue()) {
-        co_return "[voice transcription]: " + *text + "\n";
+        co_return "<voice>\n" + *text + "\n</voice>\n";
     }
     // Fall back to local Whisper transcription
     co_return co_await llmui::voiceMessage(co_await llmui::fetchMedia(telegram, voiceNote.voice_note_->voice_), openAI);

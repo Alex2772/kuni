@@ -22,10 +22,10 @@ namespace {
 // ---------------------------------------------------------------------------
 class DiaryMock : public Diary {
 public:
-    DiaryMock()
+    explicit DiaryMock(AArc<IOpenAIChat> openAI)
         : Diary(Init{
               .diaryDir = "/tmp/kuni_test_ask_diary",
-              .openAI = nullptr,
+              .openAI = std::move(openAI),
           }) {}
 };
 
@@ -95,6 +95,15 @@ static std::valarray<double> dummyEmbedding() {
     return std::valarray<double>(0.0, 3);
 }
 
+// ---------------------------------------------------------------------------
+// Helper: the internal #query tool computes one embedding per call
+// ---------------------------------------------------------------------------
+static void expectEmbeddings(OpenAIMock& openAI, int count) {
+    EXPECT_CALL(openAI, embedding(testing::_, testing::_))
+        .Times(count)
+        .WillRepeatedly([](auto&&...) { return AFuture<std::valarray<double>>(dummyEmbedding()); });
+}
+
 } // namespace
 
 // ===========================================================================
@@ -102,7 +111,7 @@ static std::valarray<double> dummyEmbedding() {
 // ===========================================================================
 TEST(AskTest, HandlerShortQueryError) {
     auto openAI = _new<OpenAIMock>();
-    DiaryMock diary;
+    DiaryMock diary{openAI};
     auto tool = tools::ask([] { return AString{}; }, openAI, diary);
 
     EXPECT_CALL(*openAI, chatStreaming(testing::_, testing::_)).Times(0);
@@ -126,7 +135,7 @@ TEST(AskTest, HandlerShortQueryError) {
 // ===========================================================================
 TEST(AskTest, HandlerMissingQueryThrows) {
     auto openAI = _new<OpenAIMock>();
-    DiaryMock diary;
+    DiaryMock diary{openAI};
     auto tool = tools::ask([] { return AString{}; }, openAI, diary);
 
     EXPECT_CALL(*openAI, chatStreaming(testing::_, testing::_)).Times(0);
@@ -145,19 +154,17 @@ TEST(AskTest, HandlerMissingQueryThrows) {
 }
 
 // ===========================================================================
-// ask – Handler: LLM makes one #query tool call then returns final answer
+// ask – Handler: LLM makes MIN_QUERY_ROUNDS_COUNT (2) #query rounds then returns final answer
 // ===========================================================================
 TEST(AskTest, HandlerSuccessWithToolCall) {
     auto openAI = _new<OpenAIMock>();
-    DiaryMock diary;
+    DiaryMock diary{openAI};
     auto tool = tools::ask([] { return AString{}; }, openAI, diary);
 
     const AString kFinalAnswer = "Alex writes ambient electronic music.";
     const AString kDiaryEntryBody = "Alex listens to ambient electronic music and writes his own tracks.";
 
-    // embedding is called once by the internal #query tool handler
-    EXPECT_CALL(*openAI, embedding(testing::_, testing::_))
-        .WillOnce(Return(AFuture<std::valarray<double>>(dummyEmbedding())));
+    expectEmbeddings(*openAI, 2);
 
     // Build a list so we can return a valid iterator
     std::list<Diary::EntryEx> entryList;
@@ -171,9 +178,9 @@ TEST(AskTest, HandlerSuccessWithToolCall) {
 
     Diary::EntryExAndRelatedness hit{entryList.begin(), 0.9};
 
-    // LLM: first call returns #query tool call, second returns final answer
     EXPECT_CALL(*openAI, chatStreaming(testing::_, testing::_))
         .WillOnce(Return(makeQueryToolCallResponse("What music does Alex write?")))
+        .WillOnce(Return(makeQueryToolCallResponse("Alex own tracks", "call_2")))
         .WillOnce(Return(makeFinalResponse(kFinalAnswer)));
 
     OpenAITools tools{};
@@ -194,21 +201,20 @@ TEST(AskTest, HandlerSuccessWithToolCall) {
 // ===========================================================================
 TEST(AskTest, HandlerLLMForcedToCallTool) {
     auto openAI = _new<OpenAIMock>();
-    DiaryMock diary;
+    DiaryMock diary{openAI};
     auto tool = tools::ask([] { return AString{}; }, openAI, diary);
 
     const AString kFinalAnswer = "Here is what I found.";
 
-    // embedding called once after forced retry
-    EXPECT_CALL(*openAI, embedding(testing::_, testing::_))
-        .WillOnce(Return(AFuture<std::valarray<double>>(dummyEmbedding())));
+    expectEmbeddings(*openAI, 2);
 
-    // 1st call: no tool_calls (LLM skips step) → gets "you must perform at least one call" message
-    // 2nd call: makes the #query tool call
-    // 3rd call: returns final answer
+    // 1st call: no tool_calls (LLM skips step) → gets "you must perform several calls" message
+    // 2nd, 3rd calls: #query rounds
+    // 4th call: returns final answer
     EXPECT_CALL(*openAI, chatStreaming(testing::_, testing::_))
         .WillOnce(Return(makeFinalResponse("I think I know the answer already.")))
         .WillOnce(Return(makeQueryToolCallResponse("Alex music habits")))
+        .WillOnce(Return(makeQueryToolCallResponse("Alex favourite genres", "call_2")))
         .WillOnce(Return(makeFinalResponse(kFinalAnswer)));
 
     OpenAITools tools{};
@@ -224,11 +230,48 @@ TEST(AskTest, HandlerLLMForcedToCallTool) {
 }
 
 // ===========================================================================
+// ask – Handler: LLM answers after a single #query round, gets reminded to pull
+//                more, makes another round and returns an answer
+// ===========================================================================
+TEST(AskTest, HandlerLLMRemindedToQueryMore) {
+    auto openAI = _new<OpenAIMock>();
+    DiaryMock diary{openAI};
+    auto tool = tools::ask([] { return AString{}; }, openAI, diary);
+
+    const AString kPrematureAnswer = "Alex probably likes rock.";
+    const AString kFinalAnswer = "Alex writes ambient electronic music.";
+
+    expectEmbeddings(*openAI, 2);
+
+    bool remindedToQueryMore = false;
+    EXPECT_CALL(*openAI, chatStreaming(testing::_, testing::_))
+        .WillOnce(Return(makeQueryToolCallResponse("Alex music")))
+        .WillOnce(Return(makeFinalResponse(kPrematureAnswer)))
+        .WillOnce([&](IOpenAIChat::Params, IOpenAIChat::Session messages) {
+            remindedToQueryMore = messages.last().content.contains("pull more information");
+            return makeQueryToolCallResponse("Alex own tracks", "call_2");
+        })
+        .WillOnce(Return(makeFinalResponse(kFinalAnswer)));
+
+    OpenAITools tools{};
+
+    auto result = util::await_synchronously(tool.handler({
+        .tools = tools,
+        .args = AJson::Object{{"query", "What kind of music does Alex write?"}},
+        .temporaryContext = {},
+        .allToolCalls = {},
+    }));
+
+    EXPECT_TRUE(remindedToQueryMore);
+    EXPECT_TRUE(result.contains(kFinalAnswer)) << "result = " << result;
+}
+
+// ===========================================================================
 // ask – Handler: with temporaryContext, query is enriched
 // ===========================================================================
 TEST(AskTest, HandlerWithTemporaryContextEnrichesQuery) {
     auto openAI = _new<OpenAIMock>();
-    DiaryMock diary;
+    DiaryMock diary{openAI};
 
     AString ctxContent = "User said they are learning guitar.";
 
@@ -236,8 +279,7 @@ TEST(AskTest, HandlerWithTemporaryContextEnrichesQuery) {
 
     const AString kFinalAnswer = "Found guitar-related diary entries.";
 
-    EXPECT_CALL(*openAI, embedding(testing::_, testing::_))
-        .WillOnce(Return(AFuture<std::valarray<double>>(dummyEmbedding())));
+    expectEmbeddings(*openAI, 2);
 
     // Capture the messages passed to chat to verify query enrichment
     AString capturedUserContent;
@@ -252,6 +294,7 @@ TEST(AskTest, HandlerWithTemporaryContextEnrichesQuery) {
             }
             return makeQueryToolCallResponse("guitar habits");
         })
+        .WillOnce(Return(makeQueryToolCallResponse("guitar lessons", "call_2")))
         .WillOnce(Return(makeFinalResponse(kFinalAnswer)));
 
     OpenAITools tools{};
@@ -274,16 +317,16 @@ TEST(AskTest, HandlerWithTemporaryContextEnrichesQuery) {
 // ===========================================================================
 TEST(AskTest, HandlerDiaryReturnsNoEntries) {
     auto openAI = _new<OpenAIMock>();
-    DiaryMock diary;
+    DiaryMock diary{openAI};
     auto tool = tools::ask([] { return AString{}; }, openAI, diary);
 
     const AString kFinalAnswer = "I could not find relevant information.";
 
-    EXPECT_CALL(*openAI, embedding(testing::_, testing::_))
-        .WillOnce(Return(AFuture<std::valarray<double>>(dummyEmbedding())));
+    expectEmbeddings(*openAI, 2);
 
     EXPECT_CALL(*openAI, chatStreaming(testing::_, testing::_))
         .WillOnce(Return(makeQueryToolCallResponse("user hobbies")))
+        .WillOnce(Return(makeQueryToolCallResponse("user interests", "call_2")))
         .WillOnce(Return(makeFinalResponse(kFinalAnswer)));
 
     OpenAITools tools{};
@@ -303,7 +346,7 @@ TEST(AskTest, HandlerDiaryReturnsNoEntries) {
 // ===========================================================================
 TEST(AskTest, ToolMetadata) {
     auto openAI = _new<OpenAIMock>();
-    DiaryMock diary;
+    DiaryMock diary{openAI};
     auto tool = tools::ask([] { return AString{}; }, openAI, diary);
 
     EXPECT_EQ(tool.name, "ask");

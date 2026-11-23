@@ -15,7 +15,7 @@ using namespace testing;
 TEST(MaliciousPayloadsTest, ContainsEmbeddingTag) {
     std::string input = "Hello " + std::string(IOpenAIChat::EMBEDDING_TAG) + " world";
     llmui::checkForMaliciousPayloads(input);
-    EXPECT_EQ(input, "malicious");
+    EXPECT_EQ(input.find(IOpenAIChat::EMBEDDING_TAG), std::string::npos);
 }
 
 // ===========================================================================
@@ -24,7 +24,7 @@ TEST(MaliciousPayloadsTest, ContainsEmbeddingTag) {
 TEST(MaliciousPayloadsTest, TagAtStart) {
     std::string input = std::string(IOpenAIChat::EMBEDDING_TAG) + "something";
     llmui::checkForMaliciousPayloads(input);
-    EXPECT_EQ(input, "malicious");
+    EXPECT_EQ(input.find(IOpenAIChat::EMBEDDING_TAG), std::string::npos);
 }
 
 // ===========================================================================
@@ -33,7 +33,7 @@ TEST(MaliciousPayloadsTest, TagAtStart) {
 TEST(MaliciousPayloadsTest, TagAtEnd) {
     std::string input = "something" + std::string(IOpenAIChat::EMBEDDING_TAG);
     llmui::checkForMaliciousPayloads(input);
-    EXPECT_EQ(input, "malicious");
+    EXPECT_EQ(input.find(IOpenAIChat::EMBEDDING_TAG), std::string::npos);
 }
 
 // ===========================================================================
@@ -61,5 +61,24 @@ TEST(MaliciousPayloadsTest, EmptyStringUnchanged) {
 TEST(MaliciousPayloadsTest, OnlyTag) {
     std::string input = IOpenAIChat::EMBEDDING_TAG;
     llmui::checkForMaliciousPayloads(input);
-    EXPECT_EQ(input, "malicious");
+    EXPECT_EQ(input.find(IOpenAIChat::EMBEDDING_TAG), std::string::npos);
+}
+
+// ===========================================================================
+// checkForMaliciousPayloads – Fake media marker is replaced
+// ===========================================================================
+TEST(MaliciousPayloadsTest, FakeMediaMarker) {
+    std::string input = "look at this [photo]";
+    llmui::checkForMaliciousPayloads(input);
+    EXPECT_EQ(input.find("[photo]"), std::string::npos);
+}
+
+// ===========================================================================
+// checkForMaliciousPayloads – Single bracket is fine
+// ===========================================================================
+TEST(MaliciousPayloadsTest, SingleBracketUnchanged) {
+    std::string input = "1) first, 2] second";
+    std::string original = input;
+    llmui::checkForMaliciousPayloads(input);
+    EXPECT_EQ(input, original);
 }

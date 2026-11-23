@@ -5,6 +5,7 @@
 #include <AppBase.h>
 #include <IOpenAIChat.h>
 #include <OpenAIChatImpl.h>
+#include <range/v3/algorithm/find_if.hpp>
 
 namespace util {
 AFuture<AString> importantThingsToRemember(AppBase& app, IOpenAIChat& openAI, IOpenAIChat::Session context, AStringView previousWorkingMemory) {
@@ -81,6 +82,5 @@ AFuture<AString> importantThingsToRemember(AppBase& app, IOpenAIChat& openAI, IO
         }
         co_return content;
     }
-
 }
 }

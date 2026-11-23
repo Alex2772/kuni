@@ -38,7 +38,7 @@ AFuture<AString> llmui::listFavoriteStickers(ITelegramClient& telegram, IOpenAIC
     for (auto& sticker : co_await getSavedStickers(telegram)) {
         llmui::checkForMaliciousPayloads(sticker->emoji_);
         const auto xmlTag =
-            "sticker sticker_id=\"{}\" emoji=\"{}\""_format(sticker->id_, sticker->emoji_);
+            "sticker sticker_id=\"{}\" emoji=\"{}\""_format(fmt::group_digits(sticker->id_), sticker->emoji_);
         // we rely on cache in llmui::image.
         out += co_await llmui::image({}, openAI, co_await llmui::fetchMedia(telegram, sticker->sticker_), xmlTag);
         out += "\n";
@@ -63,7 +63,7 @@ OpenAITools::Tool tools::stickers::save(_<ITelegramClient> telegram) {
         .description = "Saves sticker so you can use them later. Use this if you liked a sticker",
         .parameters = {
             .properties = {
-                {"sticker_id", {.type = "integer", .description = "sticker_id of the sticker you would like to save"}},
+                {"sticker_id", {.type = "string", .description = "sticker_id of the sticker you would like to save"}},
             },
             .required = {"sticker_id"},
         },
@@ -92,7 +92,7 @@ OpenAITools::Tool tools::stickers::send(_<ITelegramClient> telegram, _<td::td_ap
         .description = "Sends specified sticker to \"{}\" chat"_format(chat->title_),
         .parameters = {
             .properties = {
-                {"sticker_id", {.type = "integer", .description = "sticker_id of the sticker you would like to send"}},
+                {"sticker_id", {.type = "string", .description = "sticker_id of the sticker you would like to send"}},
                 {"reply_to_message_id", {
                     .type = "integer",
                     .description = "If specified, the message will be rendered as a reply to the "

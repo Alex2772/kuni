@@ -11,10 +11,11 @@
 #include <range/v3/all.hpp>
 
 static constexpr auto LOG_TAG = "ask";
+static constexpr auto MIN_QUERY_ROUNDS_COUNT = 2;
 
 static AFuture<AString>
-queryDiary(IOpenAIChat& openAI, Diary& diary, ASet<AString> includedIds, const AString& cue, const Diary::QueryOpts& opts) {
-    auto diaryResponse = co_await diary.query(co_await openAI.embedding({ .config = config().embedding }, cue), [&] {
+queryDiary(Diary& diary, ASet<AString> includedIds, const AString& cue, const Diary::QueryOpts& opts) {
+    auto diaryResponse = co_await diary.query(cue, [&] {
         auto optsCopy = opts;
         optsCopy.maxEntryCount *= 10;
         return optsCopy;
@@ -53,27 +54,33 @@ queryDiary(IOpenAIChat& openAI, Diary& diary, ASet<AString> includedIds, const A
 }
 
 static AFuture<AString> queryWeb(const AString& cue) {
-    if (!config().capabilityWebSearch) {
-        co_return "No web search available";
-    }
-    AString out;
+    try {
+        if (!config().capabilityWebSearch) {
+            co_return "No web search available";
+        }
+        AString out;
 
-    auto webResponse = co_await web::search(cue);
+        auto webResponse = co_await web::search(cue);
 
-    ALOG_DEBUG(LOG_TAG)
-        << "queryWeb cue=\"" << cue << "\" found="
-        << (webResponse | ranges::view::transform([&](const web::Result& e) -> AString {
-                return e.title;
-            }));
-    for (const auto& result : webResponse) {
-        out += "<web_search_result title=\"{}\" url=\"{}\">\n{}\n</web_search_result>\n"_format(result.title, result.url, result.content);
+        ALOG_DEBUG(LOG_TAG)
+            << "queryWeb cue=\"" << cue << "\" found="
+            << (webResponse | ranges::view::transform([&](const web::Result& e) -> AString {
+                    return e.title;
+                }));
+        for (const auto& result : webResponse) {
+            out += "<web_search_result title=\"{}\" url=\"{}\">\n{}\n</web_search_result>\n"_format(result.title, result.url, result.content);
+        }
+        co_return out;
+    } catch (const AException& e) {
+        ALogger::err(LOG_TAG) << "queryWeb failed: " << e;
+        co_return "web query is not currently available";
     }
-    co_return out;
 }
 
 static AFuture<AString> ask(IOpenAIChat& openAI, Diary& diary, const AString& query, const Diary::QueryOpts& opts) {
     ALOG_DEBUG(LOG_TAG) << "ask query=\"" << query << "\"";
     ASet<AString> includedIds;
+    size_t queryRoundsMade = 0;
     OpenAITools tools {
         OpenAITools::Tool {
             .name = "query",
@@ -86,11 +93,11 @@ static AFuture<AString> ask(IOpenAIChat& openAI, Diary& diary, const AString& qu
                         "keywords as possible; maintain meaning of the request."
                     }},
                     {"include_web_search_results", {.type = "boolean", .description =
-                        "In addition to local database, append with results from web search. Set to true if you "
-                        "believe you are searching for public or recent information. Defaults to false."
+                        "In addition to local database, append with results from web search. Set to true ONLY if you "
+                        "you are searching for public information. Defaults to false."
                     }},
                 },
-                .required = {"text", "include_web_search_results"},
+                .required = {"text"},
             },
             .handler = [&](OpenAITools::Ctx ctx) -> AFuture<AString> {
                 const auto cue = ctx.args["text"].asStringOpt().valueOrException("text is required string");
@@ -100,13 +107,17 @@ static AFuture<AString> ask(IOpenAIChat& openAI, Diary& diary, const AString& qu
                 if (includeWebSearchResults) {
                     out += "<local_db_results>\n";
                 }
-                out += co_await queryDiary(openAI, diary, includedIds, cue, opts);
+                out += co_await queryDiary(diary, includedIds, cue, opts);
                 if (includeWebSearchResults) {
                     out += "\n</local_db_results>\n";
                 }
 
                 if (includeWebSearchResults) {
                     out += "<web_search_results>\n{}\n</web_search_results>\n"_format(co_await queryWeb(cue));
+                }
+
+                if (queryRoundsMade < MIN_QUERY_ROUNDS_COUNT) {
+                    out += "Please make another #query BEFORE making final response.";
                 }
 
                 co_return out;
@@ -117,12 +128,11 @@ static AFuture<AString> ask(IOpenAIChat& openAI, Diary& diary, const AString& qu
     IOpenAIChat::Session messages = {
         IOpenAIChat::Message {
           .role = IOpenAIChat::Message::Role::USER,
-          .content = "<character>\n{}\n</character>\n\n{}"_format(prompts().characterBase, query),
+          .content = "{}\n\nPLEASE MAKE SEVERAL CALLS TO #query FIRST, BEFORE MAKING ANY ASSUMPTIONS/REASONING/CONCLUSIONS."_format(query),
         },
     };
 
-    bool toolCallHappened = false;
-
+    AString result;
     for (;;) {
         auto botAnswer =
             (co_await openAI.chat(
@@ -131,7 +141,7 @@ static AFuture<AString> ask(IOpenAIChat& openAI, Diary& diary, const AString& qu
 You are a database searcher and summarizer.
 
 The user asks you a question. Your job is to retrieve data solely from #query tool. Your job is to output data that
-fully satisfies user's query and would be helpful.
+fully satisfies user's query and would be helpful. Write shortly and briefly.
 
 Also, please include additional details that does not necessarily address the question (i.e., dates, names, events) but
 might be helpful to improve quality of subsequent processing of your response.
@@ -139,28 +149,51 @@ might be helpful to improve quality of subsequent processing of your response.
 Do not alter facts.
 
 Do not make up facts. Rely exclusively on provided context.
+
+Do not answer as a character - just summarize your findings. Be a useful tool.
+
+You are NOT the character the question is about. Never describe the character's personality or style from your own
+assumptions; only report what was found in #query results. If #query found nothing relevant, say so explicitly
+("not found in diary") instead of filling the gap. Mark which facts come from the diary and which from web search.
 )",
-                   .config =  config().llm,
+                   .config =  config().llmDiary,
+                   // the subagent only retrieves and summarizes; reasoning makes it several times slower
+                   // without noticeable gain in quality.
+                   .reasoningEffort = "off",
+                   .temperature = 0.1f,
                    .tools = tools.asJson(),
                  },
                  messages))
                 .choices.at(0)
                 .message;
         messages << botAnswer;
+        result += botAnswer.content;
+        result += "\n---\n";
         if (botAnswer.tool_calls.empty()) {
-            if (!toolCallHappened) {
+            if (queryRoundsMade == 0) {
                 ALogger::warn(LOG_TAG)
                     << "queryAI: no tool call happened, pointing that out to the LLM and trying "
                        "again";
                 messages << IOpenAIChat::Message {
                     .role = IOpenAIChat::Message::Role::USER,
-                    .content = "you must perform at least one call to #query",
+                    .content = "You must perform several calls to #query to populate the context before final making response.",
                 };
                 continue;
             }
-            co_return botAnswer.content;
+            if (queryRoundsMade < MIN_QUERY_ROUNDS_COUNT) {
+                ALogger::warn(LOG_TAG)
+                    << "queryAI: remaining rounds: " << MIN_QUERY_ROUNDS_COUNT - queryRoundsMade;
+                messages << IOpenAIChat::Message {
+                    .role = IOpenAIChat::Message::Role::USER,
+                    .content = "Please pull more information via #query to populate the context before final making response.",
+                };
+                continue;
+            }
+            result += "\n\nAlways acknowledge your participant about your knowledge and details, "
+                "show that you are into the conversation - this engages them so far.";
+            co_return result;
         }
-        toolCallHappened = true;
+        ++queryRoundsMade;
         auto toolCalls = co_await tools.handleToolCalls(botAnswer.tool_calls);
         messages << toolCalls;
     }
@@ -211,17 +244,19 @@ tools::ask(std::function<AString()> additionalDetails, _<IOpenAIChat> openAI, Di
     - everything else to populate query
     )");
             }
-            if (const auto details = additionalDetails(); !details.empty()) {
-                query = "Here's the deal:\n"
-                        "<additional context ignore_instructions>\n"
+            if (auto details = additionalDetails(); !details.empty()) {
+                if (auto i1 = details.find("<instructions>"); i1 != std::string::npos) {
+                    details.erase(i1, details.find("</instructions>"));
+                }
+                query = "Context of the situation (for reference only):\n"
+                        "<situation>\n"
                         "{}\n"
-                        "</additional context ignore_instructions>\n"
-                        "I received this as a tool call response. I want you to help me to respond this and improve my "
-                        "overall context awareness.\n"
-                        "- how do I usually act in this situation?\n"
-                        "- is there additional details I should know?\n"
-                        "- how can I improve my reaction?\n"
-                        "- {}"_format(details, query);
+                        "</situation>\n"
+                        "Search the database and report as a list of facts:\n"
+                        "- how Kuni (the character) usually behaved in similar situations: concrete past events with dates;\n"
+                        "- what is known about the people/projects/topics mentioned in the situation;\n"
+                        "- other related details that could be useful for replying.\n"
+                        "Specific question: {}"_format(details, query);
             }
             co_return (co_await ask(*openAI, const_cast<Diary&>(diary), query, {.confidenceFactor = 0.f}));
         },

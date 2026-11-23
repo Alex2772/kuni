@@ -1,6 +1,7 @@
 #include "openai_streaming.h"
 
 #include "AUI/Logging/ALogger.h"
+#include <memory>
 #include <range/v3/all.hpp>
 
 AYieldGenerator<std::string_view>
@@ -13,9 +14,9 @@ util::openai_streaming::lineByLine(std::function<size_t(char* dst, size_t size)>
             // increase the buffer 2 times.
             endOfValidData = buffer.insert(endOfValidData, buffer.size(), 0);
         }
-        auto readBytes = read(endOfValidData.base(), std::distance(endOfValidData, ranges::end(buffer)));
+        auto readBytes = read(std::to_address(endOfValidData), std::distance(endOfValidData, ranges::end(buffer)));
 
-        ALOG_TRACE("lineByLine") << std::string_view(endOfValidData.base(), std::distance(endOfValidData, ranges::end(buffer)));
+        ALOG_TRACE("lineByLine") << std::string_view(std::to_address(endOfValidData), std::distance(endOfValidData, ranges::end(buffer)));
         endOfValidData += readBytes;
 
         auto validDataSpan = std::string_view(buffer.begin(), endOfValidData);
