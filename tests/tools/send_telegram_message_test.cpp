@@ -66,10 +66,17 @@ static _<td::td_api::array<td::td_api::object_ptr<td::td_api::message>>> makeMes
  *
  * sendChatAction -> ok
  * sendMessage    -> message (dummy)
+ * getMessage     -> message with the requested chat and message ids
  * All others     -> ok
  */
 static AFuture<ITelegramClient::Object> dispatchSendQuery(td::td_api::object_ptr<td::td_api::Function> f) {
     switch (f->get_id()) {
+    case td::td_api::getMessage::ID: {
+        const auto& query = static_cast<const td::td_api::getMessage&>(*f);
+        auto msg = makeMessage(query.message_id_, 99999, "target message");
+        msg->chat_id_ = query.chat_id_;
+        co_return msg;
+    }
     case td::td_api::sendMessage::ID: {
         auto msg = td::td_api::make_object<td::td_api::message>();
         msg->content_ = [] {
@@ -243,9 +250,9 @@ TEST(SendTelegramMessageTest, BothPhotoAndAudioError) {
 }
 
 // ===========================================================================
-// sendTelegramMessage – Reply to message from another chat throws
+// sendTelegramMessage – Reply to message from another chat returns an error
 // ===========================================================================
-TEST(SendTelegramMessageTest, ReplyToMessageFromAnotherChatThrows) {
+TEST(SendTelegramMessageTest, ReplyToMessageFromAnotherChatReturnsError) {
     auto telegram = _new<TelegramMock>();
     auto openAI = _new<OpenAIMock>();
     auto chat = makeChat("Test Chat");
@@ -255,12 +262,14 @@ TEST(SendTelegramMessageTest, ReplyToMessageFromAnotherChatThrows) {
     messages->push_back(makeMessage(10, 99999, "msg1"));
     messages->push_back(makeMessage(11, 99999, "msg2"));
 
+    // TDLib answers getMessage with an error: message 42 does not belong to this chat
     EXPECT_CALL(*telegram, sendQuery(testing::_))
-        .Times(1)
+        .Times(testing::AtLeast(1))
         .WillRepeatedly([](td::td_api::object_ptr<td::td_api::Function> f) -> AFuture<ITelegramClient::Object> {
-            // Verify that at least one call is chatActionTyping
-            EXPECT_TRUE(f->get_id() == td::td_api::sendChatAction::ID ||
-                        f->get_id() == td::td_api::sendMessage::ID);
+            EXPECT_NE(f->get_id(), td::td_api::sendMessage::ID) << "the message must not be sent";
+            if (f->get_id() == td::td_api::getMessage::ID) {
+                co_return td::td_api::make_object<td::td_api::error>(404, "Message not found");
+            }
             co_return co_await dispatchSendQuery(std::move(f));
         });
     EXPECT_CALL(*openAI, embedding(testing::_, testing::_)).Times(0);
@@ -269,18 +278,17 @@ TEST(SendTelegramMessageTest, ReplyToMessageFromAnotherChatThrows) {
         telegram, openAI, chat, std::move(messages));
 
     OpenAITools tools{};
-    EXPECT_THROW(
-        util::await_synchronously(tool.handler({
-            .tools = tools,
-            .args = AJson::Object{
-                {"text", "Hello!"},
-                {"reply_to_message_id", 42},
-            },
-            .temporaryContext = {},
-            .allToolCalls = {},
-        })),
-        AException
-    );
+    auto result = util::await_synchronously(tool.handler({
+        .tools = tools,
+        .args = AJson::Object{
+            {"text", "Hello!"},
+            {"reply_to_message_id", 42},
+        },
+        .temporaryContext = {},
+        .allToolCalls = {},
+    }));
+
+    EXPECT_TRUE(result.contains("another chat")) << "result = " << result;
 }
 
 // ===========================================================================
