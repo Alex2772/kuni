@@ -17,6 +17,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         git \
         cmake \
         ninja-build \
+        make \
         pkg-config \
         libglew-dev \
         zlib1g-dev \
